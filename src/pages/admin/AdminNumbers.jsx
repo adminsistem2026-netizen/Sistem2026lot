@@ -1,0 +1,461 @@
+import { useEffect, useState, useMemo } from 'react';
+import { db } from '../../lib/insforge';
+import { useAuth } from '../../contexts/AuthContext';
+
+const fmtAmt = (n, sym = '$') =>
+  `${sym}${Number(n || 0).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const sel = "w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500";
+const inp = "w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500";
+
+const IcFilter  = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" /></svg>;
+const IcChevron = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>;
+const IcTrophy  = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" /></svg>;
+
+function cellColor(pieces, max, w1, w2, w3) {
+  if (w1) return 'bg-indigo-500 text-white ring-2 ring-indigo-300';
+  if (w2) return 'bg-emerald-500 text-white ring-2 ring-emerald-300';
+  if (w3) return 'bg-amber-500 text-white ring-2 ring-amber-300';
+  if (pieces === 0) return 'bg-slate-900 text-slate-700';
+  const r = pieces / max;
+  if (r < 0.15) return 'bg-blue-950 text-blue-400';
+  if (r < 0.35) return 'bg-indigo-900 text-indigo-300';
+  if (r < 0.6)  return 'bg-indigo-800 text-indigo-200';
+  if (r < 0.85) return 'bg-violet-700 text-white';
+  return 'bg-violet-500 text-white';
+}
+
+// Misma jerarquía que app.js (chance = 2 cifras)
+function getMultiplier(pos, lottObj, dtObj) {
+  const k = pos === 1 ? '1st' : pos === 2 ? '2nd' : '3rd';
+  const dtVal = dtObj?.[`custom_prize_${k}_multiplier`];
+  if (dtVal != null && dtVal !== '') return parseFloat(dtVal);
+  return parseFloat(lottObj?.[`prize_${k}_multiplier`]) || (pos === 1 ? 11 : pos === 2 ? 3 : 2);
+}
+
+export default function AdminNumbers() {
+  const { profile } = useAuth();
+  const _d = new Date();
+  const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+
+  const [date, setDate]               = useState(today);
+  const [sellerId, setSellerId]       = useState('');
+  const [lotteryId, setLotteryId]     = useState('');
+  const [drawTimeId, setDrawTimeId]   = useState('');
+  const [currency, setCurrency]       = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(true);
+
+  const [sellers, setSellers]               = useState([]);
+  const [lotteries, setLotteries]           = useState([]);  // con multipliers via RPC
+  const [allDrawTimes, setAllDrawTimes]     = useState([]);
+  const [availCurrencies, setAvailCurrencies] = useState([]);
+
+  const [numberSales, setNumberSales]       = useState({});
+  const [winningNumbers, setWinningNumbers] = useState(null);
+  const [totalPieces, setTotalPieces]       = useState(0);
+  const [financials, setFinancials]         = useState(null);
+  // { totalCobrado, totalPago, resultado, sym, winners:[{number,prize,pieces,pago}] }
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (profile?.id) {
+      loadFiltersData().then(sellerIds => loadData(sellerIds));
+    }
+  }, [profile]);
+  useEffect(() => {
+    if (sellers.length > 0) loadData(sellers.map(s => s.id));
+  }, [date, sellerId, lotteryId, drawTimeId, currency]);
+
+  async function loadFiltersData() {
+    const [{ data: s }, { data: l }, { data: dt }, { data: mData }] = await Promise.all([
+      db.rpc('get_admin_sellers', { p_admin_id: profile.id }),
+      db.from('lotteries').select('*').or(`admin_id.eq.${profile.id},admin_id.is.null`).order('display_name'),
+      db.from('draw_times').select('*').order('time_value'),
+      db.rpc('get_lottery_billete_multipliers'),
+    ]);
+    const s2 = s || [];
+    // Merge multipliers into lotteries (igual que app.js)
+    const mMap = {};
+    (mData || []).forEach(r => { mMap[r.id] = r; });
+    const merged = (l || []).map(lot => ({ ...lot, ...mMap[lot.id] }));
+
+    setSellers(s2);
+    setLotteries(merged);
+    setAllDrawTimes(dt || []);
+    const syms = [...new Set(s2.map(x => x.currency_symbol).filter(Boolean))];
+    setAvailCurrencies(syms);
+    return s2.map(x => x.id);
+  }
+
+  async function loadData(sellerIds) {
+    if (!profile?.id || !sellerIds?.length) { setLoading(false); return; }
+    setLoading(true);
+
+    // 1. Cargar tickets por seller_id (columna original, no afectada por schema cache)
+    let q = db.from('tickets')
+      .select('id, seller_id, lottery_id, draw_time_id, sale_date, currency_symbol, is_cancelled, total_amount')
+      .in('seller_id', sellerIds);
+    if (date)       q = q.eq('sale_date', date);
+    if (sellerId)   q = q.eq('seller_id', sellerId);
+    if (lotteryId)  q = q.eq('lottery_id', lotteryId);
+    if (drawTimeId) q = q.eq('draw_time_id', drawTimeId);
+    const { data: raw } = await q;
+    let tickets = (raw || []).filter(t => !t.is_cancelled);
+    if (currency) tickets = tickets.filter(t => t.currency_symbol === currency);
+
+    // Inicializar grid
+    const sales = {};
+    for (let i = 0; i <= 99; i++) sales[i.toString().padStart(2, '0')] = 0;
+
+    let allNums = [];
+    const idSet = new Set();
+
+    if (tickets.length > 0) {
+      const ids = tickets.map(t => t.id);
+      ids.forEach(id => idSet.add(id));
+
+      const CHUNK = 100;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const { data: nums } = await db.from('ticket_numbers')
+          .select('ticket_id, number, pieces, subtotal').in('ticket_id', ids.slice(i, i + CHUNK));
+        allNums = allNums.concat(nums || []);
+      }
+
+      let totalPc = 0;
+      allNums.forEach(n => {
+        if (idSet.has(n.ticket_id) && n.number?.length === 2) {
+          sales[n.number] = (sales[n.number] || 0) + parseInt(n.pieces, 10);
+          totalPc += parseInt(n.pieces, 10);
+        }
+      });
+      setTotalPieces(totalPc);
+    } else {
+      setTotalPieces(0);
+    }
+    setNumberSales(sales);
+
+    // 2. Números ganadores
+    let wn = null;
+    if (lotteryId && date) {
+      let wq = db.from('winning_numbers').select('*')
+        .eq('lottery_id', lotteryId).eq('draw_date', date);
+      if (drawTimeId) wq = wq.eq('draw_time_id', drawTimeId);
+      else            wq = wq.is('draw_time_id', null);
+      const { data: wd } = await wq.limit(1);
+      wn = wd?.[0] || null;
+    }
+    setWinningNumbers(wn);
+
+    // 3. Cálculo financiero
+    const sym = profile?.currency_symbol || '$';
+    let totalCobrado = 0;
+    allNums.forEach(n => {
+      if (idSet.has(n.ticket_id) && n.number?.length === 2) {
+        totalCobrado += parseFloat(n.subtotal || 0);
+      }
+    });
+
+    if (wn && lotteryId) {
+      const lottObj = lotteries.find(l => l.id === lotteryId) || null;
+      const dtObj   = drawTimeId ? allDrawTimes.find(d => d.id === drawTimeId) || null : null;
+      const m1 = getMultiplier(1, lottObj, dtObj);
+      const m2 = getMultiplier(2, lottObj, dtObj);
+      const m3 = getMultiplier(3, lottObj, dtObj);
+      const c1 = wn.first_prize?.slice(-2);
+      const c2 = wn.second_prize?.slice(-2);
+      const c3 = wn.third_prize?.slice(-2);
+
+      const winners = [];
+      let totalPago = 0;
+
+      allNums.forEach(n => {
+        if (!idSet.has(n.ticket_id) || n.number?.length !== 2) return;
+        let prizeLabel = null, multiplier = 0;
+        if (c1 && n.number === c1) { prizeLabel = '1er Premio'; multiplier = m1; }
+        else if (c2 && n.number === c2) { prizeLabel = '2do Premio'; multiplier = m2; }
+        else if (c3 && n.number === c3) { prizeLabel = '3er Premio'; multiplier = m3; }
+
+        if (prizeLabel) {
+          const pago = parseFloat(n.subtotal || 0) * multiplier;
+          totalPago += pago;
+          // Agrupa por número+premio para mostrar total consolidado
+          const existing = winners.find(w => w.number === n.number && w.prize === prizeLabel);
+          if (existing) {
+            existing.pieces += parseInt(n.pieces, 10);
+            existing.pago   += pago;
+          } else {
+            winners.push({ number: n.number, prize: prizeLabel, pieces: parseInt(n.pieces, 10), pago });
+          }
+        }
+      });
+
+      const resultado = totalCobrado - totalPago;
+      setFinancials({ totalCobrado, totalPago, resultado, sym, winners });
+    } else {
+      setFinancials(tickets.length > 0 ? { totalCobrado, totalPago: null, resultado: null, sym, winners: [] } : null);
+    }
+
+    setLoading(false);
+  }
+
+  const filteredDrawTimes = lotteryId ? allDrawTimes.filter(d => d.lottery_id === lotteryId) : allDrawTimes;
+  const maxPieces = useMemo(() => Math.max(...Object.values(numberSales), 1), [numberSales]);
+  const topNumbers = useMemo(() =>
+    Object.entries(numberSales).filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).slice(0, 3),
+    [numberSales]);
+
+  const c1 = winningNumbers?.first_prize?.slice(-2);
+  const c2 = winningNumbers?.second_prize?.slice(-2);
+  const c3 = winningNumbers?.third_prize?.slice(-2);
+
+  const activeFilterCount = [sellerId, lotteryId, drawTimeId, currency, date !== today ? 1 : null].filter(Boolean).length;
+  const prizeColors = ['text-indigo-400', 'text-emerald-400', 'text-amber-400'];
+  const prizeBg     = ['bg-indigo-500/20 border-indigo-500/40', 'bg-emerald-500/20 border-emerald-500/40', 'bg-amber-500/20 border-amber-500/40'];
+
+  return (
+    <div className="space-y-5 mt-2 pb-8">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-white">Números vendidos</h1>
+          <p className="text-xs text-slate-500 mt-0.5">Chance (2 cifras) · Vista global</p>
+        </div>
+        {activeFilterCount > 0 && (
+          <button
+            onClick={() => { setSellerId(''); setLotteryId(''); setDrawTimeId(''); setCurrency(''); setDate(today); }}
+            className="text-xs text-slate-400 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl transition"
+          >
+            Limpiar
+          </button>
+        )}
+      </div>
+
+      {/* Filtros */}
+      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
+        <button onClick={() => setFiltersOpen(v => !v)} className="w-full flex items-center justify-between px-4 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 bg-indigo-500/20 rounded-lg text-indigo-400"><IcFilter /></div>
+            <span className="text-sm font-semibold text-white">Filtros</span>
+            {activeFilterCount > 0 && <span className="text-xs bg-indigo-600 text-white px-2 py-0.5 rounded-full font-medium">{activeFilterCount}</span>}
+          </div>
+          <span className={`text-slate-500 transition-transform duration-200 ${filtersOpen ? 'rotate-90' : ''}`}><IcChevron /></span>
+        </button>
+        {filtersOpen && (
+          <div className="px-4 pb-4 space-y-3 border-t border-slate-800">
+            <div className="pt-3">
+              <label className="text-xs font-medium text-slate-400 block mb-1.5">Fecha</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp} />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-400 block mb-1.5">Vendedor</label>
+              <select value={sellerId} onChange={e => setSellerId(e.target.value)} className={sel}>
+                <option value="">Todos los vendedores</option>
+                {sellers.map(s => <option key={s.id} value={s.id}>{s.full_name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-400 block mb-1.5">Lotería</label>
+              <select value={lotteryId} onChange={e => { setLotteryId(e.target.value); setDrawTimeId(''); }} className={sel}>
+                <option value="">Todas las loterías</option>
+                {lotteries.map(l => <option key={l.id} value={l.id}>{l.display_name}</option>)}
+              </select>
+            </div>
+            {filteredDrawTimes.length > 0 && (
+              <div>
+                <label className="text-xs font-medium text-slate-400 block mb-1.5">Sorteo</label>
+                <select value={drawTimeId} onChange={e => setDrawTimeId(e.target.value)} className={sel}>
+                  <option value="">Todos los sorteos</option>
+                  {filteredDrawTimes.map(dt => <option key={dt.id} value={dt.id}>{dt.time_label}</option>)}
+                </select>
+              </div>
+            )}
+            {availCurrencies.length > 1 && (
+              <div>
+                <label className="text-xs font-medium text-slate-400 block mb-2">Moneda</label>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => setCurrency('')} className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium ${!currency ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-slate-700 text-slate-400 hover:text-slate-300'}`}>Todas</button>
+                  {availCurrencies.map(sym => (
+                    <button key={sym} onClick={() => setCurrency(c => c === sym ? '' : sym)} className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium ${currency === sym ? 'bg-indigo-600 border-indigo-500 text-white' : 'border-slate-700 text-slate-400 hover:text-slate-300'}`}>{sym}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Ganadores */}
+      {winningNumbers && (
+        <div className="bg-slate-900 border border-indigo-500/30 rounded-2xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="p-1.5 bg-indigo-500/20 rounded-lg text-indigo-400"><IcTrophy /></div>
+            <p className="text-sm font-semibold text-white">Números Ganadores</p>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: '1er Premio', chance: c1, full: winningNumbers.first_prize },
+              { label: '2do Premio', chance: c2, full: winningNumbers.second_prize },
+              { label: '3er Premio', chance: c3, full: winningNumbers.third_prize },
+            ].map(({ label, chance, full }, i) => (
+              <div key={i} className={`border rounded-xl p-3 text-center ${prizeBg[i]}`}>
+                <p className="text-xs text-slate-400 mb-1">{label}</p>
+                <p className={`text-2xl font-extrabold ${prizeColors[i]}`}>{chance || '—'}</p>
+                {full && full !== chance && <p className="text-xs text-slate-500 mt-0.5">{full}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Resumen financiero */}
+      {!loading && financials && (
+        <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-800">
+            <p className="text-sm font-semibold text-white">Resumen financiero</p>
+          </div>
+
+          {/* Ganadores detalle */}
+          {financials.winners?.length > 0 && (
+            <div className="px-4 pt-3 pb-2">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Premios a pagar</p>
+              <div className="space-y-1.5">
+                {financials.winners.map((w, i) => (
+                  <div key={i} className="flex items-center justify-between bg-slate-800/60 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-base font-bold text-white">{w.number}</span>
+                      <span className="text-xs text-slate-400">{w.prize}</span>
+                      <span className="text-xs text-slate-600">×{w.pieces} piezas</span>
+                    </div>
+                    <span className="text-sm font-bold text-rose-400">{fmtAmt(w.pago, financials.sym)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {financials.winners?.length === 0 && winningNumbers && (
+            <div className="px-4 pt-3 pb-1">
+              <p className="text-xs text-center text-emerald-400 py-1">Sin ganadores en esta selección</p>
+            </div>
+          )}
+
+          {/* Totales */}
+          <div className="px-4 py-3 space-y-2 border-t border-slate-800 mt-1">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-400">Total recaudado</span>
+              <span className="text-sm font-bold text-emerald-400">{fmtAmt(financials.totalCobrado, financials.sym)}</span>
+            </div>
+            {financials.totalPago !== null && (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-400">Total a pagar</span>
+                  <span className="text-sm font-bold text-rose-400">{fmtAmt(financials.totalPago, financials.sym)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+                  <span className="text-sm font-semibold text-white">Resultado</span>
+                  <span className={`text-sm font-bold ${financials.resultado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {financials.resultado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
+                    {fmtAmt(Math.abs(financials.resultado), financials.sym)}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Stats */}
+      {!loading && (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+            <p className="text-lg font-bold text-white">{Object.values(numberSales).filter(p => p > 0).length}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Números</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+            <p className="text-lg font-bold text-indigo-400">{totalPieces}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+            <p className="text-lg font-bold text-violet-400">{topNumbers[0]?.[0] ?? '—'}</p>
+            <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
+          </div>
+        </div>
+      )}
+
+      {/* Top 3 */}
+      {!loading && topNumbers.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
+          <div className="space-y-2.5">
+            {topNumbers.map(([num, pieces], i) => {
+              const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
+              return (
+                <div key={num}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
+                      <span className="text-base font-bold text-white font-mono">{num}</span>
+                    </div>
+                    <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
+                  </div>
+                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxPieces) * 100)}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Grid 00-99 */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cuadrícula 00 – 99</p>
+          {winningNumbers && (
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
+              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
+            </div>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden">
+            {Array.from({ length: 100 }).map((_, i) => (
+              <div key={i} className="bg-slate-800 animate-pulse h-14 rounded" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden border border-slate-800">
+            {Array.from({ length: 100 }).map((_, i) => {
+              const num = i.toString().padStart(2, '0');
+              const pieces = numberSales[num] || 0;
+              const w1 = c1 === num, w2 = c2 === num, w3 = c3 === num;
+              return (
+                <div key={num} className={`flex flex-col items-center justify-center py-2.5 px-1 ${cellColor(pieces, maxPieces, w1, w2, w3)}`}>
+                  <span className="text-xs font-bold font-mono leading-none">{num}</span>
+                  <span className={`text-[11px] leading-none mt-0.5 ${pieces === 0 ? 'opacity-0' : ''}`}>{pieces}</span>
+                  {(w1 || w2 || w3) && (
+                    <span className="text-[9px] leading-none mt-0.5 font-bold">{w1 ? '1°' : w2 ? '2°' : '3°'}</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center gap-1">
+          {[['bg-slate-900 border border-slate-800','Sin ventas'],['bg-blue-950',''],['bg-indigo-900',''],['bg-indigo-800',''],['bg-violet-700',''],['bg-violet-500','Máximo']].map(([cls, label], i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1">
+              <div className={`w-full h-4 rounded ${cls}`} />
+              {label && <p className="text-[10px] text-slate-600">{label}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

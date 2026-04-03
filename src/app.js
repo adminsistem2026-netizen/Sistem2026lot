@@ -1,0 +1,2720 @@
+import { createClient } from '@insforge/sdk';
+
+// ==================== InsForge Client ====================
+const client = createClient({
+    baseUrl: import.meta.env.VITE_INSFORGE_URL,
+    anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY,
+});
+const auth = client.auth;
+const db = client.database;
+
+// ==================== Global State ====================
+let currentUser = null;
+let currentProfile = null;
+let lotteries = []; // [{id, name, code, draw_times:[{id, time_label}]}]
+let drawTimesMap = {}; // {lotteryCode: [{id, time_label}]}
+
+// UI state
+let numbers = [];
+let tickets = [];
+let currentPreviewTicket = null;
+
+// Printer state
+let savedPrinterAddress = localStorage.getItem('printerAddress') || null;
+let savedPrinterName = localStorage.getItem('printerName') || null;
+
+let salesLimits = { chances: {}, billetes: {} };
+let currentSales = { chances: {}, billetes: {} };
+
+let sellerPercentage = 13;
+let sellerName = 'XXXXX';
+
+let activeTab = 'tiempos';
+let menuOpen = false;
+let currentActiveInput = null;
+let keyboardVisible = false;
+let html5QrcodeScanner = null;
+
+// ==================== Loading Overlay ====================
+function showLoading() {
+    document.getElementById('loadingOverlay').classList.add('show');
+}
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('show');
+}
+
+// ==================== Auth ====================
+async function checkPassword() {
+    const email = document.getElementById('emailInput').value.trim();
+    const password = document.getElementById('passwordInput').value;
+    const errorEl = document.getElementById('loginError');
+    errorEl.innerText = '';
+
+    if (!email || !password) {
+        errorEl.innerText = 'Ingrese correo y contraseña.';
+        return;
+    }
+
+    showLoading();
+    try {
+        const { data, error } = await auth.signInWithPassword({ email, password });
+        if (error || !data?.user) {
+            errorEl.innerText = 'Correo o contraseña incorrectos.';
+            return;
+        }
+        currentUser = data.user;
+        await loadProfile();
+        await initApp();
+        showMainPage();
+    } catch (err) {
+        console.error('Login error:', err);
+        errorEl.innerText = 'Error al iniciar sesión.';
+    } finally {
+        hideLoading();
+    }
+}
+
+async function logout() {
+    closeMenu();
+    showLoading();
+    try {
+        await auth.signOut();
+    } catch (e) {
+        console.error('Logout error:', e);
+    } finally {
+        currentUser = null;
+        currentProfile = null;
+        hideLoading();
+        showLoginPage();
+    }
+}
+
+async function loadProfile() {
+    if (!currentUser) return;
+    try {
+        const { data, error } = await db.from('profiles')
+            .select('*')
+            .eq('id', currentUser.id);
+        if (!error && data && data.length > 0) {
+            currentProfile = { ...data[0] };
+            // Cargar columnas nuevas via RPC (evita bug schema cache de InsForge)
+            try {
+                const { data: codes } = await db.rpc('get_profile_codes', { p_user_id: currentUser.id });
+                if (codes?.[0]) {
+                    currentProfile = {
+                        ...currentProfile,
+                        seller_code: codes[0].seller_code,
+                        admin_code: codes[0].admin_code,
+                        parent_admin_id: codes[0].parent_admin_id,
+                    };
+                    sellerName = codes[0].seller_code || currentProfile.full_name || currentProfile.name || sellerName;
+                } else {
+                    sellerName = currentProfile.full_name || currentProfile.name || sellerName;
+                }
+            } catch(_) {
+                sellerName = currentProfile.full_name || currentProfile.name || sellerName;
+            }
+            if (currentProfile.seller_percentage != null) {
+                sellerPercentage = currentProfile.seller_percentage;
+            }
+        }
+    } catch (e) {
+        console.error('loadProfile error:', e);
+    }
+}
+
+function getAdminId() {
+    if (currentProfile) return currentProfile.parent_admin_id || currentProfile.id;
+    return currentUser?.id || null;
+}
+
+// ==================== Lotteries ====================
+async function loadLotteries() {
+    try {
+        const { data: lotData, error: lotError } = await db
+            .from('lotteries')
+            .select('*');
+        if (lotError) { console.error('lotteries error:', lotError); return; }
+
+        const activeLotteries = (lotData || [])
+            .filter(l => l.is_active !== false)
+            .sort((a, b) => {
+                const aRev = a.display_name.includes('REVENTADO') ? 1 : 0;
+                const bRev = b.display_name.includes('REVENTADO') ? 1 : 0;
+                if (aRev !== bRev) return aRev - bRev;
+                return a.display_name.localeCompare(b.display_name);
+            });
+
+        if (activeLotteries.length === 0) {
+            lotteries = [];
+            populateLotteryDropdowns();
+            return;
+        }
+
+        const { data: dtData, error: dtError } = await db
+            .from('draw_times')
+            .select('*');
+        if (dtError) { console.error('draw_times error:', dtError); return; }
+
+        // Fetch multipliers via RPC (InsForge schema cache ignores new columns with select('*'))
+        const { data: mData, error: mError } = await db.rpc('get_lottery_billete_multipliers');
+        if (mError) console.error('get_lottery_billete_multipliers RPC error:', mError);
+        const mMap = {};
+        (mData || []).forEach(r => { mMap[r.id] = r; });
+
+        lotteries = activeLotteries.map(lot => ({
+            ...lot,
+            ...(mMap[lot.id] || {}),
+            code: lot.id,
+            name: lot.display_name,
+            draw_times: (dtData || []).filter(dt => dt.lottery_id === lot.id),
+        }));
+
+        drawTimesMap = {};
+        lotteries.forEach(lot => {
+            drawTimesMap[lot.id] = lot.draw_times || [];
+        });
+
+        populateLotteryDropdowns();
+    } catch (e) {
+        console.error('loadLotteries error:', e);
+    }
+}
+
+function populateLotteryDropdowns() {
+    const selectIds = [
+        'lotteryType',
+        'filterLotteryType',
+        'filterLottery',
+        'limitChanceLotteryType',
+        'limitBilleteLotteryType',
+        'winnerLotteryType',
+    ];
+
+    selectIds.forEach(id => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+
+        const isFilter = id.startsWith('filter') || id === 'filterLottery';
+        const firstOptionText = isFilter ? 'Todas las Loterías' : 'Elegir loteria';
+        sel.innerHTML = `<option value="">${firstOptionText}</option>`;
+
+        lotteries.forEach(lot => {
+            const opt = document.createElement('option');
+            opt.value = lot.id;           // value = DB id (uuid)
+            opt.textContent = lot.display_name;
+            sel.appendChild(opt);
+        });
+    });
+}
+
+// ==================== Draw times helpers ====================
+function getDrawTimesForId(lotteryId) {
+    return drawTimesMap[lotteryId] || [];
+}
+
+// Backward-compat alias
+function getDrawTimesForCode(code) {
+    return getDrawTimesForId(code);
+}
+
+function populateDrawTimeSelect(selectEl, lotteryId, defaultText = 'Hora de sorteo') {
+    selectEl.innerHTML = `<option value="">${defaultText}</option>`;
+    if (!lotteryId) { selectEl.disabled = true; return; }
+    const times = getDrawTimesForId(lotteryId);
+    if (times.length === 0) { selectEl.disabled = true; return; }
+    times.forEach(dt => {
+        const opt = document.createElement('option');
+        opt.value = dt.id;            // value = draw_time DB id (uuid)
+        opt.textContent = dt.time_label;
+        selectEl.appendChild(opt);
+    });
+    selectEl.disabled = false;
+}
+
+// Get lottery object by id
+function getLotteryById(id) {
+    return lotteries.find(l => l.id === id) || null;
+}
+
+// Get draw_time object by id
+function getDrawTimeById(id) {
+    for (const lot of lotteries) {
+        const dt = (lot.draw_times || []).find(d => d.id === id);
+        if (dt) return dt;
+    }
+    return null;
+}
+
+// ==================== Lottery display helpers ====================
+function isReventado(lotteryType) {
+    return lotteryType && lotteryType.startsWith('REVENTADO_');
+}
+
+function getDisplayName(lotteryId) {
+    const found = lotteries.find(l => l.id === lotteryId);
+    return found ? found.display_name : lotteryId || '';
+}
+
+function getDrawTimeLabelById(drawTimeId) {
+    if (!drawTimeId) return '';
+    for (const dts of Object.values(drawTimesMap)) {
+        const found = dts.find(dt => dt.id === drawTimeId);
+        if (found) return found.time_label;
+    }
+    return '';
+}
+
+// ==================== Adapt DB ticket to UI format ====================
+function adaptTicket(t) {
+    return {
+        id: t.ticket_number || t.id,
+        dbId: t.id,
+        datetime: t.created_at || t.sale_date,
+        saleDate: t.sale_date || '',
+        lottery: getDisplayName(t.lottery_id),
+        lotteryId: t.lottery_id || '',
+        drawTime: getDrawTimeLabelById(t.draw_time_id),
+        drawTimeId: t.draw_time_id || '',
+        numbers: (t.ticket_numbers || []).map(n => ({
+            number: n.number,
+            pieces: n.pieces,
+            subTotal: parseFloat(n.subtotal || 0),
+        })),
+        total: parseFloat(t.total_amount || 0),
+        paid: t.is_paid || false,
+        cancelled: t.is_cancelled || false,
+        customerName: t.customer_name || '',
+        seller_id: t.seller_id,
+    };
+}
+
+// ==================== Tickets (DB) ====================
+async function loadTickets(filters = {}) {
+    try {
+        const adminId = getAdminId();
+        const { data: ticketsData, error: ticketsError } = await db.from('tickets').select('*');
+        if (ticketsError) { console.error('loadTickets error:', ticketsError); return []; }
+
+        let result = (ticketsData || []).filter(t => !t.is_cancelled);
+        if (currentProfile && currentProfile.parent_admin_id) {
+            result = result.filter(t => t.seller_id === currentProfile.id);
+        } else if (currentProfile && !currentProfile.parent_admin_id) {
+            result = result.filter(t => t.admin_id === currentProfile.id);
+        }
+
+        if (result.length === 0) return [];
+
+        // Fetch ticket_numbers separately and merge
+        const { data: numsData } = await db.from('ticket_numbers').select('*');
+        const numsByTicket = {};
+        (numsData || []).forEach(n => {
+            if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
+            numsByTicket[n.ticket_id].push(n);
+        });
+        result = result.map(t => ({ ...t, ticket_numbers: numsByTicket[t.id] || [] }));
+
+        return result.map(adaptTicket);
+    } catch (e) {
+        console.error('loadTickets exception:', e);
+        return [];
+    }
+}
+
+async function generateTicket() {
+    if (numbers.length === 0) {
+        showNotification('Agregue números al ticket');
+        return;
+    }
+
+    const lotteryType = document.getElementById('lotteryType').value;
+    const drawTime = document.getElementById('drawTimeSelect').value;
+    const customerName = document.getElementById('customerName').value;
+
+    if (!lotteryType) {
+        showNotification('Seleccione una lotería');
+        return;
+    }
+
+    const lotteryObj = getSelectedLotteryObj();
+    const drawTimeObj = getSelectedDrawTimeObj();
+    const drawTimeLabel = drawTimeObj ? drawTimeObj.time_label : '';
+
+    if (lotteryObj && lotteryObj.draw_times && lotteryObj.draw_times.length > 0 && !drawTime) {
+        showNotification('Seleccione hora de sorteo');
+        return;
+    }
+
+    if (!validarHorarioVenta()) {
+        if (lotteryObj && lotteryObj.draw_times && lotteryObj.draw_times.length > 0) {
+            showNotification('No se puede generar el ticket. Ventas bloqueadas 5 minutos antes y 20 minutos después del sorteo.', 'warning');
+            return;
+        }
+    }
+
+    const totalAmount = numbers.reduce((sum, item) => {
+        const subTotal = typeof item.subTotal === 'number' ? item.subTotal : parseFloat(item.subTotal);
+        return sum + (isNaN(subTotal) ? 0 : subTotal);
+    }, 0);
+
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    const ticketNumber = `TK-${dateStr}-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
+
+    showLoading();
+    try {
+        // Usar RPC para evitar bug de schema cache de InsForge (admin_id ignorado en insert directo)
+        const { data: rpcData, error: ticketError } = await db.rpc('save_ticket', {
+            p_ticket_number:   ticketNumber,
+            p_seller_id:       currentProfile ? currentProfile.id : currentUser?.id || null,
+            p_admin_id:        currentProfile?.parent_admin_id || currentProfile?.id || currentUser?.id || null,
+            p_lottery_id:      lotteryObj ? lotteryObj.id : null,
+            p_draw_time_id:    drawTimeObj ? drawTimeObj.id : null,
+            p_customer_name:   customerName || null,
+            p_total_amount:    totalAmount,
+            p_currency_symbol: currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$',
+            p_sale_date:       dateStr,
+        });
+        if (ticketError) {
+            console.error('Insert ticket error:', ticketError);
+            showNotification('Error al guardar el ticket: ' + (ticketError.message || JSON.stringify(ticketError)), 'error', 6000);
+            return;
+        }
+
+        let ticketId = rpcData || null;
+        if (!ticketId) {
+            const { data: fetched } = await db.from('tickets').select('id').eq('ticket_number', ticketNumber);
+            ticketId = fetched?.[0]?.id || null;
+        }
+
+        if (ticketId) {
+            const numberRows = numbers.map(n => ({
+                ticket_id: ticketId,
+                number: n.number,
+                digit_count: n.number.length,
+                pieces: n.pieces,
+                unit_price: n.pieces > 0 ? parseFloat((n.subTotal / n.pieces).toFixed(4)) : 0,
+                subtotal: n.subTotal,
+            }));
+            const { error: numError } = await db.from('ticket_numbers').insert(numberRows);
+            if (numError) {
+                showNotification('Error al guardar números: ' + (numError.message || JSON.stringify(numError)), 'error', 6000);
+            }
+        } else {
+            showNotification('No se pudo obtener ID del ticket para guardar números', 'error', 6000);
+        }
+
+        // Build local ticket object for preview
+        const ticket = {
+            id: ticketNumber,
+            dbId: ticketId,
+            datetime: new Date().toISOString(),
+            lottery: lotteryType,
+            lotteryName: lotteryObj?.display_name || lotteryType,
+            drawTime: drawTimeLabel,
+            numbers: JSON.parse(JSON.stringify(numbers)),
+            total: totalAmount,
+            paid: false,
+            customerName: customerName,
+            currencySymbol: currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$',
+        };
+
+        calculateCurrentSales();
+        showTicketPreview(ticket);
+        resetForm();
+
+    } catch (err) {
+        console.error('generateTicket error:', err);
+        showNotification('Ha ocurrido un error al generar el ticket. Por favor, intente nuevamente.');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function marcarComoPagado(ticketId) {
+    showLoading();
+    try {
+        // ticketId here is the ticket_number string; find dbId from displayed tickets
+        const allTickets = await loadTickets();
+        const ticket = allTickets.find(t => t.id === ticketId);
+        if (!ticket) {
+            showNotification('❌ Ticket no encontrado', 'error');
+            return;
+        }
+
+        const { error } = await db.from('tickets')
+            .update({ is_paid: true })
+            .eq('id', ticket.dbId);
+
+        if (error) {
+            showNotification('Error al marcar como pagado.', 'error');
+            return;
+        }
+
+        showNotification('✅ Ticket marcado como pagado correctamente', 'success');
+        const updatedTicket = { ...ticket, paid: true };
+        showTicketPreview(updatedTicket);
+
+        const salesPage = document.getElementById('salesPage');
+        if (salesPage.style.display !== 'none') {
+            displayTickets();
+            const currentDate = document.getElementById('salesDate').value;
+            if (currentDate) showSalesByDate(currentDate);
+        }
+
+        calculateCurrentSales();
+    } catch (e) {
+        console.error('marcarComoPagado error:', e);
+        showNotification('Error al procesar.', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function deleteTicket(ticketId) {
+    const allTickets = await loadTickets();
+    const ticketToDelete = allTickets.find(t => t.id === ticketId);
+
+    if (!ticketToDelete) {
+        showNotification('Ticket no encontrado', 'error');
+        return;
+    }
+
+    const validationResult = validarHorarioEliminacion(ticketToDelete.lottery, ticketToDelete.drawTime);
+    if (!validationResult.allowed) {
+        const message = getEliminationBlockMessage(validationResult);
+        showNotification(message, 'warning', 6000);
+        return;
+    }
+
+    showConfirm('¿Está seguro de eliminar este ticket?', 'Eliminar Ticket', async () => {
+        showLoading();
+        try {
+            const { error } = await db.from('tickets')
+                .update({ is_cancelled: true, cancelled_at: new Date().toISOString(), cancelled_by: currentUser?.id || null })
+                .eq('id', ticketToDelete.dbId);
+
+            if (error) {
+                showNotification('Error al eliminar el ticket.', 'error');
+                return;
+            }
+
+            displayTickets();
+            calculateCurrentSales();
+            const currentDate = document.getElementById('salesDate').value;
+            if (currentDate) showSalesByDate(currentDate);
+            showNotification('Ticket eliminado correctamente', 'success');
+        } catch (e) {
+            console.error('deleteTicket error:', e);
+        } finally {
+            hideLoading();
+        }
+    });
+}
+
+// ==================== Sales Limits (DB) ====================
+async function loadLimitsFromDB() {
+    try {
+        const adminId = getAdminId();
+        if (!adminId) return;
+        const { data, error } = await db.from('sales_limits')
+            .select('*, draw_times(time_label)')
+            .eq('admin_id', adminId)
+            .is('number', null);
+        if (error) { console.error('loadLimitsFromDB error:', error); return; }
+        salesLimits = { chances: {}, billetes: {} };
+        (data || []).forEach(row => {
+            const drawLabel = row.draw_times?.time_label || 'default';
+            // lottery_id null = global limit (applies to all lotteries)
+            const key = row.lottery_id ? `${row.lottery_id}_${drawLabel}` : '__global__';
+            const type = row.digit_type === 4 ? 'billetes' : 'chances';
+            if (!salesLimits[type][key]) salesLimits[type][key] = { globalLimit: 0, numbers: {} };
+            salesLimits[type][key].globalLimit = row.max_pieces;
+        });
+    } catch (e) {
+        console.error('loadLimitsFromDB exception:', e);
+    }
+}
+
+// ==================== Calculate current sales from DB ====================
+async function calculateCurrentSales() {
+    currentSales = { chances: {}, billetes: {} };
+
+    try {
+        const allTickets = await loadTickets();
+
+        const today = new Date();
+        const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+        const activeTickets = allTickets.filter(ticket => {
+            const ticketDate = new Date(ticket.datetime);
+            const tStr = `${ticketDate.getFullYear()}-${String(ticketDate.getMonth()+1).padStart(2,'0')}-${String(ticketDate.getDate()).padStart(2,'0')}`;
+            return !ticket.paid && tStr === todayStr;
+        });
+
+        activeTickets.forEach(ticket => {
+            const key = `${ticket.lotteryId}_${ticket.drawTime || 'default'}`;
+            ticket.numbers.forEach(num => {
+                const pieces = parseInt(num.pieces, 10);
+                if (num.number.length === 2) {
+                    if (!currentSales.chances[key]) currentSales.chances[key] = {};
+                    currentSales.chances[key][num.number] = (currentSales.chances[key][num.number] || 0) + pieces;
+                } else if (num.number.length === 4) {
+                    if (!currentSales.billetes[key]) currentSales.billetes[key] = {};
+                    currentSales.billetes[key][num.number] = (currentSales.billetes[key][num.number] || 0) + pieces;
+                }
+            });
+        });
+    } catch (e) {
+        console.error('calculateCurrentSales error:', e);
+    }
+}
+
+// ==================== Seller config ====================
+function openPercentageModal() {
+    closeMenu();
+    const modal = document.getElementById('percentageModal');
+    document.getElementById('sellerPercentageInput').value = sellerPercentage;
+    document.getElementById('sellerNameInput').value = sellerName;
+    const errorElement = document.getElementById('percentageError');
+    if (errorElement) errorElement.style.display = 'none';
+    modal.style.display = 'block';
+}
+
+function closePercentageModal() {
+    document.getElementById('percentageModal').style.display = 'none';
+}
+
+function saveSellerConfig() {
+    const newPercentage = parseFloat(document.getElementById('sellerPercentageInput').value);
+    const newName = document.getElementById('sellerNameInput').value.trim();
+    const errorElement = document.getElementById('percentageError');
+
+    if (!newName) {
+        errorElement.textContent = 'Por favor ingrese el nombre del vendedor.';
+        errorElement.style.display = 'block';
+        return;
+    }
+
+    if (isNaN(newPercentage) || newPercentage < 0 || newPercentage > 100) {
+        errorElement.textContent = 'Ingrese un porcentaje válido entre 0 y 100.';
+        errorElement.style.display = 'block';
+        return;
+    }
+
+    sellerPercentage = newPercentage;
+    sellerName = newName;
+
+    closePercentageModal();
+
+    if (activeTab === 'tiempos') {
+        updateNumberSalesTable();
+    } else {
+        updateBilletesSalesTable();
+    }
+
+    showNotification(`Configuración actualizada:\nVendedor: ${sellerName}\nPorcentaje: ${sellerPercentage}%`);
+}
+
+// ==================== Init ====================
+async function initApp() {
+    updateDateTime();
+    setInterval(updateDateTime, 1000);
+
+    await loadLotteries();
+    await loadLimitsFromDB();
+    await calculateCurrentSales();
+
+    initKeyboardEvents();
+}
+
+function updateDateTime() {
+    const el = document.getElementById('datetime');
+    if (el) el.textContent = new Date().toLocaleString();
+}
+
+// ==================== Page navigation ====================
+function showLoginPage() {
+    document.getElementById('loginPage').style.display = 'block';
+    document.getElementById('mainPage').style.display = 'none';
+    document.getElementById('salesPage').style.display = 'none';
+    document.getElementById('numberSalesPage').style.display = 'none';
+    document.getElementById('verifyWinnersPage').style.display = 'none';
+    document.getElementById('configPage').style.display = 'none';
+
+    const passwordInput = document.getElementById('passwordInput');
+    if (passwordInput) {
+        passwordInput.addEventListener('input', () => {
+            document.getElementById('loginError').innerText = '';
+        });
+    }
+}
+
+function showMainPage() {
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('salesPage').style.display = 'none';
+    document.getElementById('numberSalesPage').style.display = 'none';
+    document.getElementById('verifyWinnersPage').style.display = 'none';
+    document.getElementById('configPage').style.display = 'none';
+    document.getElementById('ticketPreview').style.display = 'none';
+    document.getElementById('mainPage').style.display = 'block';
+
+    document.getElementById('number').value = '';
+    document.getElementById('pieces').value = '';
+    document.getElementById('quickInput').value = '';
+}
+
+function showMainPageOnly() {
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('salesPage').style.display = 'none';
+    document.getElementById('numberSalesPage').style.display = 'none';
+    document.getElementById('verifyWinnersPage').style.display = 'none';
+    document.getElementById('configPage').style.display = 'none';
+    document.getElementById('mainPage').style.display = 'block';
+
+    document.getElementById('number').value = '';
+    document.getElementById('pieces').value = '';
+    document.getElementById('quickInput').value = '';
+}
+
+function getTodayStr() {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+}
+
+function showSalesPage() {
+    closeMenu();
+    document.getElementById('mainPage').style.display = 'none';
+    document.getElementById('salesPage').style.display = 'block';
+    document.getElementById('numberSalesPage').style.display = 'none';
+    const salesDateEl = document.getElementById('salesDate');
+    if (salesDateEl && !salesDateEl.value) salesDateEl.value = getTodayStr();
+    showSalesByDate(document.getElementById('salesDate').value || getTodayStr());
+    displayTickets();
+}
+
+function showNumberSalesPage() {
+    closeMenu();
+    document.getElementById('mainPage').style.display = 'none';
+    document.getElementById('salesPage').style.display = 'none';
+    document.getElementById('numberSalesPage').style.display = 'block';
+    document.getElementById('verifyWinnersPage').style.display = 'none';
+    const filterDateEl = document.getElementById('salesFilterDate');
+    if (filterDateEl && !filterDateEl.value) filterDateEl.value = getTodayStr();
+    displaySalesSummary(activeTab);
+    updateNumberSalesTable();
+}
+
+function showVerifyWinnersPage() {
+    closeMenu();
+    document.getElementById('mainPage').style.display = 'none';
+    document.getElementById('salesPage').style.display = 'none';
+    document.getElementById('numberSalesPage').style.display = 'none';
+    document.getElementById('verifyWinnersPage').style.display = 'block';
+    document.getElementById('winningTicketsResult').innerHTML = '';
+
+    document.getElementById('filterLottery').onchange = updateWinnerDrawTimes;
+    updateWinnerDrawTimes();
+
+    document.getElementById('firstPrize').value = '';
+    document.getElementById('secondPrize').value = '';
+    document.getElementById('thirdPrize').value = '';
+
+    if (!document.getElementById('winnersFilterDate').value) {
+        const today = new Date();
+        document.getElementById('winnersFilterDate').value =
+            `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    }
+}
+
+function showConfigPage() {
+    closeMenu();
+    document.getElementById('mainPage').style.display = 'none';
+    document.getElementById('salesPage').style.display = 'none';
+    document.getElementById('numberSalesPage').style.display = 'none';
+    document.getElementById('verifyWinnersPage').style.display = 'none';
+    document.getElementById('configPage').style.display = 'block';
+
+    updateLimitDrawTimes();
+    updateLimitBilleteDrawTimes();
+    displayCurrentLimits('chances');
+    displayCurrentLimits('billetes');
+}
+
+// ==================== Draw time selects ====================
+function updateDrawTimes() {
+    const lotteryCode = document.getElementById('lotteryType').value;
+    const timeSelect = document.getElementById('drawTimeSelect');
+    populateDrawTimeSelect(timeSelect, lotteryCode);
+}
+
+function updateFilterDrawTimes() {
+    const lotteryCode = document.getElementById('filterLotteryType').value;
+    const timeSelect = document.getElementById('filterDrawTimeSelect');
+    populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas');
+}
+
+function updateWinnerDrawTimes() {
+    const lotteryCode = document.getElementById('filterLottery').value;
+    const timeSelect = document.getElementById('filterDrawTime');
+    populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas');
+}
+
+function updateLimitDrawTimes() {
+    const lotteryCode = document.getElementById('limitLotteryType').value;
+    const timeSelect = document.getElementById('limitDrawTimeSelect');
+    populateDrawTimeSelect(timeSelect, lotteryCode);
+}
+
+function updateLimitBilleteDrawTimes() {
+    const lotteryCode = document.getElementById('limitBilleteLotteryType').value;
+    const timeSelect = document.getElementById('limitBilleteDrawTimeSelect');
+    populateDrawTimeSelect(timeSelect, lotteryCode);
+}
+
+// ==================== Ticket UI ====================
+function validateNumber(number) {
+    const numStr = number.toString();
+    return numStr.length === 2 || numStr.length === 4;
+}
+
+// Helper: get selected lottery/drawtime objects from current form values
+function getSelectedLotteryObj() {
+    const id = document.getElementById('lotteryType').value;
+    return lotteries.find(l => l.id === id) || null;
+}
+function getSelectedDrawTimeObj() {
+    const drawTimeId = document.getElementById('drawTimeSelect').value;
+    if (!drawTimeId) return null;
+    const lot = getSelectedLotteryObj();
+    if (!lot) return null;
+    return (lot.draw_times || []).find(dt => dt.id === drawTimeId) || null;
+}
+function getSelectedDrawTimeLabel() {
+    const dt = getSelectedDrawTimeObj();
+    return dt ? dt.time_label : '';
+}
+
+function calculatePrice(number, pieces) {
+    const numLength = number.toString().length;
+    // Seller-level price override takes priority over lottery prices
+    if (numLength === 4) {
+        const price = currentProfile?.price_4_digits_override ?? getSelectedLotteryObj()?.price_4_digits ?? 1.00;
+        return pieces * price;
+    } else {
+        const price = currentProfile?.price_2_digits_override ?? getSelectedLotteryObj()?.price_2_digits ?? 0.20;
+        return pieces * price;
+    }
+}
+
+function updateCurrentSales(number, pieces, isAddition) {
+    const lotteryType = document.getElementById('lotteryType').value;
+    const drawTimeObj = getSelectedDrawTimeObj();
+    const drawTime = drawTimeObj ? drawTimeObj.time_label : 'default';
+    const key = `${lotteryType}_${drawTime}`;
+    const type = number.length === 2 ? 'chances' : 'billetes';
+
+    if (!currentSales[type][key]) currentSales[type][key] = {};
+    if (!currentSales[type][key][number]) currentSales[type][key][number] = 0;
+
+    if (isAddition) {
+        currentSales[type][key][number] += pieces;
+    } else {
+        currentSales[type][key][number] -= pieces;
+        if (currentSales[type][key][number] < 0) currentSales[type][key][number] = 0;
+    }
+}
+
+function updateNumbersList() {
+    const tbody = document.getElementById('numbersTableBody');
+    tbody.innerHTML = '';
+    numbers.forEach((item, index) => {
+        const row = tbody.insertRow();
+        row.innerHTML = `
+            <td>${item.number}</td>
+            <td><span id="pieces-${index}">${item.pieces}</span></td>
+            <td><span id="subTotal-${index}">${currentProfile?.currency_symbol || getSelectedLotteryObj()?.currency_symbol || '$'}${item.subTotal.toFixed(2)}</span></td>
+            <td class="ticket-actions">
+                <button onclick="editPieces(${index})">Edit</button>
+                <button onclick="removeNumber(${index})">X</button>
+            </td>
+        `;
+    });
+}
+
+function editPieces(index) {
+    const oldPieces = numbers[index].pieces;
+    const number = numbers[index].number;
+    const newPieces = prompt('Ingrese la nueva cantidad de tiempos:', oldPieces);
+
+    if (newPieces !== null && !isNaN(newPieces)) {
+        const pieces = parseInt(newPieces, 10);
+        if (pieces > 0) {
+            const difference = pieces - oldPieces;
+            if (difference > 0 && !checkLimits(number, difference)) return;
+
+            updateCurrentSales(number, oldPieces, false);
+            updateCurrentSales(number, pieces, true);
+            numbers[index].pieces = pieces;
+            numbers[index].subTotal = calculatePrice(number, pieces);
+            updateNumbersList();
+            updateTotal();
+        } else {
+            showNotification('La cantidad de tiempos debe ser mayor que 0.');
+        }
+    } else {
+        showNotification('Por favor, ingrese un número válido.');
+    }
+}
+
+function removeNumber(index) {
+    const currentLottery = document.getElementById('lotteryType').value;
+    const validationResult = validarHorarioEliminacion(currentLottery, null);
+
+    if (!validationResult.allowed) {
+        showNotification(getEliminationBlockMessage(validationResult), 'warning', 6000);
+        return;
+    }
+
+    const number = numbers[index].number;
+    const pieces = numbers[index].pieces;
+    numbers.splice(index, 1);
+    updateNumbersList();
+    updateTotal();
+    updateCurrentSales(number, pieces, false);
+}
+
+function updateTotal() {
+    const total = numbers.reduce((sum, item) => sum + item.subTotal, 0);
+    const sym = currentProfile?.currency_symbol || getSelectedLotteryObj()?.currency_symbol || '$';
+    document.getElementById('totalValue').textContent = `VALOR DE TICKET: ${sym}${total.toFixed(2)}`;
+}
+
+function resetForm() {
+    document.getElementById('customerName').value = '';
+    document.getElementById('number').value = '';
+    document.getElementById('pieces').value = '';
+    document.getElementById('quickInput').value = '';
+    numbers = [];
+    document.getElementById('numbersTableBody').innerHTML = '';
+    document.getElementById('totalValue').innerText = 'VALOR DE TICKET: 0.00$';
+}
+
+function showTicketPreview(ticket) {
+    currentPreviewTicket = ticket;
+    const preview = document.getElementById('ticketPreview');
+    const content = document.getElementById('ticketContent');
+
+    // Format sale datetime like the printed ticket
+    let formattedDateTime = ticket.saleDate || '';
+    try {
+        const d = new Date(ticket.datetime);
+        if (!isNaN(d)) {
+            const dd   = String(d.getDate()).padStart(2,'0');
+            const mm   = String(d.getMonth()+1).padStart(2,'0');
+            const yyyy = d.getFullYear();
+            const hh   = String(d.getHours()).padStart(2,'0');
+            const min  = String(d.getMinutes()).padStart(2,'0');
+            formattedDateTime = `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+        }
+    } catch(e) {}
+
+    const lotteryName = getDisplayName(ticket.lottery) || ticket.lottery || '';
+    const currency = ticket.currencySymbol || '$';
+    const divider = `<div style="border-bottom:1px dashed #000;margin:5px 0;"></div>`;
+
+    content.innerHTML = `
+    <div style="font-family:'Courier New',Courier,monospace;background:white;padding:14px 16px;max-width:320px;margin:0 auto;">
+
+      <!-- Header -->
+      <div style="text-align:center;font-size:1.5em;font-weight:bold;letter-spacing:1px;">${lotteryName}</div>
+      ${ticket.drawTime ? `<div style="text-align:center;font-size:0.9em;">Sorteo: ${ticket.drawTime}</div>` : ''}
+      <div style="text-align:center;font-size:0.9em;">Venta: ${formattedDateTime}</div>
+      ${divider}
+
+      <!-- Column headers -->
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin:3px 0;">
+        <span style="font-size:1.1em;font-weight:bold;">NUMERO&nbsp;&nbsp;PIEZA</span>
+        <span style="font-size:0.82em;">SUBTOTAL</span>
+      </div>
+      <div style="border-bottom:1px solid #000;margin-bottom:4px;"></div>
+
+      <!-- Number rows -->
+      ${ticket.numbers.map(n => `
+        <div style="margin:4px 0 0 0;">
+          <div style="font-size:1.25em;font-weight:bold;">*${n.number}*&nbsp;&nbsp;*${n.pieces}*</div>
+          <div style="text-align:right;font-size:0.95em;">${currency}${parseFloat(n.subTotal||0).toFixed(2)}</div>
+          ${divider}
+        </div>
+      `).join('')}
+
+      <!-- Total -->
+      <div style="text-align:right;font-size:1.35em;font-weight:bold;margin:4px 0;">TOTAL: ${currency}${parseFloat(ticket.total||0).toFixed(2)}</div>
+
+      <!-- Footer -->
+      <div style="font-size:0.85em;margin-top:4px;">Vendedor: ${sellerName}</div>
+      ${ticket.customerName ? `<div style="font-size:0.85em;">Cliente: ${ticket.customerName}</div>` : ''}
+      <div style="font-size:0.8em;word-break:break-all;">ID: ${ticket.id}</div>
+      <div style="font-size:0.85em;">SIN TICKET NO HAY RECLAMO</div>
+    </div>
+    `;
+
+    const qrDiv = document.getElementById('qrcode');
+    qrDiv.innerHTML = '';
+    new QRCode(qrDiv, {
+        text: ticket.id,
+        width: 100,
+        height: 100,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H,
+    });
+
+    const actionsDiv = preview.querySelector('.ticket-actions');
+    if (ticket.paid) {
+        actionsDiv.innerHTML = `
+            <button style="background: linear-gradient(135deg, #e74c3c 0%, #dc3545 100%) !important; color: white !important; cursor: not-allowed !important; border: 2px solid #c82333 !important;" disabled>PAGADO</button>
+            <button onclick="copyTicket('${ticket.id}')">COPIAR</button>
+            <button onclick="closeTicket()">CERRAR</button>
+            <button onclick="compartirTicket()">COMPARTIR</button>
+            <button onclick="printCurrentTicket()" style="background: linear-gradient(135deg, #6f42c1 0%, #563d7c 100%); color:white;">IMPRIMIR</button>
+        `;
+    } else {
+        actionsDiv.innerHTML = `
+            <button onclick="marcarComoPagado('${ticket.id}')" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">COBRAR</button>
+            <button onclick="copyTicket('${ticket.id}')">COPIAR</button>
+            <button onclick="closeTicket()">CERRAR</button>
+            <button onclick="compartirTicket()">COMPARTIR</button>
+            <button onclick="printCurrentTicket()" style="background: linear-gradient(135deg, #6f42c1 0%, #563d7c 100%); color:white;">IMPRIMIR</button>
+        `;
+    }
+
+    preview.style.display = 'block';
+}
+
+function closeTicket() {
+    document.getElementById('ticketPreview').style.display = 'none';
+    numbers = [];
+    updateNumbersList();
+    updateTotal();
+}
+
+function copyTicket(ticketId) {
+    const lotteryType = document.getElementById('lotteryType').value;
+    const lottery = lotteries.find(l => l.code === lotteryType);
+    const needsDrawTime = lottery && lottery.draw_times && lottery.draw_times.length > 0;
+    const drawTimeSelected = document.getElementById('drawTimeSelect')?.value;
+
+    if (!lotteryType) {
+        showNotification('Selecciona una lotería antes de copiar el ticket.', 'error', 4000);
+        return;
+    }
+    if (needsDrawTime && !drawTimeSelected) {
+        showNotification('Selecciona la hora de sorteo antes de copiar el ticket.', 'error', 4000);
+        return;
+    }
+
+    loadTickets().then(allTickets => {
+        const ticket = allTickets.find(t => t.id === ticketId);
+        if (ticket) {
+            const ticketPreview = document.getElementById('ticketPreview');
+            if (ticketPreview && ticketPreview.style.display === 'block') closeTicket();
+
+            numbers = [];
+            let blocked = 0;
+            for (const num of ticket.numbers) {
+                if (!checkLimits(num.number, num.pieces)) {
+                    blocked++;
+                    continue;
+                }
+                const lotteryType = document.getElementById('lotteryType').value;
+                numbers.push({
+                    number: num.number,
+                    pieces: num.pieces,
+                    subTotal: calculatePrice(num.number, num.pieces, lotteryType),
+                });
+                updateCurrentSales(num.number, num.pieces, true);
+            }
+            updateNumbersList();
+            updateTotal();
+            showMainPage();
+            if (blocked > 0) {
+                showNotification(`Ticket copiado. ${blocked} número(s) no se agregaron por límite excedido.`, 'warning', 5000);
+            } else {
+                showNotification('Los números del ticket han sido copiados. Cambia la lotería y hora de sorteo antes de generar el nuevo ticket.');
+            }
+        } else {
+            showNotification('Ticket no encontrado.');
+        }
+    });
+}
+
+function viewTicket(ticketId) {
+    loadTickets().then(allTickets => {
+        const ticket = allTickets.find(t => t.id === ticketId);
+        if (ticket) {
+            showMainPageOnly();
+            showTicketPreview(ticket);
+        }
+    });
+}
+
+// ==================== Sales page ====================
+function showSalesByDate(dateString) {
+    loadTickets().then(allTickets => {
+        const dayTickets = allTickets.filter(ticket => ticket.saleDate === dateString);
+        const totalAmount = dayTickets.reduce((sum, ticket) => sum + ticket.total, 0);
+        document.getElementById('currentSalesDate').textContent = dateString;
+        document.getElementById('totalTickets').textContent = dayTickets.length;
+        document.getElementById('totalSales').textContent = totalAmount.toFixed(2);
+        displayTickets(dayTickets);
+    });
+}
+
+function showTodaySales() {
+    const today = new Date();
+    const dateString = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    document.getElementById('salesDate').value = dateString;
+    showSalesByDate(dateString);
+}
+
+// Initializes totals UI without overriding the ticket list
+function initSalesTotals() {
+    const today = new Date();
+    const dateString = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+    document.getElementById('salesDate').value = dateString;
+    loadTickets().then(allTickets => {
+        const selectedDate = new Date(dateString + 'T00:00:00');
+        const endDate = new Date(dateString + 'T23:59:59');
+        const dayTickets = allTickets.filter(ticket => {
+            const ticketDate = new Date(ticket.datetime);
+            return ticketDate >= selectedDate && ticketDate <= endDate;
+        });
+        const totalAmount = dayTickets.reduce((sum, t) => sum + t.total, 0);
+        document.getElementById('currentSalesDate').textContent = selectedDate.toLocaleDateString('es-ES');
+        document.getElementById('totalTickets').textContent = dayTickets.length;
+        document.getElementById('totalSales').textContent = totalAmount.toFixed(2);
+    });
+}
+
+async function displayTickets(ticketsToShow = null) {
+    const ticketsList = document.getElementById('ticketsList');
+    try {
+        const tickets = ticketsToShow ?? await loadTickets();
+        if (!tickets || tickets.length === 0) {
+            ticketsList.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No hay tickets registrados</p>';
+            return;
+        }
+        ticketsList.innerHTML = tickets.map(ticket => {
+            const total = typeof ticket.total === 'number' && !isNaN(ticket.total) ? ticket.total.toFixed(2) : '0.00';
+            const fecha = ticket.datetime ? new Date(ticket.datetime).toLocaleString() : '';
+            return `
+            <div class="ticket-item">
+                <p><strong>ID:</strong> ${ticket.id}</p>
+                <p><strong>Fecha:</strong> ${fecha}</p>
+                <p><strong>Lotería:</strong> ${ticket.lottery || ''}</p>
+                ${ticket.drawTime ? `<p><strong>Sorteo:</strong> ${ticket.drawTime}</p>` : ''}
+                ${ticket.customerName ? `<p><strong>Cliente:</strong> ${ticket.customerName}</p>` : ''}
+                <p><strong>Total:</strong> ${total}</p>
+                <p><strong>Estado:</strong> ${ticket.paid ? 'Pagado' : 'Pendiente'}</p>
+                <div class="ticket-actions">
+                    <button onclick="viewTicket('${ticket.id}')">Ver</button>
+                    <button onclick="deleteTicket('${ticket.id}')">clear</button>
+                    <button onclick="copyTicket('${ticket.id}')">copy</button>
+                    ${!ticket.paid ? `<button onclick="marcarComoPagado('${ticket.id}')">cobrar</button>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    } catch(e) {
+        console.error('displayTickets error:', e);
+        if (ticketsList) ticketsList.innerHTML = '<p style="color:red;padding:20px;">Error al cargar tickets</p>';
+    }
+}
+
+function searchTickets() {
+    const searchValue = document.getElementById('searchInput').value.trim();
+    if (!searchValue) return;
+    loadTickets().then(allTickets => {
+        const exact = allTickets.find(t => t.id.toLowerCase() === searchValue.toLowerCase());
+        if (exact) {
+            showMainPageOnly();
+            setTimeout(() => showTicketPreview(exact), 200);
+            return;
+        }
+        const filtered = allTickets.filter(t => t.id.toLowerCase().includes(searchValue.toLowerCase()));
+        displayTickets(filtered);
+    });
+}
+
+function deleteSalesByDate() {
+    const selectedDate = document.getElementById('salesDate').value;
+    if (!selectedDate) {
+        showNotification('Por favor, seleccione una fecha primero', 'warning');
+        return;
+    }
+
+    showConfirm(
+        `¿Está seguro de borrar todas las ventas del ${selectedDate}? Esta acción no se puede deshacer.`,
+        'Borrar Ventas del Día',
+        async () => {
+            showLoading();
+            try {
+                const allTickets = await loadTickets();
+                const toCancel = allTickets.filter(t => t.saleDate === selectedDate);
+
+                for (const ticket of toCancel) {
+                    await db.from('tickets').update({ is_cancelled: true, cancelled_at: new Date().toISOString(), cancelled_by: currentUser?.id || null }).eq('id', ticket.dbId);
+                }
+
+                displayTickets();
+                showSalesByDate(selectedDate);
+                showNotification(`Todas las ventas del ${selectedDate} han sido borradas`, 'success');
+            } catch (e) {
+                console.error('deleteSalesByDate error:', e);
+            } finally {
+                hideLoading();
+            }
+        }
+    );
+}
+
+function borrarTodasVentas() {
+    showConfirm(
+        '⚠️ ADVERTENCIA: Esta acción eliminará TODAS las ventas guardadas. Esta operación NO SE PUEDE deshacer. ¿Está absolutamente seguro de que desea borrar TODOS los tickets?',
+        'Borrar TODAS las Ventas',
+        async () => {
+            showLoading();
+            try {
+                const allTickets = await loadTickets();
+                for (const ticket of allTickets) {
+                    await db.from('tickets').update({ is_cancelled: true, cancelled_at: new Date().toISOString(), cancelled_by: currentUser?.id || null }).eq('id', ticket.dbId);
+                }
+                currentSales = { chances: {}, billetes: {} };
+                displayTickets();
+                document.getElementById('totalTickets').textContent = '0';
+                document.getElementById('totalSales').textContent = '0.00';
+                showNotification('Todas las ventas han sido eliminadas permanentemente.', 'success', 5000);
+            } catch (e) {
+                console.error('borrarTodasVentas error:', e);
+            } finally {
+                hideLoading();
+            }
+        }
+    );
+}
+
+// ==================== Quick input ====================
+function processQuickInput() {
+    const input = document.getElementById('quickInput').value.trim();
+    if (!input) { showNotification('Por favor ingrese al menos un número en formato "número,tiempos"'); return; }
+
+    const lotteryType = document.getElementById('lotteryType').value;
+    if (!lotteryType) { showNotification('Por favor seleccione una lotería'); return; }
+
+    const lottery = lotteries.find(l => l.code === lotteryType);
+    if (lottery && lottery.draw_times && lottery.draw_times.length > 0) {
+        const drawTime = document.getElementById('drawTimeSelect').value;
+        if (!drawTime) { showNotification('Por favor seleccione hora de sorteo'); return; }
+    }
+
+    const matches = input.match(/\d+,\d+/g);
+    if (!matches || matches.length === 0) { showNotification('No se encontraron números en formato válido (número,tiempos)'); return; }
+
+    let processed = 0;
+    for (const match of matches) {
+        const [number, piecesStr] = match.split(',');
+        if (validateNumber(number)) {
+            const pieces = parseInt(piecesStr, 10);
+            if (!isNaN(pieces) && pieces > 0) {
+                if (!validarHorarioVenta()) continue;
+                if (!checkLimits(number, pieces)) continue;
+                const subTotal = calculatePrice(number, pieces, lotteryType);
+                numbers.push({ number, pieces, subTotal });
+                updateCurrentSales(number, pieces, true);
+                processed++;
+            }
+        }
+    }
+
+    if (processed > 0) {
+        updateNumbersList();
+        updateTotal();
+        document.getElementById('quickInput').value = '';
+        showNotification(`Se procesaron ${processed} números correctamente.`);
+    } else {
+        showNotification('No se pudieron procesar los números debido a los límites establecidos, formato incorrecto o hora limite del sorteo.');
+    }
+}
+
+// ==================== Number sales page ====================
+function applyFilters() {
+    if (activeTab === 'tiempos') {
+        updateNumberSalesTable();
+        setTimeout(() => loadAndDisplayWinningNumbers(), 100);
+    } else {
+        updateBilletesSalesTable();
+    }
+}
+
+function updateNumberSalesTable() {
+    loadTickets().then(allTickets => {
+        const filterLottery = document.getElementById('filterLotteryType').value;
+        const filterTime = document.getElementById('filterDrawTimeSelect').value;
+        const filterDate = document.getElementById('salesFilterDate').value;
+
+        const numberSales = {};
+        for (let i = 0; i <= 99; i++) {
+            numberSales[i.toString().padStart(2, '0')] = 0;
+        }
+
+        allTickets.forEach(ticket => {
+            let passes = true;
+            if (filterLottery && ticket.lotteryId !== filterLottery) passes = false;
+            if (filterTime && ticket.drawTimeId !== filterTime) passes = false;
+            if (filterDate && ticket.saleDate !== filterDate) passes = false;
+
+            if (passes) {
+                ticket.numbers.forEach(num => {
+                    if (num.number.length === 2) {
+                        numberSales[num.number] = (numberSales[num.number] || 0) + parseInt(num.pieces, 10);
+                    }
+                });
+            }
+        });
+
+        const grid = document.getElementById('numberSalesGrid');
+        grid.innerHTML = '';
+        for (let i = 0; i <= 99; i++) {
+            const number = i.toString().padStart(2, '0');
+            const div = document.createElement('div');
+            div.className = 'number-item';
+            if (numberSales[number] > 0) div.classList.add('highlight');
+            div.innerHTML = `<span>${number}</span><span>${numberSales[number]}</span>`;
+            grid.appendChild(div);
+        }
+
+        displaySalesSummary('tiempos');
+    });
+}
+
+function updateBilletesSalesTable() {
+    loadTickets().then(allTickets => {
+        const filterLottery = document.getElementById('filterLotteryType').value;
+        const filterTime = document.getElementById('filterDrawTimeSelect').value;
+        const filterDate = document.getElementById('salesFilterDate').value;
+
+        const billetesSales = {};
+        allTickets.forEach(ticket => {
+            let passes = true;
+            if (filterLottery && ticket.lotteryId !== filterLottery) passes = false;
+            if (filterTime && ticket.drawTimeId !== filterTime) passes = false;
+            if (filterDate && ticket.saleDate !== filterDate) passes = false;
+
+            if (passes) {
+                ticket.numbers.forEach(num => {
+                    if (num.number.length === 4) {
+                        billetesSales[num.number] = (billetesSales[num.number] || 0) + parseInt(num.pieces, 10);
+                    }
+                });
+            }
+        });
+
+        const grid = document.getElementById('billetesSalesGrid');
+        grid.innerHTML = '';
+        const sorted = Object.keys(billetesSales).sort();
+
+        if (sorted.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; padding: 20px;">No hay billetes vendidos con los filtros seleccionados</div>';
+        } else {
+            sorted.forEach(billete => {
+                if (billetesSales[billete] > 0) {
+                    const div = document.createElement('div');
+                    div.className = 'billete-item highlight';
+                    div.innerHTML = `<span>${billete}</span><span>${billetesSales[billete]}</span>`;
+                    grid.appendChild(div);
+                }
+            });
+        }
+
+        displaySalesSummary('billetes');
+    });
+}
+
+function calculateSalesTotals(type) {
+    return loadTickets().then(allTickets => {
+        const filterLottery = document.getElementById('filterLotteryType').value;
+        const filterTime = document.getElementById('filterDrawTimeSelect').value;
+        const filterDate = document.getElementById('salesFilterDate').value;
+
+        let totalTiempos = 0;
+        let totalColones = 0;
+
+        allTickets.forEach(ticket => {
+            let passes = true;
+            if (filterLottery && ticket.lotteryId !== filterLottery) passes = false;
+            if (filterTime && ticket.drawTimeId !== filterTime) passes = false;
+            if (filterDate && ticket.saleDate !== filterDate) passes = false;
+
+            if (passes) {
+                ticket.numbers.forEach(num => {
+                    if ((type === 'tiempos' && num.number.length === 2) ||
+                        (type === 'billetes' && num.number.length === 4)) {
+                        totalTiempos += parseFloat(num.pieces);
+                        totalColones += parseFloat(num.subTotal);
+                    }
+                });
+            }
+        });
+
+        return { totalTiempos, totalColones };
+    });
+}
+
+function displaySalesSummary(type) {
+    calculateSalesTotals(type).then(totals => {
+        const summaryBox = document.getElementById('salesSummaryBox');
+        summaryBox.style.display = 'block';
+
+        const totalTiemposDisplay = totals.totalTiempos % 1 !== 0
+            ? totals.totalTiempos.toFixed(1)
+            : totals.totalTiempos.toString();
+
+        document.getElementById('totalTiempos').textContent = totalTiemposDisplay;
+        document.getElementById('totalColones').textContent = '$' + totals.totalColones.toFixed(2);
+
+        const title = type === 'tiempos' ? 'Resumen de Chances' : 'Resumen de Billetes';
+        summaryBox.querySelector('h3').textContent = title;
+
+        addPercentageBreakdown(summaryBox, totals.totalColones);
+
+        showWinningNumbersSection();
+    });
+}
+
+function addPercentageBreakdown(summaryBox, totalAmount) {
+    const existingBreakdown = summaryBox.querySelector('.percentage-breakdown');
+    if (existingBreakdown) existingBreakdown.remove();
+    const existingButton = summaryBox.querySelector('.percentage-config-button');
+    if (existingButton) existingButton.remove();
+
+    const sellerAmount = (totalAmount * sellerPercentage) / 100;
+    const adminAmount = totalAmount - sellerAmount;
+
+    const breakdown = document.createElement('div');
+    breakdown.className = 'percentage-breakdown';
+    breakdown.innerHTML = `
+    <div class="percentage-item seller">
+        <div class="percentage-value">$${sellerAmount.toFixed(2)}</div>
+        <div class="percentage-label">${sellerName} (${sellerPercentage}%)</div>
+    </div>
+    <div class="percentage-item admin">
+        <div class="percentage-value">$${adminAmount.toFixed(2)}</div>
+        <div class="percentage-label">Admin (${(100 - sellerPercentage)}%)</div>
+    </div>
+    `;
+    summaryBox.appendChild(breakdown);
+}
+
+function switchTab(tabName) {
+    activeTab = tabName;
+    document.getElementById('tiemposTab').classList.toggle('active', tabName === 'tiempos');
+    document.getElementById('billetesTab').classList.toggle('active', tabName === 'billetes');
+    document.getElementById('tiemposContainer').style.display = tabName === 'tiempos' ? 'block' : 'none';
+    document.getElementById('billetesContainer').style.display = tabName === 'billetes' ? 'block' : 'none';
+    applyFilters();
+    showWinningNumbersSection();
+}
+
+// ==================== Winning numbers section ====================
+function getPrizeMultiplier(position, lotteryObj, drawTimeObj, isBillete = false) {
+    const keys = { 1: '1st', 2: '2nd', 3: '3rd' };
+    const k = keys[position];
+    if (isBillete) {
+        const defaults = { 1: 2000, 2: 600, 3: 300 };
+        const val = parseFloat(lotteryObj?.[`billete_prize_${k}_multiplier`]);
+        return val || defaults[position];
+    }
+    const dtVal = drawTimeObj?.[`custom_prize_${k}_multiplier`];
+    if (dtVal != null) return parseFloat(dtVal);
+    return parseFloat(lotteryObj?.[`prize_${k}_multiplier`]) || (position === 1 ? 11 : position === 2 ? 3 : 2);
+}
+
+function showWinningNumbersSection() {
+    let winningSection = document.getElementById('independentWinningSection');
+    if (!winningSection) {
+        winningSection = document.createElement('div');
+        winningSection.id = 'independentWinningSection';
+        const screenshotButton = document.getElementById('screenshotButton');
+        if (screenshotButton) screenshotButton.parentNode.insertBefore(winningSection, screenshotButton);
+    }
+    winningSection.innerHTML = `
+    <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 16px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h4 style="margin: 0 0 12px 0; color: #333; font-size: 15px;">Números Ganadores</h4>
+        <div id="winnersDisplay" style="text-align:center; color:#888; font-size:13px;">Cargando...</div>
+        <div id="winnersTable" style="margin-top:12px;"></div>
+    </div>`;
+    winningSection.style.display = 'block';
+    loadAndDisplayWinningNumbers();
+}
+
+function hideWinningNumbersSection() {
+    const winningSection = document.getElementById('independentWinningSection');
+    if (winningSection) winningSection.style.display = 'none';
+}
+
+async function loadAndDisplayWinningNumbers() {
+    const filterLottery = document.getElementById('filterLotteryType').value;
+    const filterTime = document.getElementById('filterDrawTimeSelect').value;
+    const filterDate = document.getElementById('salesFilterDate').value;
+    const displayEl = document.getElementById('winnersDisplay');
+    const tableEl = document.getElementById('winnersTable');
+    if (!displayEl) return;
+    if (!filterLottery || !filterDate) { displayEl.textContent = 'Selecciona lotería y fecha.'; return; }
+
+    try {
+        let q = db.from('winning_numbers').select('*')
+            .eq('lottery_id', filterLottery)
+            .eq('draw_date', filterDate);
+        if (filterTime) q = q.eq('draw_time_id', filterTime);
+        else q = q.is('draw_time_id', null);
+        const { data } = await q.limit(1);
+
+        if (!data || data.length === 0) {
+            displayEl.innerHTML = '<span style="color:#aaa;font-size:13px;">Sin resultados cargados para esta fecha.</span>';
+            if (tableEl) tableEl.innerHTML = '';
+            return;
+        }
+
+        const row = data[0];
+        const p1 = row.first_prize || '';
+        const p2 = row.second_prize || '';
+        const p3 = row.third_prize || '';
+        const c1 = p1.slice(-2), c2 = p2.slice(-2), c3 = p3.slice(-2);
+        const isChanceTab = activeTab === 'tiempos';
+
+        const colors = ['#6366f1','#22c55e','#f59e0b'];
+        displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
+            ${[['1er', isChanceTab ? c1 : p1, colors[0]], ['2do', isChanceTab ? c2 : p2, colors[1]], ['3er', isChanceTab ? c3 : p3, colors[2]]].map(([lbl, num, col]) =>
+                `<div style="text-align:center;">
+                    <div style="font-size:10px;color:#888;margin-bottom:3px;">${lbl} Premio</div>
+                    <div style="font-size:22px;font-weight:bold;color:${col};background:#f8f8f8;border:2px solid ${col};border-radius:8px;padding:6px 0;">${num || '—'}</div>
+                </div>`
+            ).join('')}
+        </div>`;
+
+        // Calculate winnings — use filter dropdowns, not the ticket-creation dropdown
+        const lotteryObj = lotteries.find(l => l.id === filterLottery) || null;
+        const drawTimeObj = filterTime ? (drawTimesMap[filterLottery] || []).find(dt => dt.id === filterTime) || null : null;
+        const m1 = getPrizeMultiplier(1, lotteryObj, drawTimeObj, !isChanceTab);
+        const m2 = getPrizeMultiplier(2, lotteryObj, drawTimeObj, !isChanceTab);
+        const m3 = getPrizeMultiplier(3, lotteryObj, drawTimeObj, !isChanceTab);
+        const sym = currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$';
+
+        const allTickets = await loadTickets();
+        let filtered = allTickets;
+        if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
+        if (filterTime) filtered = filtered.filter(t => t.drawTimeId === filterTime);
+        if (filterDate) filtered = filtered.filter(t => t.saleDate === filterDate);
+
+        const winners = [];
+        let totalPago = 0;
+        let totalCobrado = 0;
+        const adminPct = (100 - (sellerPercentage || 0)) / 100;
+
+        filtered.forEach(ticket => {
+            ticket.numbers.forEach(num => {
+                const isChance = num.number.length === 2;
+                // Solo contar números del tab activo
+                if (isChanceTab && !isChance) return;
+                if (!isChanceTab && isChance) return;
+
+                totalCobrado += num.subTotal || 0;
+
+                let prizeLabel = null, multiplier = 0;
+                if (isChanceTab) {
+                    if (c1 && num.number === c1) { prizeLabel = '1er Premio'; multiplier = m1; }
+                    else if (c2 && num.number === c2) { prizeLabel = '2do Premio'; multiplier = m2; }
+                    else if (c3 && num.number === c3) { prizeLabel = '3er Premio'; multiplier = m3; }
+                } else {
+                    if (p1 && num.number === p1) { prizeLabel = '1er Premio'; multiplier = m1; }
+                    else if (p2 && num.number === p2) { prizeLabel = '2do Premio'; multiplier = m2; }
+                    else if (p3 && num.number === p3) { prizeLabel = '3er Premio'; multiplier = m3; }
+                }
+
+                if (prizeLabel) {
+                    const unitPrice = isChance
+                        ? (currentProfile?.price_2_digits_override ?? lotteryObj?.price_2_digits ?? 1.00)
+                        : (currentProfile?.price_4_digits_override ?? lotteryObj?.price_4_digits ?? 1.00);
+                    const pago = num.pieces * unitPrice * multiplier;
+                    totalPago += pago;
+                    winners.push({ number: num.number, prizeLabel, pieces: num.pieces, pago });
+                }
+            });
+        });
+
+        const adminCobrado = totalCobrado * adminPct;
+        const resultado = adminCobrado - totalPago;
+
+        if (!tableEl) return;
+        if (winners.length === 0) {
+            tableEl.innerHTML = `<p style="text-align:center;color:#28a745;font-size:13px;margin:8px 0;">No hay ganadores para esta selección.</p>
+                <div style="margin-top:8px;padding:10px;background:#f9f9f9;border-radius:6px;font-size:13px;">
+                    <div style="display:flex;justify-content:space-between;"><span>Total Cobrado (admin):</span><strong>${sym}${adminCobrado.toFixed(2)}</strong></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:4px;"><span>Total a Pagar:</span><strong style="color:#dc3545;">${sym}0.00</strong></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:4px;"><span>Resultado:</span><strong style="color:#28a745;">GANANCIA ${sym}${adminCobrado.toFixed(2)}</strong></div>
+                </div>`;
+        } else {
+            const rows = winners.map(w =>
+                `<tr>
+                    <td style="padding:6px 8px;font-weight:bold;">${w.number}</td>
+                    <td style="padding:6px 8px;color:#666;">${w.prizeLabel}</td>
+                    <td style="padding:6px 8px;text-align:center;">${w.pieces}</td>
+                    <td style="padding:6px 8px;text-align:right;font-weight:bold;color:#dc3545;">${sym}${w.pago.toFixed(2)}</td>
+                </tr>`
+            ).join('');
+            const resultColor = resultado >= 0 ? '#28a745' : '#dc3545';
+            tableEl.innerHTML = `
+                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                    <thead><tr style="background:#f5f5f5;">
+                        <th style="padding:6px 8px;text-align:left;">Número</th>
+                        <th style="padding:6px 8px;text-align:left;">Premio</th>
+                        <th style="padding:6px 8px;text-align:center;">Tiempos</th>
+                        <th style="padding:6px 8px;text-align:right;">Pago</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <div style="margin-top:10px;padding:10px;background:#f9f9f9;border-radius:6px;font-size:13px;">
+                    <div style="display:flex;justify-content:space-between;"><span>Total Cobrado (admin):</span><strong>${sym}${adminCobrado.toFixed(2)}</strong></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:4px;"><span>Total a Pagar:</span><strong style="color:#dc3545;">${sym}${totalPago.toFixed(2)}</strong></div>
+                    <div style="display:flex;justify-content:space-between;margin-top:4px;border-top:1px solid #ddd;padding-top:6px;"><span>Resultado:</span><strong style="color:${resultColor};">${resultado >= 0 ? 'GANANCIA' : 'PÉRDIDA'} ${sym}${Math.abs(resultado).toFixed(2)}</strong></div>
+                </div>`;
+        }
+    } catch (e) {
+        if (displayEl) displayEl.textContent = 'Error al cargar resultados.';
+        console.error('loadAndDisplayWinningNumbers error:', e);
+    }
+}
+
+function _legacySaveWinningNumbers() {
+    const filterLottery = document.getElementById('filterLotteryType').value;
+    const filterTime = document.getElementById('filterDrawTimeSelect').value;
+    const filterDate = document.getElementById('salesFilterDate').value;
+    const key = `winningNumbers_${filterLottery}_${filterTime}_${filterDate}`;
+
+    const firstEl = document.getElementById('firstPrizeInput');
+    const secondEl = document.getElementById('secondPrizeInput');
+    const thirdEl = document.getElementById('thirdPrizeInput');
+
+    const data = {
+        first: firstEl ? firstEl.value : '',
+        second: secondEl ? secondEl.value : '',
+        third: thirdEl ? thirdEl.value : '',
+    };
+    localStorage.setItem(key, JSON.stringify(data));
+}
+
+function calculateWinnings() {
+    const firstPrize = document.getElementById('firstPrizeInput') ? document.getElementById('firstPrizeInput').value.trim() : '';
+    const secondPrize = document.getElementById('secondPrizeInput') ? document.getElementById('secondPrizeInput').value.trim() : '';
+    const thirdPrize = document.getElementById('thirdPrizeInput') ? document.getElementById('thirdPrizeInput').value.trim() : '';
+
+    saveWinningNumbers();
+
+    const filterLottery = document.getElementById('filterLotteryType').value;
+    const filterTime = document.getElementById('filterDrawTimeSelect').value;
+    const filterDate = document.getElementById('salesFilterDate').value;
+
+    loadTickets().then(allTickets => {
+        let filtered = allTickets;
+        if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
+        if (filterTime) filtered = filtered.filter(t => t.drawTimeId === filterTime);
+        if (filterDate) filtered = filtered.filter(t => t.saleDate === filterDate);
+
+        const prizes = [firstPrize, secondPrize, thirdPrize].filter(p => p);
+        const winners = [];
+        filtered.forEach(ticket => {
+            ticket.numbers.forEach(num => {
+                const twoDigit = num.number.slice(-2);
+                if (prizes.includes(twoDigit) || prizes.includes(num.number)) {
+                    winners.push({ id: ticket.id, number: num.number, pieces: num.pieces, lottery: ticket.lottery, drawTime: ticket.drawTime });
+                }
+            });
+        });
+
+        const resultDiv = document.getElementById('winningsResult');
+        if (resultDiv) {
+            if (winners.length === 0) {
+                resultDiv.innerHTML = '<p style="color: #28a745;">No hay ganadores con estos números.</p>';
+            } else {
+                resultDiv.innerHTML = `<h4>Ganadores:</h4>` + winners.map(w =>
+                    `<div style="padding: 8px; background: #f8fff9; border: 1px solid #28a745; border-radius: 4px; margin: 4px 0;">
+                        <strong>${w.number}</strong> - ${w.pieces}T - Ticket: ${w.id}
+                    </div>`
+                ).join('');
+            }
+        }
+    });
+}
+
+function calculateReventadoWinnings() {
+    const prize = document.getElementById('reventadoPrizeInput') ? document.getElementById('reventadoPrizeInput').value.trim() : '';
+    if (!prize) { showNotification('Ingrese el número ganador del Reventado', 'warning'); return; }
+
+    const filterLottery = document.getElementById('filterLotteryType').value;
+    const filterTime = document.getElementById('filterDrawTimeSelect').value;
+    const filterDate = document.getElementById('salesFilterDate').value;
+
+    loadTickets().then(allTickets => {
+        let filtered = allTickets;
+        if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
+        if (filterTime) filtered = filtered.filter(t => t.drawTimeId === filterTime);
+        if (filterDate) filtered = filtered.filter(t => t.saleDate === filterDate);
+
+        const winners = [];
+        filtered.forEach(ticket => {
+            ticket.numbers.forEach(num => {
+                if (num.number === prize) {
+                    winners.push({ id: ticket.id, number: num.number, pieces: num.pieces });
+                }
+            });
+        });
+
+        const resultDiv = document.getElementById('reventadoWinningsResult');
+        if (resultDiv) {
+            if (winners.length === 0) {
+                resultDiv.innerHTML = '<p style="color: #28a745;">No hay ganadores con este número.</p>';
+            } else {
+                resultDiv.innerHTML = `<h4>Ganadores:</h4>` + winners.map(w =>
+                    `<div style="padding: 8px; background: #f8fff9; border: 1px solid #28a745; border-radius: 4px; margin: 4px 0;">
+                        <strong>${w.number}</strong> - ${w.pieces}T - Ticket: ${w.id}
+                    </div>`
+                ).join('');
+            }
+        }
+    });
+}
+
+function clearPrizeInputs() {
+    const els = ['firstPrizeInput', 'secondPrizeInput', 'thirdPrizeInput'];
+    els.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    const winningsResult = document.getElementById('winningsResult');
+    if (winningsResult) winningsResult.innerHTML = '';
+
+    const filterLottery = document.getElementById('filterLotteryType').value;
+    const filterTime = document.getElementById('filterDrawTimeSelect').value;
+    const filterDate = document.getElementById('salesFilterDate').value;
+    localStorage.removeItem(`winningNumbers_${filterLottery}_${filterTime}_${filterDate}`);
+    showNotification('Premios limpiados', 'success');
+}
+
+function clearReventadoPrizeInput() {
+    const el = document.getElementById('reventadoPrizeInput');
+    if (el) el.value = '';
+    const resultDiv = document.getElementById('reventadoWinningsResult');
+    if (resultDiv) resultDiv.innerHTML = '';
+
+    const filterLottery = document.getElementById('filterLotteryType').value;
+    const filterTime = document.getElementById('filterDrawTimeSelect').value;
+    const filterDate = document.getElementById('salesFilterDate').value;
+    localStorage.removeItem(`reventadoWinningNumber_${filterLottery}_${filterTime}_${filterDate}`);
+    showNotification('Premio limpiado', 'success');
+}
+
+// ==================== Check winning tickets ====================
+function checkWinningTickets() {
+    const firstPrize = document.getElementById('firstPrize').value.trim();
+    const secondPrize = document.getElementById('secondPrize').value.trim();
+    const thirdPrize = document.getElementById('thirdPrize').value.trim();
+
+    if (!firstPrize || !secondPrize || !thirdPrize) {
+        showNotification('Por favor, ingrese los números ganadores.');
+        return;
+    }
+
+    const filterDateInput = document.getElementById('winnersFilterDate').value;
+    const filterLottery = document.getElementById('filterLottery').value;
+    const filterDrawTime = document.getElementById('filterDrawTime').value;
+
+    loadTickets().then(allTickets => {
+        let filtered = [...allTickets];
+
+        if (filterDateInput) filtered = filtered.filter(t => t.saleDate === filterDateInput);
+        if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
+        if (filterDrawTime) filtered = filtered.filter(t => t.drawTimeId === filterDrawTime);
+
+        if (filtered.length === 0) {
+            showNotification('No hay tickets que coincidan con los filtros seleccionados.');
+            return;
+        }
+
+        const winningTickets = [];
+        filtered.forEach(ticket => {
+            ticket.numbers.forEach(num => {
+                const ticketNumber = num.number;
+                let prizeType = '';
+                if (ticketNumber === firstPrize) prizeType = '1er Premio';
+                else if (ticketNumber === secondPrize) prizeType = '2do Premio';
+                else if (ticketNumber === thirdPrize) prizeType = '3er Premio';
+
+                if (prizeType) {
+                    const ticketDate = new Date(ticket.datetime);
+                    winningTickets.push({
+                        id: ticket.id,
+                        lottery: ticket.lottery,
+                        drawTime: ticket.drawTime,
+                        date: `${ticketDate.getDate()}/${ticketDate.getMonth()+1}/${ticketDate.getFullYear()}`,
+                        number: ticketNumber,
+                        pieces: num.pieces,
+                        prize: prizeType,
+                    });
+                }
+            });
+        });
+
+        if (winningTickets.length > 0) {
+            displayWinningTickets(winningTickets);
+        } else {
+            showNotification('No hay tickets ganadores con los números ingresados en los filtros seleccionados.');
+        }
+    });
+}
+
+function displayWinningTickets(winningTickets) {
+    const resultDiv = document.getElementById('winningTicketsResult');
+    resultDiv.innerHTML = `
+        <h3>Tickets Ganadores</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="border: 1px solid #ccc; padding: 8px;">ID Ticket</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Fecha</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Lotería</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Hora Sorteo</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Número</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Tiempos</th>
+                    <th style="border: 1px solid #ccc; padding: 8px;">Premio</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${winningTickets.map(ticket => `
+                    <tr>
+                        <td style="border: 1px solid #ccc; padding: 8px;">${ticket.id}</td>
+                        <td style="border: 1px solid #ccc; padding: 8px;">${ticket.date}</td>
+                        <td style="border: 1px solid #ccc; padding: 8px;">${ticket.lottery}</td>
+                        <td style="border: 1px solid #ccc; padding: 8px;">${ticket.drawTime || 'N/A'}</td>
+                        <td style="border: 1px solid #ccc; padding: 8px;">${ticket.number}</td>
+                        <td style="border: 1px solid #ccc; padding: 8px;">${ticket.pieces}</td>
+                        <td style="border: 1px solid #ccc; padding: 8px;">${ticket.prize}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+// ==================== Bluetooth Printer ====================
+function showPrinterConfig() {
+    closeMenu();
+    document.getElementById('printerConfigModal').style.display = 'block';
+    loadPairedDevices();
+}
+
+function closePrinterConfig() {
+    document.getElementById('printerConfigModal').style.display = 'none';
+}
+
+function loadPairedDevices() {
+    const infoEl = document.getElementById('currentPrinterInfo');
+    const listEl = document.getElementById('pairedDevicesList');
+
+    infoEl.innerHTML = savedPrinterName
+        ? `<strong>Impresora actual:</strong> ${savedPrinterName}<br><small>${savedPrinterAddress}</small>`
+        : '<em>Sin impresora configurada</em>';
+
+    if (typeof Android === 'undefined') {
+        listEl.innerHTML = '<p style="color:#888;">Bluetooth no disponible en este entorno.</p>';
+        return;
+    }
+
+    listEl.innerHTML = '<p style="color:#888;">Buscando dispositivos...</p>';
+    try {
+        const devicesJson = Android.getPairedDevices();
+        if (devicesJson.startsWith('ERROR:')) {
+            listEl.innerHTML = '<p style="color:red;">Error: ' + devicesJson + '</p>';
+            return;
+        }
+        const devices = JSON.parse(devicesJson);
+        if (!devices.length) {
+            listEl.innerHTML = '<p style="color:#888;">No hay dispositivos emparejados. Empareja la impresora en Ajustes &gt; Bluetooth.</p>';
+            return;
+        }
+        listEl.innerHTML = '';
+        devices.forEach(device => {
+            const isSelected = device.address === savedPrinterAddress;
+            const item = document.createElement('div');
+            item.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:10px; border-bottom:1px solid #eee;';
+            item.style.cursor = 'pointer';
+            item.onclick = () => selectPrinter(device.address, device.name);
+            item.innerHTML = `
+                <div>
+                    <div style="font-weight:600;">${device.name}</div>
+                    <div style="font-size:0.8em; color:#888;">${device.address}</div>
+                </div>
+                <input type="checkbox" ${isSelected ? 'checked' : ''} style="width:22px;height:22px;accent-color:#28a745;pointer-events:none;" />`;
+            listEl.appendChild(item);
+        });
+    } catch (e) {
+        listEl.innerHTML = '<p style="color:red;">Error al obtener dispositivos: ' + e.message + '</p>';
+    }
+}
+
+function selectPrinter(address, name) {
+    savedPrinterAddress = address;
+    savedPrinterName = name;
+    localStorage.setItem('printerAddress', address);
+    localStorage.setItem('printerName', name);
+    loadPairedDevices();
+    showNotification('Impresora "' + name + '" configurada', 'success');
+}
+
+function printCurrentTicket() {
+    if (!savedPrinterAddress) {
+        showNotification('No hay impresora configurada. Ve al menú > Configurar Impresora', 'warning', 4000);
+        return;
+    }
+    if (!currentPreviewTicket) {
+        showNotification('No hay ticket para imprimir', 'warning');
+        return;
+    }
+    if (typeof Android === 'undefined') {
+        showNotification('Impresión no disponible en este entorno', 'warning');
+        return;
+    }
+
+    const t = currentPreviewTicket;
+    const ticketData = {
+        lotteryName: getDisplayName(t.lottery) || t.lottery || '',
+        drawTime: t.drawTime || '',
+        saleDate: t.saleDate || '',
+        datetime: t.datetime || '',
+        ticketId: t.id || '',
+        sellerName: sellerName || '',
+        customerName: t.customerName || '',
+        numbers: (t.numbers || []).map(n => ({
+            number: n.number,
+            pieces: String(n.pieces),
+            subtotal: parseFloat(n.subTotal || 0).toFixed(2),
+        })),
+        total: parseFloat(t.total || 0).toFixed(2),
+        currencySymbol: t.currencySymbol || '$',
+    };
+
+    showLoading();
+    try {
+        const result = Android.printTicket(savedPrinterAddress, JSON.stringify(ticketData));
+        if (result === 'OK') {
+            showNotification('Ticket impreso correctamente', 'success');
+        } else {
+            showNotification('Error al imprimir: ' + result, 'error', 5000);
+        }
+    } catch (e) {
+        showNotification('Error al imprimir: ' + e.message, 'error', 5000);
+    } finally {
+        hideLoading();
+    }
+}
+
+// ==================== Share / capture ====================
+async function captureAndShareScreen() {
+    try {
+        const button = document.getElementById('screenshotButton');
+        button.disabled = true;
+        button.classList.add('capturing');
+        button.textContent = 'Capturando...';
+
+        const container = document.getElementById('numberSalesPage');
+        const canvas = await html2canvas(container, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            logging: false,
+            useCORS: true,
+        });
+
+        const base64 = canvas.toDataURL('image/png');
+        if (typeof Android !== 'undefined') {
+            Android.shareImageFromAndroid(base64);
+        } else {
+            const link = document.createElement('a');
+            link.href = base64;
+            link.download = 'ventas_reporte.png';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    } catch (error) {
+        console.error('Error al capturar pantalla:', error);
+        showNotification('Error al capturar la pantalla.', 'error');
+    } finally {
+        const button = document.getElementById('screenshotButton');
+        button.disabled = false;
+        button.classList.remove('capturing');
+        button.textContent = 'Compartir por WhatsApp';
+    }
+}
+
+async function compartirTicket() {
+    try {
+        const ticketElement = document.getElementById('ticketPreview');
+        const actionButtons = ticketElement.querySelector('.ticket-actions');
+        actionButtons.style.display = 'none';
+        actionButtons.style.visibility = 'hidden';
+
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const canvas = await html2canvas(ticketElement, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            logging: false,
+            useCORS: true,
+            allowTaint: true,
+        });
+
+        actionButtons.style.display = 'grid';
+        actionButtons.style.visibility = 'visible';
+
+        const base64 = canvas.toDataURL('image/png');
+        if (typeof Android !== 'undefined') {
+            Android.shareTicketFromAndroid(base64);
+        }
+    } catch (error) {
+        console.error('Error al compartir:', error);
+        showNotification('No se pudo compartir el ticket. Intente de nuevo.');
+        const ticketElement = document.getElementById('ticketPreview');
+        const actionButtons = ticketElement.querySelector('.ticket-actions');
+        if (actionButtons) {
+            actionButtons.style.display = 'grid';
+            actionButtons.style.visibility = 'visible';
+        }
+    }
+}
+
+function shareReport(type) {
+    loadTickets().then(allTickets => {
+        const filterLottery = document.getElementById('filterLotteryType').value;
+        const filterTime = document.getElementById('filterDrawTimeSelect').value;
+        const filterDate = document.getElementById('salesFilterDate').value;
+
+        const sales = {};
+        allTickets.forEach(ticket => {
+            let passes = true;
+            if (filterLottery && ticket.lotteryId !== filterLottery) passes = false;
+            if (filterTime && ticket.drawTimeId !== filterTime) passes = false;
+            if (filterDate && ticket.saleDate !== filterDate) passes = false;
+
+            if (passes) {
+                ticket.numbers.forEach(num => {
+                    if ((type === 'tiempos' && num.number.length === 2) ||
+                        (type === 'billetes' && num.number.length === 4)) {
+                        if (!sales[num.number]) sales[num.number] = 0;
+                        sales[num.number] += parseInt(num.pieces, 10);
+                    }
+                });
+            }
+        });
+
+        let reportContent = `Reporte de ${type === 'tiempos' ? 'Tiempos' : 'Billetes'} Vendidos\n`;
+        reportContent += `Lotería: ${filterLottery || 'Todas'}\n`;
+        reportContent += `Hora de Sorteo: ${filterTime || 'Todas'}\n`;
+        reportContent += `Fecha: ${filterDate || 'Todas'}\n\n`;
+        reportContent += type === 'tiempos' ? 'Número,Tiempos Vendidos\n' : 'Billete,Cantidad Vendida\n';
+
+        Object.keys(sales).sort().forEach(number => {
+            if (sales[number] > 0) reportContent += `${number},${sales[number]}\n`;
+        });
+
+        if (typeof Android !== 'undefined') {
+            Android.shareReportFromAndroid(reportContent, type);
+        }
+    });
+}
+
+// ==================== Scanner ====================
+let _qrModal = null;
+let _qrSales = null;
+
+const QR_CONFIG = { fps: 10, qrbox: { width: 230, height: 230 } };
+const QR_CAMERA = { facingMode: 'environment' };
+
+function _qrErrorFilter(err) {
+    if (typeof err === 'string' && (err.includes('NotFoundException') || err.includes('No MultiFormat'))) return;
+    if (err && err.message && (err.message.includes('NotFoundException') || err.message.includes('No MultiFormat'))) return;
+}
+
+async function _stopQr(instance) {
+    if (!instance) return;
+    try {
+        if (instance.isScanning) await instance.stop();
+        instance.clear();
+    } catch (e) {}
+}
+
+async function openScannerModal() {
+    document.getElementById('scannerModal').classList.add('active');
+    // Clear previous element content
+    document.getElementById('readerModal').innerHTML = '';
+    try {
+        _qrModal = new Html5Qrcode('readerModal');
+        await _qrModal.start(QR_CAMERA, QR_CONFIG,
+            async (decodedText) => {
+                await _stopQr(_qrModal);
+                _qrModal = null;
+                document.getElementById('scannerModal').classList.remove('active');
+                const allTickets = await loadTickets();
+                const ticket = allTickets.find(t => t.id === decodedText);
+                if (ticket) {
+                    showTicketPreview(ticket);
+                } else {
+                    showNotification('❌ Ticket no encontrado', 'error');
+                }
+            },
+            _qrErrorFilter
+        );
+    } catch (e) {
+        console.error('Error iniciando scanner:', e);
+        showNotification('❌ No se pudo acceder a la cámara', 'error');
+        document.getElementById('scannerModal').classList.remove('active');
+    }
+}
+
+async function closeScannerModal() {
+    await _stopQr(_qrModal);
+    _qrModal = null;
+    document.getElementById('scannerModal').classList.remove('active');
+}
+
+async function toggleScanner() {
+    const scannerContainer = document.getElementById('scannerContainer');
+    if (scannerContainer.style.display === 'none' || !scannerContainer.style.display) {
+        scannerContainer.style.display = 'block';
+        document.getElementById('reader').innerHTML = '';
+        try {
+            _qrSales = new Html5Qrcode('reader');
+            await _qrSales.start(QR_CAMERA, QR_CONFIG,
+                async (decodedText) => {
+                    await _stopQr(_qrSales);
+                    _qrSales = null;
+                    scannerContainer.style.display = 'none';
+                    const allTickets = await loadTickets();
+                    const ticket = allTickets.find(t => t.id === decodedText);
+                    if (ticket) {
+                        verificarTicket(ticket);
+                    } else {
+                        showNotification('❌ Ticket no encontrado en el sistema', 'error');
+                    }
+                },
+                _qrErrorFilter
+            );
+        } catch (e) {
+            console.error('Error iniciando scanner:', e);
+            showNotification('❌ No se pudo acceder a la cámara', 'error');
+            scannerContainer.style.display = 'none';
+        }
+    } else {
+        await _stopQr(_qrSales);
+        _qrSales = null;
+        scannerContainer.style.display = 'none';
+    }
+}
+
+function verificarTicket(ticket) {
+    if (ticket.paid) {
+        showNotification('⚠️ Este ticket ya ha sido pagado anteriormente', 'warning');
+    } else {
+        showNotification('📄 Ticket encontrado', 'success');
+    }
+    showMainPageOnly();
+    setTimeout(() => showTicketPreview(ticket), 200);
+}
+
+// ==================== Sales limits (localStorage still used for limits) ====================
+function initLimitsAndSales() {
+    loadLimitsFromDB();
+    calculateCurrentSales();
+}
+
+function checkLimits(number, pieces) {
+    const lotteryType = document.getElementById('lotteryType').value;
+    const drawTimeObj = getSelectedDrawTimeObj();
+    const drawTime = drawTimeObj ? drawTimeObj.time_label : 'default';
+    const key = `${lotteryType}_${drawTime}`;
+    const fallbackKey = `${lotteryType}_default`;
+    const isChance = number.length === 2;
+    const type = isChance ? 'chances' : 'billetes';
+    const limitsMap = isChance ? salesLimits.chances : salesLimits.billetes;
+    const limits = limitsMap[key] || limitsMap[fallbackKey] || limitsMap['__global__'];
+
+    if (!limits) return true;
+
+    if (!currentSales[type][key]) currentSales[type][key] = {};
+    const currentNumberSales = currentSales[type][key][number] || 0;
+
+    if (limits.numbers && limits.numbers[number] !== undefined) {
+        if (currentNumberSales + pieces > limits.numbers[number]) {
+            showNotification(`¡Límite excedido! Solo puede vender ${limits.numbers[number]} tiempos del número ${number} y ya ha vendido ${currentNumberSales}.`);
+            return false;
+        }
+    } else if (limits.globalLimit) {
+        if (currentNumberSales + pieces > limits.globalLimit) {
+            showNotification(`¡Límite excedido! Solo puede vender ${limits.globalLimit} tiempos del número ${number} y ya ha vendido ${currentNumberSales}.`);
+            return false;
+        }
+    }
+    return true;
+}
+
+function setGlobalLimit(type) {
+    let lottery, drawTime, globalLimit;
+
+    if (type === 'chances') {
+        lottery = document.getElementById('limitLotteryType').value;
+        drawTime = document.getElementById('limitDrawTimeSelect').value || 'default';
+        globalLimit = parseInt(document.getElementById('globalChancesLimit').value, 10);
+    } else {
+        lottery = document.getElementById('limitBilleteLotteryType').value;
+        drawTime = document.getElementById('limitBilleteDrawTimeSelect').value || 'default';
+        globalLimit = parseInt(document.getElementById('globalBilletesLimit').value, 10);
+    }
+
+    if (!lottery) { showNotification('Por favor seleccione una lotería'); return; }
+    if (isNaN(globalLimit) || globalLimit < 0) { showNotification('Por favor ingrese un límite válido (número positivo)'); return; }
+
+    const key = `${lottery}_${drawTime}`;
+    if (!salesLimits[type][key]) salesLimits[type][key] = { globalLimit: 0, numbers: {} };
+    salesLimits[type][key].globalLimit = globalLimit;
+
+    localStorage.setItem('lotteryLimits', JSON.stringify(salesLimits));
+    displayCurrentLimits(type);
+    showNotification(`Límite global de ${globalLimit} tiempos establecido para cada número de ${lottery} - ${drawTime}`);
+}
+
+function setIndividualLimit(type) {
+    let lottery, drawTime, number, limit;
+
+    if (type === 'chances') {
+        lottery = document.getElementById('limitLotteryType').value;
+        drawTime = document.getElementById('limitDrawTimeSelect').value || 'default';
+        number = document.getElementById('chanceNumber').value.padStart(2, '0');
+        limit = parseInt(document.getElementById('chanceLimit').value, 10);
+        if (!lottery) { showNotification('Por favor seleccione una lotería'); return; }
+        if (!number || number.length !== 2 || isNaN(parseInt(number, 10))) { showNotification('Por favor ingrese un número válido de 2 cifras (00-99)'); return; }
+    } else {
+        lottery = document.getElementById('limitBilleteLotteryType').value;
+        drawTime = document.getElementById('limitBilleteDrawTimeSelect').value || 'default';
+        number = document.getElementById('billeteNumber').value.padStart(4, '0');
+        limit = parseInt(document.getElementById('billeteLimit').value, 10);
+        if (!lottery) { showNotification('Por favor seleccione una lotería'); return; }
+        if (!number || number.length !== 4 || isNaN(parseInt(number, 10))) { showNotification('Por favor ingrese un número válido de 4 cifras (0000-9999)'); return; }
+    }
+
+    if (isNaN(limit) || limit < 0) { showNotification('Por favor ingrese un límite válido (número positivo)'); return; }
+
+    const key = `${lottery}_${drawTime}`;
+    if (!salesLimits[type][key]) salesLimits[type][key] = { globalLimit: 0, numbers: {} };
+    if (!salesLimits[type][key].numbers) salesLimits[type][key].numbers = {};
+    salesLimits[type][key].numbers[number] = limit;
+
+    localStorage.setItem('lotteryLimits', JSON.stringify(salesLimits));
+    displayCurrentLimits(type);
+
+    if (type === 'chances') {
+        document.getElementById('chanceNumber').value = '';
+        document.getElementById('chanceLimit').value = '';
+    } else {
+        document.getElementById('billeteNumber').value = '';
+        document.getElementById('billeteLimit').value = '';
+    }
+
+    showNotification(`Límite de ${limit} tiempos establecido para el número ${number} - ${lottery} - ${drawTime}`);
+}
+
+function displayCurrentLimits(type) {
+    const container = document.getElementById(type === 'chances' ? 'currentChancesLimits' : 'currentBilletesLimits');
+    container.innerHTML = '';
+    const limits = type === 'chances' ? salesLimits.chances : salesLimits.billetes;
+
+    if (!limits || Object.keys(limits).length === 0) {
+        container.innerHTML = '<p>No hay límites configurados actualmente.</p>';
+        return;
+    }
+
+    let html = '';
+    for (const key in limits) {
+        const parts = key.split('_');
+        const lottery = parts[0];
+        const drawTime = parts.slice(1).join('_');
+        html += `<div style="margin-bottom: 15px; padding-bottom: 15px; border-bottom: 1px solid #eee;">`;
+        html += `<h5>${lottery} - ${drawTime === 'default' ? 'Todos los sorteos' : drawTime}</h5>`;
+        if (limits[key].globalLimit) {
+            html += `<p><strong>Límite Global para cada número:</strong> ${limits[key].globalLimit} tiempos</p>`;
+        }
+        const nums = limits[key].numbers || {};
+        if (Object.keys(nums).length > 0) {
+            html += `<p><strong>Límites Individuales:</strong></p>`;
+            html += `<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px;">`;
+            for (const number in nums) {
+                html += `<div style="border: 1px solid #ddd; padding: 5px; text-align: center;">${number}: ${nums[number]}</div>`;
+            }
+            html += `</div>`;
+        } else {
+            html += `<p>No hay límites individuales configurados.</p>`;
+        }
+        html += `<button onclick="removeLimitConfig('${type}', '${key}')"
+                  style="margin-top: 10px; background-color: #ff4d4d; color: white;">
+                  Eliminar Configuración
+                </button>`;
+        html += `</div>`;
+    }
+    container.innerHTML = html;
+}
+
+function removeLimitConfig(type, key) {
+    if (confirm('¿Está seguro de eliminar esta configuración de límites?')) {
+        if (type === 'chances') delete salesLimits.chances[key];
+        else delete salesLimits.billetes[key];
+        localStorage.setItem('lotteryLimits', JSON.stringify(salesLimits));
+        displayCurrentLimits(type);
+    }
+}
+
+function saveConfigAndReturn() {
+    document.getElementById('configPage').style.display = 'none';
+    showMainPage();
+}
+
+function switchLimitTab(tab) {
+    document.getElementById('chancesLimitTab').classList.toggle('active', tab === 'chances');
+    document.getElementById('billetesLimitTab').classList.toggle('active', tab === 'billetes');
+    document.getElementById('chancesLimitContainer').style.display = tab === 'chances' ? 'block' : 'none';
+    document.getElementById('billetesLimitContainer').style.display = tab === 'billetes' ? 'block' : 'none';
+    displayCurrentLimits(tab);
+}
+
+// ==================== Schedule validation ====================
+function validarHorarioVenta() {
+    const lotteryType = document.getElementById('lotteryType').value;
+    const drawTime = getSelectedDrawTimeObj()?.time_label || '';
+
+    if (!drawTime) return false;
+
+    const ahora = new Date();
+    let [tiempo, periodo] = drawTime.split(' ');
+    let [hora, minutos] = tiempo.split(':').map(Number);
+
+    if (periodo === 'PM' && hora !== 12) hora += 12;
+    else if (periodo === 'AM' && hora === 12) hora = 0;
+
+    const horaSorteoEnMinutos = hora * 60 + minutos;
+    const horaActualEnMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+    const diferencia = horaSorteoEnMinutos - horaActualEnMinutos;
+
+    if (diferencia <= 1 && diferencia >= 0) return false;
+    if (diferencia < 0) return Math.abs(diferencia) > 20;
+    return true;
+}
+
+function validarHorarioEliminacion(lotteryType = null, drawTime = null) {
+    if (!lotteryType) lotteryType = document.getElementById('lotteryType').value;
+    if (!drawTime) drawTime = getSelectedDrawTimeObj()?.time_label || '';
+    if (!drawTime) return { allowed: true };
+
+    const ahora = new Date();
+    let [tiempo, periodo] = drawTime.split(' ');
+    let [hora, minutos] = tiempo.split(':').map(Number);
+
+    if (periodo === 'PM' && hora !== 12) hora += 12;
+    else if (periodo === 'AM' && hora === 12) hora = 0;
+
+    const horaSorteoEnMinutos = hora * 60 + minutos;
+    const horaActualEnMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+    const diferencia = horaSorteoEnMinutos - horaActualEnMinutos;
+
+    if (diferencia <= 1 && diferencia >= 0) {
+        return { allowed: false, reason: 'pre_sorteo', drawTime, minutesLeft: Math.max(0, diferencia) };
+    }
+    if (diferencia < 0) {
+        const minutosPasados = Math.abs(diferencia);
+        if (minutosPasados <= 10) {
+            return { allowed: false, reason: 'post_sorteo', drawTime, minutesLeft: 10 - minutosPasados };
+        }
+    }
+    return { allowed: true };
+}
+
+function getEliminationBlockMessage(validationResult) {
+    const { reason, drawTime, minutesLeft } = validationResult;
+    if (reason === 'pre_sorteo') {
+        if (minutesLeft === 0) return `🚫 ELIMINACIÓN BLOQUEADA\n\nEl sorteo de las ${drawTime} está a punto de iniciar.`;
+        return `🚫 ELIMINACIÓN BLOQUEADA\n\nFalta ${Math.ceil(minutesLeft)} minuto(s) para el sorteo de las ${drawTime}.`;
+    } else if (reason === 'post_sorteo') {
+        return `🚫 ELIMINACIÓN BLOQUEADA\n\nEl sorteo de las ${drawTime} ya ocurrió.\n\nDebes esperar ${Math.ceil(minutesLeft)} minuto(s) más para eliminar tickets.`;
+    }
+    return 'No se puede eliminar el ticket en este momento.';
+}
+
+// ==================== Notifications ====================
+function showNotification(message, type = 'info', duration = 4000) {
+    document.querySelectorAll('.custom-notification').forEach(n => n.remove());
+    const notification = document.createElement('div');
+    notification.className = `custom-notification ${type}`;
+    notification.innerHTML = `
+    <span>${message}</span>
+    <button class="notification-close" onclick="closeNotification(this)">&times;</button>
+    `;
+    document.body.appendChild(notification);
+    setTimeout(() => notification.classList.add('show'), 100);
+    setTimeout(() => hideNotification(notification), duration);
+}
+
+function hideNotification(notification) {
+    notification.classList.remove('show');
+    setTimeout(() => { if (notification && notification.parentNode) notification.parentNode.removeChild(notification); }, 400);
+}
+
+function closeNotification(closeBtn) {
+    hideNotification(closeBtn.closest('.custom-notification'));
+}
+
+function showConfirm(message, title = 'Confirmar acción', onConfirm = null, onCancel = null) {
+    const modal = document.getElementById('customConfirmModal');
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+
+    const confirmBtn = document.getElementById('confirmBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    const newCancelBtn = cancelBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+
+    newConfirmBtn.onclick = () => { modal.style.display = 'none'; if (onConfirm) onConfirm(); };
+    newCancelBtn.onclick = () => { modal.style.display = 'none'; if (onCancel) onCancel(); };
+    modal.onclick = (e) => { if (e.target === modal) { modal.style.display = 'none'; if (onCancel) onCancel(); } };
+    modal.style.display = 'block';
+}
+
+function confirmAsync(message, title = 'Confirmar acción') {
+    return new Promise(resolve => showConfirm(message, title, () => resolve(true), () => resolve(false)));
+}
+
+// ==================== Keyboard ====================
+function showKeyboard(inputElement) {
+    currentActiveInput = inputElement;
+    const keyboard = document.getElementById('customKeyboard');
+    const keyboardTitle = document.querySelector('.keyboard-title');
+
+    if (inputElement.id === 'number') keyboardTitle.textContent = 'Ingresa el número';
+    else if (inputElement.id === 'pieces') keyboardTitle.textContent = 'Ingresa los tiempos';
+
+    document.querySelectorAll('.input-group input').forEach(input => input.classList.remove('keyboard-active'));
+    inputElement.classList.add('keyboard-active');
+    keyboard.classList.add('show');
+    document.body.classList.add('keyboard-open');
+    keyboardVisible = true;
+    inputElement.setAttribute('readonly', 'readonly');
+}
+
+function hideKeyboard() {
+    const keyboard = document.getElementById('customKeyboard');
+    keyboard.classList.remove('show');
+    document.body.classList.remove('keyboard-open');
+    keyboardVisible = false;
+    document.querySelectorAll('.input-group input').forEach(input => {
+        input.classList.remove('keyboard-active');
+        input.removeAttribute('readonly');
+    });
+    currentActiveInput = null;
+}
+
+function addDigit(digit) {
+    if (!currentActiveInput) return;
+    const maxLength = currentActiveInput.id === 'number' ? 4 : 10;
+    if (currentActiveInput.value.length < maxLength) {
+        currentActiveInput.value += digit;
+    }
+}
+
+function deleteDigit() {
+    if (!currentActiveInput) return;
+    currentActiveInput.value = currentActiveInput.value.slice(0, -1);
+}
+
+function submitNumber() {
+    if (!currentActiveInput) return;
+    const numberInput = document.getElementById('number');
+    const piecesInput = document.getElementById('pieces');
+
+    if (currentActiveInput === numberInput) {
+        if (numberInput.value.trim()) {
+            showKeyboard(piecesInput);
+            piecesInput.focus();
+        } else {
+            showNotification('Por favor ingrese un número', 'warning');
+        }
+    } else if (currentActiveInput === piecesInput) {
+        if (numberInput.value.trim() && piecesInput.value.trim()) {
+            const number = numberInput.value;
+            const pieces = parseInt(piecesInput.value, 10);
+            const lotteryType = document.getElementById('lotteryType').value;
+
+            if (!validateNumber(number)) { showNotification('El número debe tener 2 o 4 cifras', 'warning'); return; }
+            if (!lotteryType) { showNotification('Por favor seleccione una lotería', 'warning'); return; }
+
+            const lottery = lotteries.find(l => l.code === lotteryType);
+            if (lottery && lottery.draw_times && lottery.draw_times.length > 0) {
+                const drawTime = document.getElementById('drawTimeSelect').value;
+                if (!drawTime) { showNotification('Por favor seleccione hora de sorteo', 'warning'); return; }
+            }
+
+            if (!validarHorarioVenta()) {
+                showNotification('No se pueden vender números. Ventas bloqueadas 1 minuto antes y 20 minutos después del sorteo.', 'warning');
+                return;
+            }
+
+            if (!checkLimits(number, pieces)) return;
+
+            const subTotal = calculatePrice(number, pieces, lotteryType);
+            numbers.push({ number, pieces, subTotal, lotteryType });
+            updateNumbersList();
+            updateTotal();
+            updateCurrentSales(number, pieces, true);
+
+            numberInput.value = '';
+            piecesInput.value = '';
+            showKeyboard(numberInput);
+            numberInput.focus();
+        } else if (!piecesInput.value.trim()) {
+            showNotification('Por favor ingrese la cantidad de tiempos', 'warning');
+        } else {
+            showNotification('Por favor complete el número', 'warning');
+        }
+    }
+}
+
+function initKeyboardEvents() {
+    const numberInput = document.getElementById('number');
+    const piecesInput = document.getElementById('pieces');
+
+    if (!numberInput || !piecesInput) return;
+
+    numberInput.addEventListener('focus', function () { showKeyboard(this); });
+    piecesInput.addEventListener('focus', function () { showKeyboard(this); });
+    numberInput.addEventListener('click', function () { showKeyboard(this); });
+    piecesInput.addEventListener('click', function () { showKeyboard(this); });
+
+    document.addEventListener('click', function (e) {
+        const keyboard = document.getElementById('customKeyboard');
+        if (keyboardVisible &&
+            !keyboard.contains(e.target) &&
+            e.target !== numberInput &&
+            e.target !== piecesInput) {
+            hideKeyboard();
+        }
+    });
+
+    [numberInput, piecesInput].forEach(input => {
+        input.addEventListener('keydown', function (e) {
+            if (keyboardVisible) {
+                e.preventDefault();
+                if (e.key >= '0' && e.key <= '9') addDigit(e.key);
+                else if (e.key === 'Backspace') deleteDigit();
+                else if (e.key === 'Enter') submitNumber();
+                else if (e.key === 'Escape') hideKeyboard();
+            }
+        });
+    });
+}
+
+// ==================== Menu ====================
+function toggleMenu() {
+    if (menuOpen) closeMenu();
+    else openMenu();
+}
+
+function openMenu() {
+    document.getElementById('menuDropdown').classList.add('show');
+    document.getElementById('menuOverlay').classList.add('show');
+    document.getElementById('hamburgerIcon').classList.add('open');
+    menuOpen = true;
+}
+
+function closeMenu() {
+    document.getElementById('menuDropdown').classList.remove('show');
+    document.getElementById('menuOverlay').classList.remove('show');
+    document.getElementById('hamburgerIcon').classList.remove('open');
+    menuOpen = false;
+}
+
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && menuOpen) closeMenu();
+});
+
+// ==================== Seguidilla modal ====================
+function openSeguidillaModal() {
+    const lotteryType = document.getElementById('lotteryType').value;
+    if (!lotteryType) { showNotification('Por favor seleccione una loteria primero', 'warning'); return; }
+
+    const lottery = lotteries.find(l => l.code === lotteryType);
+    if (lottery && lottery.draw_times && lottery.draw_times.length > 0) {
+        const drawTime = document.getElementById('drawTimeSelect').value;
+        if (!drawTime) { showNotification('Por favor seleccione hora de sorteo primero', 'warning'); return; }
+    }
+
+    const modal = document.getElementById('seguidillaModal');
+    modal.style.display = 'block';
+    document.getElementById('seguidillaDesde').value = '';
+    document.getElementById('seguidillaHasta').value = '';
+    document.getElementById('seguidillaTiempos').value = '';
+}
+
+function closeSeguidillaModal() {
+    document.getElementById('seguidillaModal').style.display = 'none';
+}
+
+function addSeguidilla() {
+    const desde = parseInt(document.getElementById('seguidillaDesde').value);
+    const hasta = parseInt(document.getElementById('seguidillaHasta').value);
+    const tiempos = parseInt(document.getElementById('seguidillaTiempos').value);
+    const lotteryType = document.getElementById('lotteryType').value;
+
+    if (isNaN(desde) || isNaN(hasta) || isNaN(tiempos)) { showNotification('Por favor complete todos los campos', 'warning'); return; }
+    if (desde < 0 || desde > 99 || hasta < 0 || hasta > 99) { showNotification('Los numeros deben estar entre 00 y 99', 'warning'); return; }
+    if (desde > hasta) { showNotification('El numero "Desde" debe ser menor o igual al "Hasta"', 'warning'); return; }
+    if (tiempos <= 0) { showNotification('Los tiempos deben ser mayor que 0', 'warning'); return; }
+    if (!validarHorarioVenta()) { showNotification('No se pueden agregar numeros. Ventas bloqueadas 1 minuto antes y 20 minutos despues del sorteo.', 'warning'); return; }
+
+    let processed = 0;
+    let blocked = 0;
+
+    for (let i = desde; i <= hasta; i++) {
+        const number = i.toString().padStart(2, '0');
+        if (checkLimits(number, tiempos)) {
+            const subTotal = calculatePrice(number, tiempos, lotteryType);
+            numbers.push({ number, pieces: tiempos, subTotal });
+            updateCurrentSales(number, tiempos, true);
+            processed++;
+        } else {
+            blocked++;
+        }
+    }
+
+    if (processed > 0) {
+        updateNumbersList();
+        updateTotal();
+        let message = `Seguidilla agregada: ${processed} numeros procesados`;
+        if (blocked > 0) message += ` (${blocked} bloqueados por limites)`;
+        showNotification(message, 'success');
+        closeSeguidillaModal();
+    } else {
+        showNotification('No se pudieron agregar numeros debido a los limites establecidos', 'warning');
+    }
+}
+
+window.addEventListener('click', function (event) {
+    if (event.target === document.getElementById('seguidillaModal')) closeSeguidillaModal();
+    if (event.target === document.getElementById('percentageModal')) closePercentageModal();
+});
+
+// ==================== CSV ====================
+function convertTicketsToCSV(ticketsList) {
+    const headers = ['ID', 'Fecha', 'Loteria', 'Hora de sorteo', 'Numero', 'Pedazos', 'Total', 'Pagado'];
+    let allRows = [];
+    ticketsList.forEach(ticket => {
+        const firstRow = [
+            ticket.id,
+            new Date(ticket.datetime).toLocaleString(),
+            ticket.lottery,
+            ticket.drawTime || 'N/A',
+            ticket.numbers[0] ? ticket.numbers[0].number : '',
+            ticket.numbers[0] ? ticket.numbers[0].pieces : '',
+            ticket.total.toFixed(2),
+            ticket.paid ? 'Si' : 'No',
+        ];
+        allRows.push(firstRow);
+        for (let i = 1; i < ticket.numbers.length; i++) {
+            allRows.push(['', '', ticket.lottery, ticket.drawTime || 'N/A', ticket.numbers[i].number, ticket.numbers[i].pieces, '', '']);
+        }
+    });
+    return [headers.join(','), ...allRows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+}
+
+function exportSalesToCSV(dateFilter = null) {
+    loadTickets().then(allTickets => {
+        if (allTickets.length === 0) { showNotification('No hay ventas para exportar.'); return; }
+        let ticketsToExport = allTickets;
+        let filename = `ventas_todas_${new Date().toISOString().split('T')[0]}.csv`;
+        if (dateFilter) {
+            const start = new Date(dateFilter + 'T00:00:00');
+            const end = new Date(dateFilter + 'T23:59:59');
+            ticketsToExport = allTickets.filter(t => {
+                const d = new Date(t.datetime);
+                return d >= start && d <= end;
+            });
+            if (ticketsToExport.length === 0) { showNotification('No hay ventas para la fecha seleccionada.'); return; }
+            filename = `ventas_${dateFilter}.csv`;
+        }
+        const csvContent = convertTicketsToCSV(ticketsToExport);
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+}
+
+// ==================== Expose globals ====================
+// All functions need to be accessible from inline onclick handlers
+Object.assign(window, {
+    checkPassword, logout,
+    showMainPage, showSalesPage, showNumberSalesPage, showVerifyWinnersPage, showConfigPage,
+    updateDrawTimes, updateFilterDrawTimes, updateWinnerDrawTimes, updateLimitDrawTimes, updateLimitBilleteDrawTimes,
+    generateTicket, marcarComoPagado, deleteTicket, copyTicket, viewTicket, closeTicket,
+    compartirTicket, captureAndShareScreen, shareReport, toggleScanner, openScannerModal, closeScannerModal,
+    searchTickets, showSalesByDate, showTodaySales, displayTickets, deleteSalesByDate, borrarTodasVentas,
+    processQuickInput, editPieces, removeNumber,
+    applyFilters, switchTab, updateNumberSalesTable, updateBilletesSalesTable,
+    checkWinningTickets,
+    calculateWinnings, calculateReventadoWinnings, clearPrizeInputs, clearReventadoPrizeInput,
+    setGlobalLimit, setIndividualLimit, removeLimitConfig, saveConfigAndReturn, switchLimitTab,
+    showPrinterConfig, closePrinterConfig, loadPairedDevices, selectPrinter, printCurrentTicket,
+    openPercentageModal, closePercentageModal, saveSellerConfig,
+    showNotification, closeNotification, showConfirm,
+    showKeyboard, hideKeyboard, addDigit, deleteDigit, submitNumber,
+    toggleMenu, openMenu, closeMenu,
+    openSeguidillaModal, closeSeguidillaModal, addSeguidilla,
+    exportSalesToCSV,
+});
+
+// ==================== Boot ====================
+document.addEventListener('DOMContentLoaded', async () => {
+    showLoading();
+    try {
+        const session = auth.tokenManager.getSession();
+        if (session?.user) {
+            currentUser = session.user;
+            await loadProfile();
+            await initApp();
+            showMainPage();
+        } else {
+            showLoginPage();
+        }
+    } catch (e) {
+        console.error('Boot error:', e);
+        showLoginPage();
+    } finally {
+        hideLoading();
+    }
+});

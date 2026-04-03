@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOTERY</title>
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest"
+          href="data:application/json;base64,eyJuYW1lIjoiU2lzdGVtYSBkZSBMb3RlcmlhIiwic2hvcnRfbmFtZSI6IkxvdGVyaWEiLCJzdGFydF91cmwiOiIvIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiI2ZmZmZmZiIsInRoZW1lX2NvbG9yIjoiIzAwN2JmZiJ9">
+    <title>Sistema de Lotería</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <style>
+        :root {
+            --main-button-color: #ffb347;
+            --button-hover-color: #ffa533;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #loginPage {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .container {
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #ffffff;
+            margin: 0 auto;
+            max-width: 800px;
+        }
+
+        .input-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .input-group {
+            width: 100%;
+        }
+
+        .input-group select,
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            font-size: 16px;
+            background-color: #ffffff;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px 20px;
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            margin-bottom: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(142, 158, 171, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(142, 158, 171, 0.5);
+            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%);
+        }
+
+        button:active {
+            transform: translateY(0px);
+            box-shadow: 0 2px 10px rgba(142, 158, 171, 0.3);
+        }
+
+        /* Todos los botones específicos ahora en gris metalizado */
+        button[onclick*="generateTicket"] {
+            background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+            box-shadow: 0 4px 15px rgba(149, 165, 166, 0.4);
+        }
+
+        button[onclick*="generateTicket"]:hover {
+            background: linear-gradient(135deg, #b4c6c7 0%, #95a5a6 100%);
+            box-shadow: 0 6px 20px rgba(149, 165, 166, 0.5);
+        }
+
+        button[onclick*="showSalesPage"] {
+            background: linear-gradient(135deg, #90a4ae 0%, #78909c 100%);
+            box-shadow: 0 4px 15px rgba(144, 164, 174, 0.4);
+        }
+
+        button[onclick*="showSalesPage"]:hover {
+            background: linear-gradient(135deg, #a8bcc8 0%, #90a4ae 100%);
+            box-shadow: 0 6px 20px rgba(144, 164, 174, 0.5);
+        }
+
+        button[onclick*="showNumberSalesPage"] {
+            background: linear-gradient(135deg, #8d9db6 0%, #667292 100%);
+            box-shadow: 0 4px 15px rgba(141, 157, 182, 0.4);
+        }
+
+        button[onclick*="showNumberSalesPage"]:hover {
+            background: linear-gradient(135deg, #a5b7d1 0%, #8d9db6 100%);
+            box-shadow: 0 6px 20px rgba(141, 157, 182, 0.5);
+        }
+
+        button[onclick*="showVerifyWinnersPage"] {
+            background: linear-gradient(135deg, #9e9e9e 0%, #757575 100%);
+            box-shadow: 0 4px 15px rgba(158, 158, 158, 0.4);
+        }
+
+        button[onclick*="showVerifyWinnersPage"]:hover {
+            background: linear-gradient(135deg, #bdbdbd 0%, #9e9e9e 100%);
+            box-shadow: 0 6px 20px rgba(158, 158, 158, 0.5);
+        }
+
+        /* Botones de eliminar - gris más oscuro */
+        .ticket-actions button:last-child,
+        button[onclick*="deleteTicket"],
+        button[onclick*="deleteSalesByDate"] {
+            background: linear-gradient(135deg, #616161 0%, #424242 100%) !important;
+            box-shadow: 0 4px 15px rgba(97, 97, 97, 0.4) !important;
+        }
+
+        .ticket-actions button:last-child:hover,
+        button[onclick*="deleteTicket"]:hover,
+        button[onclick*="deleteSalesByDate"]:hover {
+            background: linear-gradient(135deg, #757575 0%, #616161 100%) !important;
+            box-shadow: 0 6px 20px rgba(97, 97, 97, 0.5) !important;
+        }
+
+        /* Botones pequeños de acciones en tickets */
+        .ticket-actions button {
+            padding: 8px 12px;
+            font-size: 12px;
+            margin: 2px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(142, 158, 171, 0.4);
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+
+        /* Botones de la vista previa del ticket - cuadrícula 2x2 - MÁS ESPECÍFICO */
+        #ticketPreview .ticket-actions {
+            display: grid !important;
+            grid-template-columns: 1fr 1fr !important;
+            grid-template-rows: 1fr 1fr !important;
+            gap: 10px !important;
+            margin-top: 15px !important;
+            flex-direction: unset !important;
+        }
+
+        #ticketPreview .ticket-actions button {
+            padding: 12px 8px !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.3px !important;
+            white-space: nowrap !important;
+            min-height: 45px !important;
+            margin: 0 !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        /* Forzar cuadrícula en vista previa - PRIORIDAD MÁXIMA */
+        div#ticketPreview div.ticket-actions {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            grid-template-rows: repeat(2, 1fr) !important;
+            gap: 12px !important;
+            flex-direction: unset !important;
+            align-items: stretch !important;
+        }
+
+        div#ticketPreview div.ticket-actions button {
+            margin: 0 !important;
+            flex: none !important;
+            width: 100% !important;
+            padding: 14px 8px !important;
+            min-height: 48px !important;
+        }
+
+        .ticket-actions button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(142, 158, 171, 0.5);
+            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%);
+        }
+
+        /* Botón de compartir ticket */
+        .screenshot-button {
+            background: linear-gradient(135deg, #90a4ae 0%, #78909c 100%) !important;
+            color: white !important;
+            border: none !important;
+            padding: 15px 25px;
+            border-radius: 15px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            width: 100%;
+            box-shadow: 0 4px 20px rgba(144, 164, 174, 0.4);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .screenshot-button:hover {
+            background: linear-gradient(135deg, #a8bcc8 0%, #90a4ae 100%) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(144, 164, 174, 0.5);
+        }
+
+        .screenshot-button:disabled {
+            background: linear-gradient(135deg, #ccc 0%, #999 100%) !important;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .capturing {
+            background: linear-gradient(135deg, #b0bec5 0%, #90a4ae 100%) !important;
+        }
+
+        /* Botón de configurar porcentaje */
+        .percentage-config-button {
+            background: linear-gradient(135deg, #8d9db6 0%, #667292 100%) !important;
+            color: white !important;
+            margin-top: 15px;
+            padding: 12px 20px;
+            font-size: 14px;
+            border-radius: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 15px rgba(141, 157, 182, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .percentage-config-button:hover {
+            background: linear-gradient(135deg, #a5b7d1 0%, #8d9db6 100%) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(141, 157, 182, 0.5);
+        }
+
+        /* Botones en modal */
+        .modal-content button {
+            border-radius: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 3px 12px rgba(142, 158, 171, 0.3);
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
+        }
+
+        .modal-content button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 16px rgba(142, 158, 171, 0.4);
+            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%);
+        }
+
+        /* Botones de volver */
+        button[onclick*="showMainPage"] {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        button[onclick*="showMainPage"]:hover {
+            background: linear-gradient(135deg, #868e96 0%, #6c757d 100%);
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.5);
+        }
+
+        .ticket-content {
+            padding: 15px;
+        }
+
+        .ticket-header {
+            font-size: 2em;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .ticket-info {
+            font-size: 1.2em;
+        }
+
+        .ticket-numbers p {
+            font-family: monospace;
+            font-size: 2.0em !important;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .ticket-total {
+            font-size: 1.8em;
+            font-weight: bold;
+            text-align: center;
+            margin: 15px 0;
+        }
+
+        #qrcode {
+            margin: 4px auto;
+            text-align: center;
+            padding: 4px;
+            background: white;
+        }
+
+        .total {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin: 15px 0;
+            text-align: center;
+        }
+
+        .scanner-container {
+            margin-top: 20px;
+            display: none;
+        }
+
+        #scannerModal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 3000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #scannerModal.active {
+            display: flex;
+        }
+
+        #scannerModal .scanner-inner {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            width: 90%;
+            max-width: 380px;
+        }
+
+        #scannerModal h3 {
+            margin: 0 0 12px 0;
+            text-align: center;
+        }
+
+        .scan-main-btn {
+            background: var(--main-button-color);
+            border: none;
+            border-radius: 8px;
+            padding: 14px;
+            font-size: 1.2em;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .scan-main-btn:hover {
+            background: var(--button-hover-color);
+        }
+
+        .ticket-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+
+        .ticket-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        /* Nuevos estilos para los botones de editar y eliminar */
+        .ticket-actions button {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin: 2px;
+            border-radius: 4px;
+            background-color: var(--main-button-color);
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .ticket-actions button:hover {
+            background-color: var(--button-hover-color);
+        }
+
+        /* Estilos específicos para el botón de eliminar */
+        .ticket-actions button:last-child {
+            background-color: #ff4d4d;
+        }
+
+        .ticket-actions button:last-child:hover {
+            background-color: #cc0000;
+        }
+
+        /* Estilos para la tabla */
+        #numbersList table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+
+        #numbersList th,
+        #numbersList td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        #numbersList th {
+            background-color: #f2f2f2;
+        }
+
+        /* Ajustar el ancho de las columnas */
+        #numbersList td:nth-child(1) {
+            width: 30%;
+        }
+
+        #numbersList td:nth-child(2) {
+            width: 20%;
+        }
+
+        #numbersList td:nth-child(3) {
+            width: 20%;
+        }
+
+        #numbersList td:nth-child(4) {
+            width: 30%;
+        }
+
+        /* Estilos para la cuadrícula de tiempos vendidos */
+        #numberSalesGrid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1px;
+            border: 1px solid #ccc;
+            background-color: #ccc;
+        }
+
+        /* Estilos para la cuadrícula de billetes vendidos */
+        #billetesSalesGrid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1px;
+            border: 1px solid #ccc;
+            background-color: #ccc;
+        }
+
+        /* Estilos comunes para los items */
+        .number-item,
+        .billete-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+        }
+
+        .number-item span,
+        .billete-item span {
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        .number-item span:first-child,
+        .billete-item span:first-child {
+            color: #000000;
+        }
+
+        .number-item span:last-child,
+        .billete-item span:last-child {
+            color: red;
+        }
+
+        .number-item.highlight,
+        .billete-item.highlight {
+            background-color: #e0f7ff;
+        }
+
+        /* Estilos para las pestañas */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            border-bottom: 1px solid #ccc;
+            margin-bottom: 15px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 5px;
+            gap: 10px;
+        }
+
+        .tab-button {
+            flex: none;
+            width: auto;
+            max-width: 180px;
+            padding: 12px 25px;
+            margin: 5px;
+            background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+            color: #6c757d;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button:hover {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            color: #495057;
+        }
+
+        .tab-button.active {
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
+            color: white;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            border: 2px solid #495057;
+        }
+
+        .tab-button.active:hover {
+            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%);
+            color: white;
+        }
+
+        /* Contenedor de pestañas con mejor estilo */
+        .tab-container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .info-text {
+            margin-bottom: 10px;
+            font-style: italic;
+        }
+
+        .ticket-item p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .ticket-item strong {
+            color: #333;
+        }
+
+        /* Estilos para el resumen de totales */
+        .sales-summary-box {
+            background-color: #f8f9fa;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .sales-summary-box h3 {
+            margin-top: 0;
+            color: #007bff;
+            font-size: 1.2em;
+        }
+
+        .summary-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .stat-item {
+            background-color: white;
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .stat-value {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+
+        /* Estilos para el botón de captura */
+        .screenshot-button {
+            background-color: #25D366 !important;
+            color: white !important;
+            border: none !important;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background-color 0.3s;
+            width: 100%;
+        }
+
+        .screenshot-button:hover {
+            background-color: #1eb854 !important;
+        }
+
+        .screenshot-button:disabled {
+            background-color: #ccc !important;
+            cursor: not-allowed;
+        }
+
+        .capturing {
+            background-color: #ff9800 !important;
+        }
+
+        .screenshot-container {
+            background-color: white;
+            padding: 0;
+            margin: 0;
+        }
+
+        .screenshot-header {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 15px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .screenshot-header .filters-info-horizontal {
+            margin: 0;
+        }
+
+        .screenshot-header .filters-info-horizontal div {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 5px 8px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        .screenshot-header .filters-info-horizontal strong {
+            color: #ffffff;
+            margin-right: 5px;
+        }
+
+        .screenshot-header .filters-info {
+            margin-top: 15px;
+            font-size: 1.2em;
+            opacity: 1;
+            font-weight: 600;
+            line-height: 1.8;
+        }
+
+        .screenshot-header .filters-info div {
+            margin-bottom: 8px;
+        }
+
+        .screenshot-header .filters-info strong {
+            font-size: 1.1em;
+            color: #ffffff;
+        }
+
+        /* Estilos para porcentajes de vendedor */
+        .percentage-breakdown {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .percentage-item {
+            background-color: white;
+            padding: 12px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            text-align: center;
+        }
+
+        .percentage-item.seller {
+            border-color: #28a745;
+            background-color: #f8fff9;
+        }
+
+        .percentage-item.admin {
+            border-color: #007bff;
+            background-color: #f8f9ff;
+        }
+
+        .percentage-value {
+            font-size: 1.3em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .percentage-label {
+            font-size: 0.85em;
+            color: #6c757d;
+        }
+
+        .percentage-config-button {
+            background-color: #17a2b8 !important;
+            color: white !important;
+            margin-top: 10px;
+            padding: 8px 16px;
+            font-size: 14px;
+            border-radius: 4px;
+        }
+
+        .percentage-config-button:hover {
+            background-color: #138496 !important;
+        }
+
+        /* Modal para configurar porcentaje */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 400px;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close-modal {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-modal:hover {
+            color: black;
+        }
+
+        .ticket-preview {
+            background: white;
+            padding: 20px;
+            max-width: 400px;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            display: none;
+        }
+
+        /* Mejorar inputs y selects */
+        .input-group select,
+        .input-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e1e8ed;
+            border-radius: 10px;
+            font-size: 16px;
+            background-color: #ffffff;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .input-group select:focus,
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            transform: translateY(-1px);
+        }
+
+        /* Estilos para notificaciones personalizadas */
+        .custom-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 400px;
+            min-width: 300px;
+            padding: 15px 20px;
+            border-radius: 12px;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-weight: 600;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+            transform: translateX(450px);
+            transition: all 0.4s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .custom-notification.show {
+            transform: translateX(0);
+        }
+
+        .custom-notification.success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            border-left: 4px solid #ffffff;
+        }
+
+        .custom-notification.error {
+            background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%);
+            border-left: 4px solid #ffffff;
+        }
+
+        .custom-notification.warning {
+            background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+            border-left: 4px solid #ffffff;
+            color: #212529;
+        }
+
+        .custom-notification.info {
+            background: linear-gradient(135deg, #17a2b8 0%, #007bff 100%);
+            border-left: 4px solid #ffffff;
+        }
+
+        .notification-close {
+            position: absolute;
+            top: 8px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: inherit;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 0;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+
+        .notification-close:hover {
+            opacity: 1;
+        }
+
+        /* Modal de confirmación personalizado */
+        .custom-modal {
+            display: none;
+            position: fixed;
+            z-index: 10001;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(3px);
+        }
+
+        .custom-modal-content {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            margin: 15% auto;
+            padding: 25px;
+            border: none;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 450px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+
+            to {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .custom-modal h3 {
+            margin-top: 0;
+            color: #495057;
+            font-size: 1.4em;
+            margin-bottom: 15px;
+        }
+
+        .custom-modal p {
+            color: #6c757d;
+            font-size: 1.1em;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .modal-btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-width: 120px;
+        }
+
+        .modal-btn.confirm {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .modal-btn.confirm:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.5);
+        }
+
+        .modal-btn.cancel {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .modal-btn.cancel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.5);
+        }
+
+        /* Teclado Numérico Personalizado */
+        .custom-keyboard {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 2px solid #e5e7eb;
+            box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 10000;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .custom-keyboard.show {
+            transform: translateY(0);
+        }
+
+        body.keyboard-open {
+            padding-bottom: 280px;
+        }
+
+        .keyboard-header {
+            padding: 8px 15px;
+            background: #f8fafc;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .keyboard-title {
+            font-weight: 600;
+            color: #374151;
+            font-size: 13px;
+        }
+
+        .hide-keyboard-btn {
+            background: #363434;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .keyboard-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            background: #e5e7eb;
+            padding: 1px;
+        }
+
+        .keyboard-btn {
+            background: white;
+            border: none;
+            padding: 15px;
+            font-size: 20px;
+            font-weight: 600;
+            color: #374151;
+            cursor: pointer;
+            transition: background-color 0.1s;
+            min-height: 50px;
+        }
+
+        .keyboard-btn:hover {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .keyboard-btn:active {
+            background: #e5e7eb;
+            color: #374151;
+        }
+
+        .keyboard-btn.enter {
+            background: #02235a;
+            color: white;
+        }
+
+        .keyboard-btn.enter:hover {
+            background: #011541;
+            color: white;
+        }
+
+        .keyboard-btn.delete {
+            background: #434141;
+            color: white;
+        }
+
+        .keyboard-btn.delete:hover {
+            background: #464343;
+            color: white;
+        }
+
+        /* Estilos para indicar el campo activo */
+        .input-group input.keyboard-active {
+            border: 2px solid #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+
+        /* Estilos para el menú hamburguesa */
+        .menu-hamburger {
+            position: relative;
+            top: 0;
+            right: 0;
+            z-index: 1000;
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
+            border: none;
+            border-radius: 8px;
+            padding: 8px;
+            width: 48px;
+            height: 42px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(142, 158, 171, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .menu-hamburger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(142, 158, 171, 0.5);
+            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%);
+        }
+
+        .hamburger-icon {
+            width: 24px;
+            height: 18px;
+            position: relative;
+            transform: rotate(0deg);
+            transition: .5s ease-in-out;
+            cursor: pointer;
+        }
+
+        .hamburger-icon span {
+            display: block;
+            position: absolute;
+            height: 3px;
+            width: 100%;
+            background: white;
+            border-radius: 3px;
+            opacity: 1;
+            left: 0;
+            transform: rotate(0deg);
+            transition: .25s ease-in-out;
+        }
+
+        .hamburger-icon span:nth-child(1) {
+            top: 0px;
+        }
+
+        .hamburger-icon span:nth-child(2) {
+            top: 7px;
+        }
+
+        .hamburger-icon span:nth-child(3) {
+            top: 14px;
+        }
+
+        .hamburger-icon.open span:nth-child(1) {
+            top: 7px;
+            transform: rotate(135deg);
+        }
+
+        .hamburger-icon.open span:nth-child(2) {
+            opacity: 0;
+            left: -60px;
+        }
+
+        .hamburger-icon.open span:nth-child(3) {
+            top: 7px;
+            transform: rotate(-135deg);
+        }
+
+        .menu-dropdown {
+            position: absolute;
+            top: 50px;
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            min-width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.3s ease;
+        }
+
+        .menu-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .menu-dropdown::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            right: 20px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-bottom: 8px solid white;
+        }
+
+        .menu-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .menu-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .menu-item:last-child {
+            border-bottom: none;
+            border-radius: 0 0 12px 12px;
+        }
+
+        .menu-item:first-child {
+            border-radius: 12px 12px 0 0;
+        }
+
+        .menu-icon {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .menu-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: transparent;
+            z-index: 998;
+            display: none;
+        }
+
+        .menu-overlay.show {
+            display: block;
+        }
+
+        /* Estilo para el botón de lápiz */
+        .pencil-button {
+            position: relative;
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(142, 158, 171, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            margin-left: 15px;
+        }
+
+        .pencil-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(142, 158, 171, 0.5);
+            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%);
+        }
+
+        /* Modal para seguidillas */
+        .seguidilla-modal {
+            display: none;
+            position: fixed;
+            z-index: 10002;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(3px);
+        }
+
+        .seguidilla-modal-content {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            margin: 10% auto;
+            padding: 25px;
+            border: none;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        .seguidilla-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 15px;
+        }
+
+        .seguidilla-header h3 {
+            margin: 0;
+            color: #495057;
+            font-size: 1.4em;
+        }
+
+        .close-seguidilla {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            background: none;
+            border: none;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-seguidilla:hover {
+            color: #333;
+        }
+
+        .seguidilla-form {
+            display: grid;
+            gap: 15px;
+        }
+
+        .seguidilla-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            align-items: end;
+        }
+
+        .seguidilla-row .seguidilla-input-group:last-child {
+            max-width: 80px;
+        }
+
+        .seguidilla-input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .seguidilla-input-group label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #495057;
+            font-size: 14px;
+        }
+
+        .seguidilla-input-group input {
+            padding: 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 16px;
+            background-color: #ffffff;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .seguidilla-input-group input:focus {
+            outline: none;
+            border-color: #f39c12;
+            box-shadow: 0 0 0 3px rgba(243, 156, 18, 0.1);
+        }
+
+        .seguidilla-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .seguidilla-btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .seguidilla-btn.add {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .seguidilla-btn.add:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.5);
+        }
+
+        .seguidilla-btn.cancel {
+            background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(108, 117, 125, 0.4);
+        }
+
+        .seguidilla-btn.cancel:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(108, 117, 125, 0.5);
+        }
+
+        .seguidilla-info {
+            background: #e7f3ff;
+            border: 1px solid #bee5eb;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #0c5460;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+
+        /* Loading overlay */
+        #loadingOverlay {
+            display: none;
+            position: fixed;
+            z-index: 99999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255,255,255,0.8);
+            justify-content: center;
+            align-items: center;
+            font-size: 1.2em;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        #loadingOverlay.show {
+            display: flex;
+        }
+    </style>
+  <script type="module" crossorigin src="/assets/main-CCe5OeTl.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/dist-B8Z87ca3.js">
+</head>
+
+<body>
+
+<!-- Loading overlay -->
+<div id="loadingOverlay">Cargando...</div>
+
+<div id="loginPage" style="display: none;">
+    <h2>Iniciar Sesión</h2>
+    <div class="input-group" style="margin-bottom: 10px;">
+        <input type="email" id="emailInput" placeholder="Correo electrónico" />
+    </div>
+    <div class="input-group">
+        <input type="password" id="passwordInput" placeholder="Contraseña" />
+        <button onclick="checkPassword()">Ingresar</button>
+    </div>
+    <p id="error" style="color:red;"></p>
+</div>
+
+<div id="mainPage" class="container" style="display: none;">
+    <!-- Contenedor para fecha/hora y menú hamburguesa -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <div id="datetime" style="font-size: 1.1em;"></div>
+        <!-- Menú hamburguesa -->
+        <button class="menu-hamburger" onclick="toggleMenu()">
+            <div class="hamburger-icon" id="hamburgerIcon">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </button>
+    </div>
+
+    <!-- Campo para el nombre del cliente -->
+    <div class="input-group" style="margin-bottom: 15px;">
+        <input type="text" id="customerName" placeholder="Nombre del Cliente">
+    </div>
+    <!-- Selección de lotería y hora en una fila -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+        <div class="input-group">
+            <select id="lotteryType" onchange="updateDrawTimes()">
+                <option value="">Elegir loteria</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <select id="drawTimeSelect" disabled>
+                <option value="">Hora de sorteo</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Número y pedazos en una fila -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+        <div class="input-group">
+            <input type="number" id="number" placeholder="NUMERO">
+        </div>
+        <div class="input-group">
+            <input type="number" id="pieces" placeholder="TIEMPOS">
+        </div>
+    </div>
+
+    <!-- Entrada Rápida -->
+    <div style="margin-top: 15px; margin-bottom: 15px;">
+        <label for="quickInput" style="display: block; margin-bottom: 5px; font-weight: bold;">Entrada
+            Rápida:</label>
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex-grow: 1;">
+                <input type="text" id="quickInput" placeholder="Ej: 39,9 o 45,2 o 12,5">
+            </div>
+            <button onclick="processQuickInput()" style="width: auto; padding: 12px 20px;">
+                Procesar
+            </button>
+        </div>
+    </div>
+
+    <!-- Lista de números -->
+    <div id="numbersList">
+        <table style="width: 100%">
+            <thead>
+            <tr>
+                <th>NUMERO</th>
+                <th>CANT</th>
+                <th>SUB TOTAL</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody id="numbersTableBody"></tbody>
+        </table>
+    </div>
+
+    <div id="totalValue" class="total">VALOR DE TICKET: 0.00$</div>
+
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <button onclick="generateTicket()" style="flex: 1;">GENERAR TICKET</button>
+        <button class="pencil-button" onclick="openSeguidillaModal()" title="Entrada Rápida - Seguidillas">
+            ✏️
+        </button>
+    </div>
+    <button class="scan-main-btn" onclick="openScannerModal()">📷 ESCANEAR TICKET</button>
+
+    <!-- Menú desplegable -->
+    <div class="menu-dropdown" id="menuDropdown">
+        <div class="menu-item" onclick="showSalesPage()">
+            <span class="menu-icon">💰</span>
+            <span>Ver Ventas</span>
+        </div>
+        <div class="menu-item" onclick="showNumberSalesPage()">
+            <span class="menu-icon">📊</span>
+            <span>Tiempos Vendidos</span>
+        </div>
+        <div class="menu-item" onclick="showPrinterConfig()">
+            <span class="menu-icon">🖨️</span>
+            <span>Configurar Impresora</span>
+        </div>
+        <div class="menu-item" onclick="logout()">
+            <span class="menu-icon">🚪</span>
+            <span>Cerrar Sesión</span>
+        </div>
+    </div>
+
+    <!-- Overlay para cerrar menú -->
+    <div class="menu-overlay" id="menuOverlay" onclick="closeMenu()"></div>
+
+    <!-- Vista previa del ticket -->
+    <div id="ticketPreview" class="ticket-preview">
+        <!-- Logo con imagen URL de Imgur -->
+
+        <div id="ticketContent" class="ticket-content"></div>
+        <div id="qrcode" style="display:flex;justify-content:center;padding:8px 0;background:white;"></div>
+        <div class="ticket-actions">
+            <button onclick="compartirTicket()">COMPARTIR TICKET</button>
+            <button onclick="closeTicket()">CERRAR</button>
+        </div>
+    </div>
+</div>
+
+<!-- Página de Ventas -->
+<div id="salesPage" class="container" style="display: none;">
+    <h2>Registro de Ventas</h2>
+    <div style="margin-bottom: 20px;">
+        <h3>Buscar tickets</h3>
+    </div>
+    <div class="input-group">
+        <input type="text" id="searchInput" placeholder="Buscar por ID de ticket">
+        <button onclick="searchTickets()">Buscar</button>
+        <button onclick="toggleScanner()">ESCANEAR QR</button>
+    </div>
+    <div class="scanner-container" id="scannerContainer">
+        <div id="reader"></div>
+    </div>
+    <button onclick="showMainPage()">Volver</button>
+
+    <div class="sales-summary">
+        <h3>Resumen de Ventas</h3>
+        <div class="date-selector">
+            <input type="date" id="salesDate" onchange="showSalesByDate(this.value)">
+            <button onclick="showTodaySales()">Ver Hoy</button>
+            <button onclick="deleteSalesByDate()" style="background-color: #ff4d4d; color: white;">
+                Borrar Día
+            </button>
+        </div>
+        <button onclick="borrarTodasVentas()" style="background-color: #dc3545; color: white; margin-top: 10px;">
+            Borrar TODAS las Ventas
+        </button>
+
+        <div class="sales-stats">
+            <p><strong>Fecha:</strong> <span id="currentSalesDate"></span></p>
+            <p><strong>Total Tickets:</strong> <span id="totalTickets">0</span></p>
+            <p><strong>Total Ventas:</strong> $<span id="totalSales">0.00</span></p>
+        </div>
+    </div>
+
+    <div id="ticketsList" class="ticket-list"></div>
+</div>
+
+<!-- Página de Tiempos y Billetes Vendidos -->
+<div id="numberSalesPage" class="container" style="display: none;">
+    <h2>TIEMPOS Y BILLETES VENDIDOS</h2>
+
+    <!-- Pestañas para alternar entre tiempos y billetes -->
+    <div class="tabs">
+        <button id="tiemposTab" class="tab-button active" onclick="switchTab('tiempos')">CHANCES</button>
+        <button id="billetesTab" class="tab-button" onclick="switchTab('billetes')">BILLETES</button>
+    </div>
+
+    <!-- Filtros -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+        <div class="input-group">
+            <select id="filterLotteryType" onchange="updateFilterDrawTimes()">
+                <option value="">Todas las Loterías</option>
+            </select>
+        </div>
+        <div class="input-group">
+            <select id="filterDrawTimeSelect" disabled>
+                <option value="">Todas las Horas</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Filtro por fecha -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+        <div class="input-group">
+            <input type="date" id="salesFilterDate" onchange="applyFilters()">
+        </div>
+        <button onclick="applyFilters()">Filtrar</button>
+    </div>
+
+    <!-- Resumen de totales -->
+    <div id="salesSummaryBox" class="sales-summary-box" style="display: none;">
+        <h3>Resumen de Ventas</h3>
+        <div class="summary-stats">
+            <div class="stat-item">
+                <div class="stat-value" id="totalTiempos">0</div>
+                <div class="stat-label">Cantidad</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="totalColones">$0</div>
+                <div class="stat-label">Valor</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón de captura de pantalla -->
+    <button id="screenshotButton" class="screenshot-button" onclick="captureAndShareScreen()">
+        Compartir por WhatsApp
+    </button>
+
+    <!-- Contenedor para tiempos vendidos (2 cifras) -->
+    <div id="tiemposContainer">
+        <div id="numberSalesGrid">
+            <!-- Aquí se llenarán los números del 00 al 99 -->
+        </div>
+        <button onclick="shareReport('tiempos')" style="margin-top: 20px;">Compartir CSV</button>
+    </div>
+
+    <!-- Contenedor para billetes vendidos (4 cifras) -->
+    <div id="billetesContainer" style="display: none;">
+        <div id="billetesSalesGrid">
+            <!-- Aquí se llenarán los billetes vendidos de 4 cifras -->
+        </div>
+        <button onclick="shareReport('billetes')" style="margin-top: 20px;">Compartir CSV</button>
+    </div>
+
+    <!-- Botón para volver a la página principal -->
+    <button onclick="showMainPage()" style="margin-top: 20px;">Volver</button>
+</div>
+
+<!-- Página de verificar ganadores -->
+<div id="verifyWinnersPage" class="container" style="display: none;">
+    <h2>Verificar Tickets Ganadores</h2>
+
+    <!-- Filtros -->
+    <div style="margin-bottom: 15px;">
+        <h3>Filtrar Tickets</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <div class="input-group">
+                <input type="date" id="winnersFilterDate">
+            </div>
+            <div class="input-group">
+                <select id="filterLottery">
+                    <option value="">Todas las Loterías</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <select id="filterDrawTime" disabled>
+                    <option value="">Todas las Horas</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Campos para ingresar los números ganadores -->
+    <div style="margin-bottom: 15px;">
+        <h3>Números Ganadores</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <div class="input-group">
+                <input type="number" id="firstPrize" placeholder="1er Premio" inputmode="numeric" pattern="[0-9]*">
+            </div>
+            <div class="input-group">
+                <input type="number" id="secondPrize" placeholder="2do Premio" inputmode="numeric" pattern="[0-9]*">
+            </div>
+            <div class="input-group">
+                <input type="number" id="thirdPrize" placeholder="3er Premio" inputmode="numeric" pattern="[0-9]*">
+            </div>
+        </div>
+        <button onclick="checkWinningTickets()" style="margin-top: 15px;">Verificar Ganadores</button>
+    </div>
+
+    <!-- Resultados de los tickets ganadores -->
+    <div id="winningTicketsResult" style="margin-top: 20px;"></div>
+
+    <!-- Botón para volver a la página principal -->
+    <button onclick="showMainPage()" style="margin-top: 20px;">Volver a Ventas</button>
+</div>
+
+<!-- Página de configuración de límites -->
+<div id="configPage" class="container" style="display: none;">
+    <h2>Configuración de Límites de Venta</h2>
+
+    <!-- Pestañas para alternar entre chances y billetes -->
+    <div class="tabs">
+        <button id="chancesLimitTab" class="tab-button active" onclick="switchLimitTab('chances')">
+            Chances
+        </button>
+        <button id="billetesLimitTab" class="tab-button" onclick="switchLimitTab('billetes')">
+            Billetes
+        </button>
+    </div>
+
+    <!-- Configuración de límites para chances (2 cifras) -->
+    <div id="chancesLimitContainer">
+        <div style="margin-bottom: 15px;">
+            <h3>Config Límites chance</h3>
+
+            <!-- Selector de lotería y hora -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                <div class="input-group">
+                    <select id="limitLotteryType" onchange="updateLimitDrawTimes()">
+                        <option value="">Elegir loteria</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <select id="limitDrawTimeSelect" disabled>
+                        <option value="">Hora de sorteo</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Configuración general para todos los números -->
+            <div style="margin-bottom: 15px;">
+                <h4>Límite Global para Todos los Números</h4>
+                <div class="input-group">
+                    <input type="number" id="globalChancesLimit"
+                           placeholder="Límite global para todos los números (ej: 100)" min="1">
+                </div>
+                <button onclick="setGlobalLimit('chances')" style="margin-top: 10px;">Aplicar Límite Global</button>
+            </div>
+
+            <!-- Configuración individual -->
+            <div style="margin-bottom: 15px;">
+                <h4>Límite Individual por Número</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="input-group">
+                        <input type="number" id="chanceNumber" placeholder="Número (00-99)" min="0" max="99">
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="chanceLimit" placeholder="Límite de tiempos" min="0">
+                    </div>
+                </div>
+                <button onclick="setIndividualLimit('chances')" style="margin-top: 10px;">Aplicar Límite
+                    Individual</button>
+            </div>
+
+            <!-- Visualización de límites actuales -->
+            <div style="margin-top: 20px;">
+                <h4>Límites Actuales</h4>
+                <div id="currentChancesLimits"
+                     style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+                    <!-- Aquí se mostrarán los límites actuales -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuración de límites para billetes (4 cifras) -->
+    <div id="billetesLimitContainer" style="display: none;">
+        <div style="margin-bottom: 15px;">
+            <h3>Config Límites Billetes</h3>
+
+            <!-- Selector de lotería y hora -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                <div class="input-group">
+                    <select id="limitBilleteLotteryType" onchange="updateLimitBilleteDrawTimes()">
+                        <option value="">Elegir loteria</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <select id="limitBilleteDrawTimeSelect" disabled>
+                        <option value="">Hora de sorteo</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Configuración general para todos los billetes -->
+            <div style="margin-bottom: 15px;">
+                <h4>Límite Global para Todos los Billetes</h4>
+                <p class="info-text">Este límite se aplicará a cada número individualmente si no tiene un límite
+                    específico.</p>
+                <div class="input-group">
+                    <input type="number" id="globalBilletesLimit"
+                           placeholder="Límite global para todos los billetes (ej: 10)" min="1">
+                </div>
+                <button onclick="setGlobalLimit('billetes')" style="margin-top: 10px;">Aplicar Límite
+                    Global</button>
+            </div>
+
+            <!-- Configuración individual para billetes -->
+            <div style="margin-bottom: 15px;">
+                <h4>Límite Individual por Billete</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="input-group">
+                        <input type="number" id="billeteNumber" placeholder="Número (0000-9999)" min="0" max="9999">
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="billeteLimit" placeholder="Límite de tiempos" min="0">
+                    </div>
+                </div>
+                <button onclick="setIndividualLimit('billetes')" style="margin-top: 10px;">Aplicar Límite
+                    Individual</button>
+            </div>
+
+            <!-- Visualización de límites actuales para billetes -->
+            <div style="margin-top: 20px;">
+                <h4>Límites Actuales</h4>
+                <div id="currentBilletesLimits"
+                     style="max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
+                    <!-- Aquí se mostrarán los límites actuales -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón para guardar configuración y volver -->
+    <button onclick="saveConfigAndReturn()" style="margin-top: 20px;">Guardar Config y Volver</button>
+</div>
+
+<!-- Modal configurar impresora Bluetooth -->
+<div id="printerConfigModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>🖨️ Impresora Bluetooth</h3>
+            <span class="close-modal" onclick="closePrinterConfig()">&times;</span>
+        </div>
+        <div id="currentPrinterInfo" style="background:#f0f8ff; border-radius:8px; padding:10px; margin-bottom:15px; font-size:0.9em;">
+            Cargando...
+        </div>
+        <p style="font-weight:600; margin-bottom:8px;">Dispositivos emparejados:</p>
+        <div id="pairedDevicesList" style="max-height:250px; overflow-y:auto;"></div>
+        <p style="color:#888; font-size:0.8em; margin-top:10px;">
+            Si no aparece tu impresora, emparéjala primero en Ajustes &gt; Bluetooth de Android.
+        </p>
+    </div>
+</div>
+
+<!-- Modal para configurar porcentaje del vendedor -->
+<div id="percentageModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Configurar Vendedor</h3>
+            <span class="close-modal" onclick="closePercentageModal()">&times;</span>
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label for="sellerNameInput">Nombre del vendedor:</label>
+            <input type="text" id="sellerNameInput"
+                   style="width: 95%; padding: 8px; margin-top: 5px; box-sizing: border-box;"
+                   placeholder="Ej: Juan Pérez">
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label for="sellerPercentageInput">Porcentaje del vendedor (%):</label>
+            <input type="number" id="sellerPercentageInput" min="0" max="100" step="0.1"
+                   style="width: 95%; padding: 8px; margin-top: 5px; box-sizing: border-box;" placeholder="Ej: 15">
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="saveSellerConfig()" style="flex: 1; background-color: #28a745; color: white;">
+                Guardar
+            </button>
+            <button onclick="closePercentageModal()" style="flex: 1; background-color: #6c757d; color: white;">
+                Cancelar
+            </button>
+        </div>
+        <p id="percentageError" style="color: red; margin-top: 10px; display: none;"></p>
+    </div>
+</div>
+
+<!-- Modal de confirmación personalizado -->
+<div id="customConfirmModal" class="custom-modal">
+    <div class="custom-modal-content">
+        <h3 id="confirmTitle">Confirmar acción</h3>
+        <p id="confirmMessage">¿Está seguro de realizar esta acción?</p>
+        <div class="modal-buttons">
+            <button id="confirmBtn" class="modal-btn confirm">Confirmar</button>
+            <button id="cancelBtn" class="modal-btn cancel">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Teclado Numérico Personalizado -->
+<div class="custom-keyboard" id="customKeyboard">
+    <div class="keyboard-header">
+        <div class="keyboard-title">Ingresa el número</div>
+        <button class="hide-keyboard-btn" onclick="hideKeyboard()">Ocultar</button>
+    </div>
+    <div class="keyboard-grid">
+        <button class="keyboard-btn" onclick="addDigit('1')">1</button>
+        <button class="keyboard-btn" onclick="addDigit('2')">2</button>
+        <button class="keyboard-btn" onclick="addDigit('3')">3</button>
+        <button class="keyboard-btn" onclick="addDigit('4')">4</button>
+        <button class="keyboard-btn" onclick="addDigit('5')">5</button>
+        <button class="keyboard-btn" onclick="addDigit('6')">6</button>
+        <button class="keyboard-btn" onclick="addDigit('7')">7</button>
+        <button class="keyboard-btn" onclick="addDigit('8')">8</button>
+        <button class="keyboard-btn" onclick="addDigit('9')">9</button>
+        <button class="keyboard-btn delete" onclick="deleteDigit()">⌫</button>
+        <button class="keyboard-btn" onclick="addDigit('0')">0</button>
+        <button class="keyboard-btn enter" onclick="submitNumber()">Enter</button>
+    </div>
+</div>
+
+<!-- Modal para seguidillas -->
+<div id="seguidillaModal" class="seguidilla-modal">
+    <div class="seguidilla-modal-content">
+        <div class="seguidilla-header">
+            <h3>Entrada Rápida - Seguidillas</h3>
+            <button class="close-seguidilla" onclick="closeSeguidillaModal()">&times;</button>
+        </div>
+
+        <div class="seguidilla-info">
+            <strong>💡 Instrucciones:</strong><br>
+            Ingresa el rango de números (solo 2 cifras) y la cantidad de tiempos para cada número.<br>
+            <strong>Ejemplo:</strong> Del 00 al 50 por 10 tiempos cada uno.
+        </div>
+
+        <div class="seguidilla-form">
+            <div class="seguidilla-row">
+                <div class="seguidilla-input-group">
+                    <label for="seguidillaDesde">Desde:</label>
+                    <input type="number" id="seguidillaDesde" min="0" max="99" placeholder="00">
+                </div>
+                <div class="seguidilla-input-group">
+                    <label for="seguidillaHasta">Hasta:</label>
+                    <input type="number" id="seguidillaHasta" min="0" max="99" placeholder="99">
+                </div>
+                <div class="seguidilla-input-group">
+                    <label for="seguidillaTiempos">Tiempos:</label>
+                    <input type="number" id="seguidillaTiempos" min="1" placeholder="1">
+                </div>
+            </div>
+
+            <div class="seguidilla-buttons">
+                <button class="seguidilla-btn add" onclick="addSeguidilla()">Agregar</button>
+                <button class="seguidilla-btn cancel" onclick="closeSeguidillaModal()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal scanner flotante -->
+<div id="scannerModal">
+    <div class="scanner-inner">
+        <h3>📷 Escanear Ticket</h3>
+        <div id="readerModal"></div>
+        <button onclick="closeScannerModal()" style="width:100%;margin-top:12px;padding:12px;background:#ccc;border:none;border-radius:8px;font-size:1em;cursor:pointer;">CERRAR</button>
+    </div>
+</div>
+
+</body>
+
+
+</html>
