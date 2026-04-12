@@ -2,8 +2,8 @@ import { createClient } from '@insforge/sdk';
 
 // ==================== InsForge Client ====================
 const client = createClient({
-    baseUrl: import.meta.env.VITE_INSFORGE_URL || 'https://w54yh5ce.us-east.insforge.app',
-    anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY || 'ik_9d16e487f6a52cf24e19dda5922ff2de',
+    baseUrl: import.meta.env.VITE_INSFORGE_URL || 'https://e8cpb3g3.us-east.insforge.app',
+    anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY || 'ik_1016f97bf745645904003df562a619b1',
 });
 const auth = client.auth;
 const db = client.database;
@@ -783,12 +783,12 @@ async function loadCobros() {
         }
 
         histDiv.innerHTML = payments.map(p => `
-            <div style="background:white;border-radius:12px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+            <div style="background:#f1f5f9;border-radius:12px;padding:12px 14px;border:1px solid #e2e8f0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <span style="font-size:1.1em;font-weight:bold;color:#16a34a;">${sym}${parseFloat(p.amount).toFixed(2)}</span>
-                    <span style="font-size:0.75em;color:#888;">${new Date(p.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(p.created_at).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</span>
+                    <span style="font-size:0.75em;color:#64748b;">${new Date(p.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(p.created_at).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</span>
                 </div>
-                ${p.notes ? `<p style="margin:4px 0 0;font-size:0.8em;color:#666;">${p.notes}</p>` : ''}
+                ${p.notes ? `<p style="margin:4px 0 0;font-size:0.8em;color:#475569;">${p.notes}</p>` : ''}
             </div>
         `).join('');
     } catch (e) {
