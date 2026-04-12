@@ -36,10 +36,16 @@ export default function AdminCobros() {
     if (profile?.id) loadBalances();
   }, [profile]);
 
-  async function loadBalances() {
+  async function loadBalances(currentSellerId = null) {
     setLoading(true);
     const { data } = await db.rpc('get_seller_balances', { p_admin_id: profile.id });
-    setSellers(data || []);
+    const list = data || [];
+    setSellers(list);
+    // Si hay un vendedor seleccionado, actualizar sus datos también
+    if (currentSellerId) {
+      const updated = list.find(s => s.seller_id === currentSellerId);
+      if (updated) setSelected(updated);
+    }
     setLoading(false);
   }
 
@@ -91,7 +97,7 @@ export default function AdminCobros() {
       }
       setShowModal(false);
       await loadDetail(selected);
-      await loadBalances();
+      await loadBalances(selected.seller_id);
     } catch (err) {
       setPayError(err.message || 'Error al guardar');
     } finally {
@@ -107,7 +113,7 @@ export default function AdminCobros() {
       if (error) throw error;
       setDeleteTarget(null);
       await loadDetail(selected);
-      await loadBalances();
+      await loadBalances(selected.seller_id);
     } catch (err) {
       alert('Error al eliminar: ' + err.message);
     } finally {
