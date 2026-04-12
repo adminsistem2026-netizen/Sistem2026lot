@@ -31,8 +31,6 @@ export default function ManageLotteries() {
   const [showLotteryModal, setShowLotteryModal] = useState(false);
   const [editLottery, setEditLottery] = useState(null);
   const [lotteryForm, setLotteryForm] = useState(EMPTY_LOTTERY);
-  const [draftDrawTimes, setDraftDrawTimes] = useState([]);
-  const [draftDrawForm, setDraftDrawForm] = useState({ time_label: '', time_value: '' });
 
   const [showDrawModal, setShowDrawModal] = useState(false);
   const [drawLotteryId, setDrawLotteryId] = useState(null);
@@ -51,7 +49,7 @@ export default function ManageLotteries() {
   async function loadLotteries() {
     setLoading(true);
     const { data } = await db.from('lotteries').select('*')
-      .or(`admin_id.eq.${profile.id},admin_id.is.null`).order('display_name');
+      .eq('admin_id', profile.id).order('display_name');
     // Cargar columnas de billetes via RPC (InsForge no las incluye en select *)
     const { data: bData } = await db.rpc('get_lottery_billete_multipliers');
     const bMap = {};
@@ -100,8 +98,6 @@ export default function ManageLotteries() {
   function openCreateLottery() {
     setEditLottery(null);
     setLotteryForm({ ...EMPTY_LOTTERY, currency_code: profile?.currency_code || 'USD', currency_symbol: profile?.currency_symbol || '$' });
-    setDraftDrawTimes([]);
-    setDraftDrawForm({ time_label: '', time_value: '' });
     setError(''); setShowLotteryModal(true);
   }
 
@@ -148,7 +144,7 @@ export default function ManageLotteries() {
         const { error: err } = await db.from('lotteries').update(payload).eq('id', editLottery.id);
         if (err) throw err;
         // RPC para multiplicadores (InsForge no los incluye en su schema cache)
-        await db.rpc('update_lottery_multipliers', {
+        const { error: mErr } = await db.rpc('update_lottery_multipliers', {
           p_lottery_id: editLottery.id,
           p_m1: parseFloat(lotteryForm.prize_1st_multiplier),
           p_m2: parseFloat(lotteryForm.prize_2nd_multiplier),
@@ -157,20 +153,17 @@ export default function ManageLotteries() {
           p_bm2: parseFloat(lotteryForm.billete_prize_2nd_multiplier),
           p_bm3: parseFloat(lotteryForm.billete_prize_3rd_multiplier),
         });
+        if (mErr) throw new Error('Error al actualizar multiplicadores: ' + mErr.message);
+        // RPC para precios (InsForge no los incluye en su schema cache)
+        const { error: pErr } = await db.rpc('update_lottery_prices', {
+          p_lottery_id: editLottery.id,
+          p_price_2: parseFloat(lotteryForm.price_2_digits),
+          p_price_4: parseFloat(lotteryForm.price_4_digits),
+        });
+        if (pErr) throw new Error('Error al actualizar precios: ' + pErr.message);
       } else {
-        const { data: newLot, error: err } = await db.from('lotteries').insert({ ...payload, admin_id: profile.id, created_by: profile.id }).select('id').single();
+        const { error: err } = await db.from('lotteries').insert({ ...payload, admin_id: profile.id, created_by: profile.id });
         if (err) throw err;
-        if (newLot?.id && draftDrawTimes.length > 0) {
-          await db.from('draw_times').insert(
-            draftDrawTimes.map(dt => ({
-              lottery_id: newLot.id,
-              time_label: dt.time_label,
-              time_value: dt.time_value,
-              cutoff_minutes_before: 1,
-              block_minutes_after: 20,
-            }))
-          );
-        }
       }
       setShowLotteryModal(false); loadLotteries();
     } catch (err) { setError(err.message); }
@@ -515,50 +508,6 @@ export default function ManageLotteries() {
                 </>
               )}
             </div>
-            {/* Horarios — solo al crear */}
-            {!editLottery && (
-              <div className="pt-1 space-y-3">
-                <p className="text-xs font-semibold text-slate-400">Horarios de sorteo</p>
-
-                {draftDrawTimes.length > 0 && (
-                  <div className="space-y-1.5">
-                    {draftDrawTimes.map((dt, i) => (
-                      <div key={i} className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-lg px-3 py-2">
-                        <div>
-                          <span className="text-sm text-white font-medium">{dt.time_label}</span>
-                          <span className="text-xs text-slate-500 ml-2">{dt.time_value}</span>
-                        </div>
-                        <button onClick={() => setDraftDrawTimes(p => p.filter((_, j) => j !== i))} className="text-slate-500 hover:text-red-400 transition text-lg leading-none">&times;</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Etiqueta (ej: 3:00 PM)"
-                    value={draftDrawForm.time_label}
-                    onChange={e => setDraftDrawForm(p => ({ ...p, time_label: e.target.value }))}
-                    className={inputCls + ' flex-1'}
-                  />
-                  <input
-                    type="time"
-                    value={draftDrawForm.time_value}
-                    onChange={e => setDraftDrawForm(p => ({ ...p, time_value: e.target.value }))}
-                    className={inputCls + ' w-28'}
-                  />
-                  <button
-                    onClick={() => {
-                      if (!draftDrawForm.time_label.trim() || !draftDrawForm.time_value) return;
-                      setDraftDrawTimes(p => [...p, { ...draftDrawForm }]);
-                      setDraftDrawForm({ time_label: '', time_value: '' });
-                    }}
-                    className="bg-slate-700 hover:bg-slate-600 text-white px-3 rounded-lg transition text-lg font-bold"
-                  >+</button>
-                </div>
-              </div>
-            )}
 
             {error && <p className="text-red-400 text-xs text-center">{error}</p>}
             <div className="flex gap-3 pt-1">

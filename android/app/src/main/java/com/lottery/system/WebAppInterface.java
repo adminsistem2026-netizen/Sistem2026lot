@@ -250,9 +250,9 @@ public class WebAppInterface {
         writeStr(bos, "--------------------------------\n");
 
         // Headers mirror data row format
-        // Row 1: NUMERO + PIEZA in double width, left-aligned
+        // Row 1: CIFRA + CANT in double width, left-aligned
         bos.write(new byte[]{0x1B, 0x61, 0x00, 0x1D, 0x21, 0x10});
-        writeStr(bos, "NUMERO  PIEZA\n");
+        writeStr(bos, "CIFRA   CANT\n");
         // Row 2: SUBTOTAL right-aligned, normal size
         bos.write(new byte[]{0x1D, 0x21, 0x00, 0x1B, 0x61, 0x02});
         writeStr(bos, "SUBTOTAL\n");

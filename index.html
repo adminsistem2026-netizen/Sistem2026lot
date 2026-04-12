@@ -47,22 +47,22 @@
         #loginCard {
             background: #ffffff;
             border-radius: 20px;
-            padding: 36px 28px 32px;
+            padding: 27px 21px 24px;
             width: 100%;
-            max-width: 340px;
+            max-width: 255px;
             box-shadow: 0 4px 24px rgba(0,0,0,0.10);
         }
 
-#loginTitle {
-            font-size: 1.5em;
+        #loginTitle {
+            font-size: 1.1em;
             font-weight: 700;
             color: #111827;
-            margin: 0 0 24px;
+            margin: 0 0 18px;
             text-align: center;
         }
 
         .login-field {
-            margin-bottom: 14px;
+            margin-bottom: 10px;
             text-align: left;
         }
 
@@ -71,12 +71,12 @@
             font-size: 0.78em;
             font-weight: 600;
             color: #374151;
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
 
         .login-field input {
             width: 100%;
-            padding: 11px 14px;
+            padding: 8px 14px;
             border: 1.5px solid #d1d5db;
             border-radius: 12px;
             font-size: 0.95em;
@@ -88,14 +88,14 @@
         }
 
         .login-field input:focus {
-            border-color: #4f46e5;
+            border-color: #8e9eab;
             background: #fff;
         }
 
         #loginBtn {
             width: 100%;
-            padding: 13px;
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            padding: 10px;
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
             color: #fff;
             border: none;
             border-radius: 12px;
@@ -103,7 +103,7 @@
             font-weight: 700;
             letter-spacing: 0.5px;
             cursor: pointer;
-            margin-top: 6px;
+            margin-top: 5px;
             transition: opacity 0.2s;
         }
 
@@ -141,51 +141,52 @@
         .input-group select,
         .input-group input {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            font-size: 16px;
-            background-color: #ffffff;
+            padding: 6px 12px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            background-color: #f9fafb;
+            color: #111827;
             box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .input-group select:focus,
+        .input-group input:focus {
+            border-color: #8e9eab;
+            background: #fff;
         }
 
         button {
             width: 100%;
-            padding: 12px 20px;
+            padding: 11px 18px;
             background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
             color: white;
             border: none;
-            border-radius: 12px;
+            border-radius: 10px;
             cursor: pointer;
-            margin-bottom: 10px;
-            font-size: 16px;
+            margin-bottom: 8px;
+            font-size: 14px;
             font-weight: 600;
-            transition: all 0.3s ease;
+            transition: all 0.2s ease;
             box-shadow: 0 4px 15px rgba(142, 158, 171, 0.4);
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
 
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(142, 158, 171, 0.5);
-            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%);
+            opacity: 0.88;
         }
 
         button:active {
-            transform: translateY(0px);
-            box-shadow: 0 2px 10px rgba(142, 158, 171, 0.3);
+            opacity: 0.75;
         }
 
-        /* Todos los botones específicos ahora en gris metalizado */
         button[onclick*="generateTicket"] {
-            background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
-            box-shadow: 0 4px 15px rgba(149, 165, 166, 0.4);
-        }
-
-        button[onclick*="generateTicket"]:hover {
-            background: linear-gradient(135deg, #b4c6c7 0%, #95a5a6 100%);
-            box-shadow: 0 6px 20px rgba(149, 165, 166, 0.5);
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%);
+            font-size: 15px;
+            padding: 13px 18px;
         }
 
         button[onclick*="showSalesPage"] {
@@ -218,19 +219,19 @@
             box-shadow: 0 6px 20px rgba(158, 158, 158, 0.5);
         }
 
-        /* Botones de eliminar - gris más oscuro */
+        /* Botones de eliminar - mismo gris que los demás */
         .ticket-actions button:last-child,
         button[onclick*="deleteTicket"],
         button[onclick*="deleteSalesByDate"] {
-            background: linear-gradient(135deg, #616161 0%, #424242 100%) !important;
-            box-shadow: 0 4px 15px rgba(97, 97, 97, 0.4) !important;
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%) !important;
+            box-shadow: 0 2px 8px rgba(142, 158, 171, 0.4) !important;
         }
 
         .ticket-actions button:last-child:hover,
         button[onclick*="deleteTicket"]:hover,
         button[onclick*="deleteSalesByDate"]:hover {
-            background: linear-gradient(135deg, #757575 0%, #616161 100%) !important;
-            box-shadow: 0 6px 20px rgba(97, 97, 97, 0.5) !important;
+            background: linear-gradient(135deg, #a8b8c2 0%, #8e9eab 100%) !important;
+            box-shadow: 0 4px 12px rgba(142, 158, 171, 0.5) !important;
         }
 
         /* Botones pequeños de acciones en tickets */
@@ -423,10 +424,15 @@
         }
 
         .total {
-            font-size: 1.3em;
-            font-weight: bold;
-            margin: 15px 0;
+            font-size: 1.2em;
+            font-weight: 700;
+            margin: 12px 0;
             text-align: center;
+            background: #f2f2f2;
+            border: 2px solid #d1d5db;
+            border-radius: 10px;
+            padding: 10px;
+            color: #374151;
         }
 
         .scanner-container {
@@ -466,12 +472,16 @@
         .scan-main-btn {
             background: var(--main-button-color);
             border: none;
-            border-radius: 8px;
-            padding: 14px;
-            font-size: 1.2em;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 1em;
+            font-weight: 700;
+            color: #fff;
             cursor: pointer;
             width: 100%;
-            margin-top: 10px;
+            margin-top: 6px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
         }
 
         .scan-main-btn:hover {
@@ -491,48 +501,75 @@
             margin-top: 10px;
         }
 
-        /* Nuevos estilos para los botones de editar y eliminar */
+        /* Botones editar y eliminar */
         .ticket-actions button {
-            padding: 5px 10px;
-            font-size: 12px;
-            margin: 2px;
-            border-radius: 4px;
-            background-color: var(--main-button-color);
-            color: white;
-            border: none;
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            margin: 0;
+            border-radius: 6px;
+            background: #e5e7eb;
+            color: #374151;
+            border: 1px solid #d1d5db;
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: all 0.15s;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            box-shadow: none;
+            width: auto;
+            margin-bottom: 0;
         }
 
         .ticket-actions button:hover {
-            background-color: var(--button-hover-color);
+            background: #9ca3af;
+            color: #fff;
+            border-color: #9ca3af;
         }
 
-        /* Estilos específicos para el botón de eliminar */
+        /* Botón eliminar */
         .ticket-actions button:last-child {
-            background-color: #ff4d4d;
+            background: #d1d5db;
+            color: #374151;
+            border: 1px solid #9ca3af;
         }
 
         .ticket-actions button:last-child:hover {
-            background-color: #cc0000;
+            background: #6b7280;
+            color: #fff;
+            border-color: #6b7280;
         }
 
         /* Estilos para la tabla */
         #numbersList table {
             width: 100%;
             border-collapse: collapse;
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1.5px solid #e5e7eb;
         }
-
 
         #numbersList th,
         #numbersList td {
-            padding: 8px;
+            padding: 6px 10px;
             text-align: left;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 14px;
         }
 
         #numbersList th {
-            background-color: #f2f2f2;
+            background-color: #6c7b7f;
+            color: #fff;
+            font-size: 12px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        #numbersList tr:last-child td {
+            border-bottom: none;
+        }
+
+        #numbersList tr:nth-child(even) td {
+            background-color: #f9fafb;
         }
 
         /* Ajustar el ancho de las columnas */
@@ -674,6 +711,71 @@
         }
 
         /* Estilos para el resumen de totales */
+        /* ===== Sales page compact layout ===== */
+        .sales-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .sales-header h2 {
+            margin: 0;
+            font-size: 1.1em;
+            flex: 1;
+        }
+        .btn-back {
+            width: auto !important;
+            padding: 7px 14px !important;
+            font-size: 0.8em !important;
+            margin-bottom: 0 !important;
+            border-radius: 8px !important;
+            background: linear-gradient(135deg, #6b7280, #4b5563) !important;
+            box-shadow: none !important;
+        }
+        .sales-search-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .sales-search-row input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
+            outline: none;
+        }
+        .btn-sm {
+            width: auto !important;
+            padding: 10px 14px !important;
+            font-size: 0.82em !important;
+            margin-bottom: 0 !important;
+            border-radius: 8px !important;
+            white-space: nowrap;
+            box-shadow: none !important;
+        }
+        .btn-qr {
+            background: linear-gradient(135deg, #8e9eab 0%, #6c7b7f 100%) !important;
+        }
+        .date-filter-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 10px;
+            max-width: 70%;
+        }
+        .date-filter-row input[type="date"] {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 12px;
+            box-sizing: border-box;
+        }
+        /* ===================================== */
+
         .sales-summary-box {
             background-color: #f8f9fa;
             border: 2px solid #007bff;
@@ -900,14 +1002,14 @@
         .input-group select,
         .input-group input {
             width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #e1e8ed;
-            border-radius: 10px;
-            font-size: 16px;
-            background-color: #ffffff;
+            padding: 6px 12px;
+            border: 1.5px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            background-color: #f9fafb;
+            color: #111827;
             box-sizing: border-box;
-            transition: all 0.3s ease;
-            font-weight: 500;
+            transition: border-color 0.2s, background 0.2s;
         }
 
         .input-group select:focus,
@@ -1577,55 +1679,55 @@
     </div>
 
     <!-- Campo para el nombre del cliente -->
-    <div class="input-group" style="margin-bottom: 15px;">
+    <div class="input-group" style="margin-bottom: 10px;">
         <input type="text" id="customerName" placeholder="Nombre del Cliente">
     </div>
-    <!-- Selección de lotería y hora en una fila -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+
+    <!-- Selección de lotería y hora -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
         <div class="input-group">
             <select id="lotteryType" onchange="updateDrawTimes()">
-                <option value="">Elegir loteria</option>
+                <option value="">Lotería</option>
             </select>
         </div>
         <div class="input-group">
             <select id="drawTimeSelect" disabled>
-                <option value="">Hora de sorteo</option>
+                <option value="">Hora</option>
             </select>
         </div>
     </div>
 
-    <!-- Número y pedazos en una fila -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+    <!-- Número y tiempos -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
         <div class="input-group">
-            <input type="number" id="number" placeholder="NUMERO">
+            <input type="number" id="number" placeholder="Número" style="padding: 11px 12px; text-align: center; font-size: 16px; font-weight: 600;">
         </div>
         <div class="input-group">
-            <input type="number" id="pieces" placeholder="TIEMPOS">
+            <input type="number" id="pieces" placeholder="Tiempos" style="padding: 11px 12px; text-align: center; font-size: 16px; font-weight: 600;">
         </div>
     </div>
 
     <!-- Entrada Rápida -->
-    <div style="margin-top: 15px; margin-bottom: 15px;">
-        <label for="quickInput" style="display: block; margin-bottom: 5px; font-weight: bold;">Entrada
-            Rápida:</label>
-        <div style="display: flex; gap: 10px;">
+    <div style="margin-bottom: 10px;">
+        <label for="quickInput" style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px;">Entrada Rápida</label>
+        <div style="display: flex; gap: 8px;">
             <div class="input-group" style="flex-grow: 1;">
                 <input type="text" id="quickInput" placeholder="Ej: 39,9 o 45,2 o 12,5">
             </div>
-            <button onclick="processQuickInput()" style="width: auto; padding: 12px 20px;">
-                Procesar
+            <button onclick="processQuickInput()" style="width: auto; padding: 10px 16px; margin-bottom: 0; border-radius: 10px;">
+                PROCESAR
             </button>
         </div>
     </div>
 
     <!-- Lista de números -->
-    <div id="numbersList">
+    <div id="numbersList" style="margin-bottom: 8px;">
         <table style="width: 100%">
             <thead>
             <tr>
-                <th>NUMERO</th>
+                <th>CIFRA</th>
                 <th>CANT</th>
-                <th>SUB TOTAL</th>
+                <th>SUBTOTAL</th>
                 <th></th>
             </tr>
             </thead>
@@ -1633,11 +1735,11 @@
         </table>
     </div>
 
-    <div id="totalValue" class="total">VALOR DE TICKET: 0.00$</div>
+    <div id="totalValue" class="total">VALOR DE TICKET: $0.00</div>
 
-    <div style="display: flex; align-items: center; gap: 10px;">
-        <button onclick="generateTicket()" style="flex: 1;">GENERAR TICKET</button>
-        <button class="pencil-button" onclick="openSeguidillaModal()" title="Entrada Rápida - Seguidillas">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 0;">
+        <button onclick="generateTicket()" style="flex: 1; margin-bottom: 0;">GENERAR TICKET</button>
+        <button class="pencil-button" onclick="openSeguidillaModal()" title="Seguidillas" style="margin-bottom: 0;">
             ✏️
         </button>
     </div>
@@ -1681,33 +1783,26 @@
 
 <!-- Página de Ventas -->
 <div id="salesPage" class="container" style="display: none;">
-    <h2>Registro de Ventas</h2>
-    <div style="margin-bottom: 20px;">
-        <h3>Buscar tickets</h3>
+    <div class="sales-header">
+        <button class="btn-back" onclick="showMainPage()">← Volver</button>
+        <h2>Registro de Ventas</h2>
     </div>
-    <div class="input-group">
+
+    <div class="sales-search-row">
         <input type="text" id="searchInput" placeholder="Buscar por ID de ticket">
-        <button onclick="searchTickets()">Buscar</button>
-        <button onclick="toggleScanner()">ESCANEAR QR</button>
+        <button class="btn-sm" onclick="searchTickets()">Buscar</button>
+        <button class="btn-sm btn-qr" onclick="toggleScanner()">QR</button>
     </div>
     <div class="scanner-container" id="scannerContainer">
         <div id="reader"></div>
     </div>
-    <button onclick="showMainPage()">Volver</button>
 
     <div class="sales-summary">
         <h3>Resumen de Ventas</h3>
-        <div class="date-selector">
+        <div class="date-filter-row">
             <input type="date" id="salesDate" onchange="showSalesByDate(this.value)">
-            <button onclick="showTodaySales()">Ver Hoy</button>
-            <button onclick="deleteSalesByDate()" style="background-color: #ff4d4d; color: white;">
-                Borrar Día
-            </button>
+            <button class="btn-sm" onclick="showTodaySales()">Hoy</button>
         </div>
-        <button onclick="borrarTodasVentas()" style="background-color: #dc3545; color: white; margin-top: 10px;">
-            Borrar TODAS las Ventas
-        </button>
-
         <div class="sales-stats">
             <p><strong>Fecha:</strong> <span id="currentSalesDate"></span></p>
             <p><strong>Total Tickets:</strong> <span id="totalTickets">0</span></p>
@@ -1766,7 +1861,7 @@
     </div>
 
     <!-- Botón de captura de pantalla -->
-    <button id="screenshotButton" class="screenshot-button" onclick="captureAndShareScreen()">
+    <button id="screenshotButton" class="screenshot-button" onclick="captureAndShareScreen()" style="display:none;">
         Compartir por WhatsApp
     </button>
 
@@ -1775,7 +1870,6 @@
         <div id="numberSalesGrid">
             <!-- Aquí se llenarán los números del 00 al 99 -->
         </div>
-        <button onclick="shareReport('tiempos')" style="margin-top: 20px;">Compartir CSV</button>
     </div>
 
     <!-- Contenedor para billetes vendidos (4 cifras) -->
@@ -1783,7 +1877,6 @@
         <div id="billetesSalesGrid">
             <!-- Aquí se llenarán los billetes vendidos de 4 cifras -->
         </div>
-        <button onclick="shareReport('billetes')" style="margin-top: 20px;">Compartir CSV</button>
     </div>
 
     <!-- Botón para volver a la página principal -->

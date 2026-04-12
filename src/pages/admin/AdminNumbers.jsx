@@ -25,12 +25,18 @@ function cellColor(pieces, max, w1, w2, w3) {
   return 'bg-violet-500 text-white';
 }
 
-// Misma jerarquía que app.js (chance = 2 cifras)
-function getMultiplier(pos, lottObj, dtObj) {
+function getChanceMultiplier(pos, lottObj, dtObj) {
   const k = pos === 1 ? '1st' : pos === 2 ? '2nd' : '3rd';
   const dtVal = dtObj?.[`custom_prize_${k}_multiplier`];
   if (dtVal != null && dtVal !== '') return parseFloat(dtVal);
   return parseFloat(lottObj?.[`prize_${k}_multiplier`]) || (pos === 1 ? 11 : pos === 2 ? 3 : 2);
+}
+
+function getBilleteMultiplier(pos, lottObj) {
+  const k = pos === 1 ? '1st' : pos === 2 ? '2nd' : '3rd';
+  const defaults = { 1: 2000, 2: 600, 3: 300 };
+  const val = parseFloat(lottObj?.[`billete_prize_${k}_multiplier`]);
+  return val || defaults[pos];
 }
 
 export default function AdminNumbers() {
@@ -38,30 +44,39 @@ export default function AdminNumbers() {
   const _d = new Date();
   const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
 
-  const [date, setDate]               = useState(today);
-  const [sellerId, setSellerId]       = useState('');
-  const [lotteryId, setLotteryId]     = useState('');
-  const [drawTimeId, setDrawTimeId]   = useState('');
-  const [currency, setCurrency]       = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [activeTab, setActiveTab]         = useState('chances');
+  const [umbral, setUmbral]               = useState('');
+  const [date, setDate]                   = useState(today);
+  const [sellerId, setSellerId]           = useState('');
+  const [lotteryId, setLotteryId]         = useState('');
+  const [drawTimeId, setDrawTimeId]       = useState('');
+  const [currency, setCurrency]           = useState('');
+  const [filtersOpen, setFiltersOpen]     = useState(true);
 
   const [sellers, setSellers]               = useState([]);
-  const [lotteries, setLotteries]           = useState([]);  // con multipliers via RPC
+  const [lotteries, setLotteries]           = useState([]);
   const [allDrawTimes, setAllDrawTimes]     = useState([]);
   const [availCurrencies, setAvailCurrencies] = useState([]);
 
+  // Chances (2 cifras)
   const [numberSales, setNumberSales]       = useState({});
-  const [winningNumbers, setWinningNumbers] = useState(null);
   const [totalPieces, setTotalPieces]       = useState(0);
   const [financials, setFinancials]         = useState(null);
-  // { totalCobrado, totalPago, resultado, sym, winners:[{number,prize,pieces,pago}] }
-  const [loading, setLoading] = useState(false);
+
+  // Billetes (4 cifras)
+  const [billeteSales, setBilleteSales]     = useState({});
+  const [totalBilletePieces, setTotalBilletePieces] = useState(0);
+  const [billeteFinancials, setBilleteFinancials]   = useState(null);
+
+  const [winningNumbers, setWinningNumbers] = useState(null);
+  const [loading, setLoading]               = useState(false);
 
   useEffect(() => {
     if (profile?.id) {
       loadFiltersData().then(sellerIds => loadData(sellerIds));
     }
   }, [profile]);
+
   useEffect(() => {
     if (sellers.length > 0) loadData(sellers.map(s => s.id));
   }, [date, sellerId, lotteryId, drawTimeId, currency]);
@@ -69,16 +84,14 @@ export default function AdminNumbers() {
   async function loadFiltersData() {
     const [{ data: s }, { data: l }, { data: dt }, { data: mData }] = await Promise.all([
       db.rpc('get_admin_sellers', { p_admin_id: profile.id }),
-      db.from('lotteries').select('*').or(`admin_id.eq.${profile.id},admin_id.is.null`).order('display_name'),
+      db.from('lotteries').select('*').eq('admin_id', profile.id).order('display_name'),
       db.from('draw_times').select('*').order('time_value'),
       db.rpc('get_lottery_billete_multipliers'),
     ]);
     const s2 = s || [];
-    // Merge multipliers into lotteries (igual que app.js)
     const mMap = {};
     (mData || []).forEach(r => { mMap[r.id] = r; });
     const merged = (l || []).map(lot => ({ ...lot, ...mMap[lot.id] }));
-
     setSellers(s2);
     setLotteries(merged);
     setAllDrawTimes(dt || []);
@@ -88,53 +101,46 @@ export default function AdminNumbers() {
   }
 
   async function loadData(sellerIds) {
-    if (!profile?.id || !sellerIds?.length) { setLoading(false); return; }
+    if (!profile?.id) { setLoading(false); return; }
     setLoading(true);
 
-    // 1. Cargar tickets por seller_id (columna original, no afectada por schema cache)
-    let q = db.from('tickets')
-      .select('id, seller_id, lottery_id, draw_time_id, sale_date, currency_symbol, is_cancelled, total_amount')
-      .in('seller_id', sellerIds);
-    if (date)       q = q.eq('sale_date', date);
-    if (sellerId)   q = q.eq('seller_id', sellerId);
-    if (lotteryId)  q = q.eq('lottery_id', lotteryId);
-    if (drawTimeId) q = q.eq('draw_time_id', drawTimeId);
-    const { data: raw } = await q;
-    let tickets = (raw || []).filter(t => !t.is_cancelled);
-    if (currency) tickets = tickets.filter(t => t.currency_symbol === currency);
+    const { data: rawNums, error: rpcError } = await db.rpc('get_numbers_for_admin', {
+      p_admin_id: profile.id,
+      p_date: date || null,
+      p_seller_id: sellerId || null,
+      p_lottery_id: lotteryId || null,
+      p_draw_time_id: drawTimeId || null,
+    });
+    if (rpcError) { console.error('get_numbers_for_admin error:', rpcError); alert('Error RPC: ' + JSON.stringify(rpcError)); setLoading(false); return; }
 
-    // Inicializar grid
+    let allNums = currency
+      ? (rawNums || []).filter(n => n.currency_symbol === currency)
+      : (rawNums || []);
+
+    // Grid chances 00-99
     const sales = {};
     for (let i = 0; i <= 99; i++) sales[i.toString().padStart(2, '0')] = 0;
+    const bSales = {};
 
-    let allNums = [];
-    const idSet = new Set();
-
-    if (tickets.length > 0) {
-      const ids = tickets.map(t => t.id);
-      ids.forEach(id => idSet.add(id));
-
-      const CHUNK = 100;
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const { data: nums } = await db.from('ticket_numbers')
-          .select('ticket_id, number, pieces, subtotal').in('ticket_id', ids.slice(i, i + CHUNK));
-        allNums = allNums.concat(nums || []);
+    let totalPc = 0, totalBPc = 0;
+    allNums.forEach(n => {
+      const pieces = parseInt(n.pieces, 10);
+      if (n.number?.length === 2) {
+        sales[n.number] = (sales[n.number] || 0) + pieces;
+        totalPc += pieces;
+      } else if (n.number?.length === 4) {
+        bSales[n.number] = (bSales[n.number] || 0) + pieces;
+        totalBPc += pieces;
       }
-
-      let totalPc = 0;
-      allNums.forEach(n => {
-        if (idSet.has(n.ticket_id) && n.number?.length === 2) {
-          sales[n.number] = (sales[n.number] || 0) + parseInt(n.pieces, 10);
-          totalPc += parseInt(n.pieces, 10);
-        }
-      });
-      setTotalPieces(totalPc);
-    } else {
-      setTotalPieces(0);
-    }
+    });
+    setTotalPieces(totalPc);
+    setTotalBilletePieces(totalBPc);
     setNumberSales(sales);
+    setBilleteSales(bSales);
 
-    // 2. Números ganadores
+    const hasData = allNums.length > 0;
+
+    // Números ganadores
     let wn = null;
     if (lotteryId && date) {
       let wq = db.from('winning_numbers').select('*')
@@ -146,56 +152,108 @@ export default function AdminNumbers() {
     }
     setWinningNumbers(wn);
 
-    // 3. Cálculo financiero
     const sym = profile?.currency_symbol || '$';
+    const lottObj = lotteryId ? lotteries.find(l => l.id === lotteryId) || null : null;
+    const dtObj   = drawTimeId ? allDrawTimes.find(d => d.id === drawTimeId) || null : null;
+
+    // Financiero chances
     let totalCobrado = 0;
     allNums.forEach(n => {
-      if (idSet.has(n.ticket_id) && n.number?.length === 2) {
-        totalCobrado += parseFloat(n.subtotal || 0);
-      }
+      if (n.number?.length === 2) totalCobrado += parseFloat(n.subtotal || 0);
     });
-
     if (wn && lotteryId) {
-      const lottObj = lotteries.find(l => l.id === lotteryId) || null;
-      const dtObj   = drawTimeId ? allDrawTimes.find(d => d.id === drawTimeId) || null : null;
-      const m1 = getMultiplier(1, lottObj, dtObj);
-      const m2 = getMultiplier(2, lottObj, dtObj);
-      const m3 = getMultiplier(3, lottObj, dtObj);
+      const m1 = getChanceMultiplier(1, lottObj, dtObj);
+      const m2 = getChanceMultiplier(2, lottObj, dtObj);
+      const m3 = getChanceMultiplier(3, lottObj, dtObj);
       const c1 = wn.first_prize?.slice(-2);
       const c2 = wn.second_prize?.slice(-2);
       const c3 = wn.third_prize?.slice(-2);
-
       const winners = [];
       let totalPago = 0;
-
       allNums.forEach(n => {
-        if (!idSet.has(n.ticket_id) || n.number?.length !== 2) return;
+        if (n.number?.length !== 2) return;
         let prizeLabel = null, multiplier = 0;
         if (c1 && n.number === c1) { prizeLabel = '1er Premio'; multiplier = m1; }
         else if (c2 && n.number === c2) { prizeLabel = '2do Premio'; multiplier = m2; }
         else if (c3 && n.number === c3) { prizeLabel = '3er Premio'; multiplier = m3; }
-
         if (prizeLabel) {
-          const pago = parseFloat(n.subtotal || 0) * multiplier;
+          const pago = parseInt(n.pieces, 10) * multiplier;
           totalPago += pago;
-          // Agrupa por número+premio para mostrar total consolidado
           const existing = winners.find(w => w.number === n.number && w.prize === prizeLabel);
-          if (existing) {
-            existing.pieces += parseInt(n.pieces, 10);
-            existing.pago   += pago;
-          } else {
-            winners.push({ number: n.number, prize: prizeLabel, pieces: parseInt(n.pieces, 10), pago });
-          }
+          if (existing) { existing.pieces += parseInt(n.pieces, 10); existing.pago += pago; }
+          else winners.push({ number: n.number, prize: prizeLabel, pieces: parseInt(n.pieces, 10), pago });
         }
       });
-
-      const resultado = totalCobrado - totalPago;
-      setFinancials({ totalCobrado, totalPago, resultado, sym, winners });
+      setFinancials({ totalCobrado, totalPago, resultado: totalCobrado - totalPago, sym, winners });
     } else {
-      setFinancials(tickets.length > 0 ? { totalCobrado, totalPago: null, resultado: null, sym, winners: [] } : null);
+      setFinancials(hasData ? { totalCobrado, totalPago: null, resultado: null, sym, winners: [] } : null);
+    }
+
+    // Financiero billetes
+    let totalBCobrado = 0;
+    allNums.forEach(n => {
+      if (n.number?.length === 4) totalBCobrado += parseFloat(n.subtotal || 0);
+    });
+    if (wn && lotteryId) {
+      const bm1 = getBilleteMultiplier(1, lottObj);
+      const bm2 = getBilleteMultiplier(2, lottObj);
+      const bm3 = getBilleteMultiplier(3, lottObj);
+      const p1 = wn.first_prize  || '';
+      const p2 = wn.second_prize || '';
+      const p3 = wn.third_prize  || '';
+      const winners = [];
+      let totalBPago = 0;
+      allNums.forEach(n => {
+        if (n.number?.length !== 4) return;
+        let prizeLabel = null, multiplier = 0;
+        if (p1 && n.number === p1) { prizeLabel = '1er Premio'; multiplier = bm1; }
+        else if (p2 && n.number === p2) { prizeLabel = '2do Premio'; multiplier = bm2; }
+        else if (p3 && n.number === p3) { prizeLabel = '3er Premio'; multiplier = bm3; }
+        if (prizeLabel) {
+          const pago = parseInt(n.pieces, 10) * multiplier;
+          totalBPago += pago;
+          const existing = winners.find(w => w.number === n.number && w.prize === prizeLabel);
+          if (existing) { existing.pieces += parseInt(n.pieces, 10); existing.pago += pago; }
+          else winners.push({ number: n.number, prize: prizeLabel, pieces: parseInt(n.pieces, 10), pago });
+        }
+      });
+      setBilleteFinancials({ totalCobrado: totalBCobrado, totalPago: totalBPago, resultado: totalBCobrado - totalBPago, sym, winners });
+    } else {
+      setBilleteFinancials(Object.keys(bSales).length > 0 ? { totalCobrado: totalBCobrado, totalPago: null, resultado: null, sym, winners: [] } : null);
     }
 
     setLoading(false);
+  }
+
+  function generateExcessCSV(type) {
+    const threshold = parseInt(umbral, 10);
+    if (isNaN(threshold) || threshold < 0) { alert('Ingresa un umbral válido'); return; }
+    const sales = type === 'chances' ? numberSales : billeteSales;
+    const rows = Object.entries(sales)
+      .filter(([, pieces]) => pieces > threshold)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([number, pieces]) => ({ number, vendido: pieces, umbral: threshold, excedente: pieces - threshold }));
+
+    if (rows.length === 0) { alert('No hay números que superen el umbral ingresado'); return; }
+
+    const label = type === 'chances' ? 'Chances' : 'Billetes';
+    const lottery = lotteries.find(l => l.id === lotteryId);
+    const drawTime = allDrawTimes.find(d => d.id === drawTimeId);
+    let csv = `Reporte Excedente ${label}\n`;
+    csv += `Fecha: ${date || 'Todas'}\n`;
+    if (lottery) csv += `Lotería: ${lottery.display_name}\n`;
+    if (drawTime) csv += `Sorteo: ${drawTime.time_label}\n`;
+    csv += `Umbral: ${threshold} piezas\n\n`;
+    csv += `Número,Excedente\n`;
+    rows.forEach(r => { csv += `${r.number},${r.excedente}\n`; });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `excedente_${label.toLowerCase()}_${date || 'todos'}_umbral${threshold}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   const filteredDrawTimes = lotteryId ? allDrawTimes.filter(d => d.lottery_id === lotteryId) : allDrawTimes;
@@ -204,13 +262,26 @@ export default function AdminNumbers() {
     Object.entries(numberSales).filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).slice(0, 3),
     [numberSales]);
 
+  const sortedBilletes = useMemo(() =>
+    Object.entries(billeteSales).filter(([, p]) => p > 0).sort((a, b) => a[0].localeCompare(b[0])),
+    [billeteSales]);
+  const topBilletes = useMemo(() =>
+    Object.entries(billeteSales).filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).slice(0, 3),
+    [billeteSales]);
+  const maxBilletePieces = useMemo(() => Math.max(...Object.values(billeteSales), 1), [billeteSales]);
+
   const c1 = winningNumbers?.first_prize?.slice(-2);
   const c2 = winningNumbers?.second_prize?.slice(-2);
   const c3 = winningNumbers?.third_prize?.slice(-2);
+  const b1 = winningNumbers?.first_prize  || '';
+  const b2 = winningNumbers?.second_prize || '';
+  const b3 = winningNumbers?.third_prize  || '';
 
   const activeFilterCount = [sellerId, lotteryId, drawTimeId, currency, date !== today ? 1 : null].filter(Boolean).length;
   const prizeColors = ['text-indigo-400', 'text-emerald-400', 'text-amber-400'];
   const prizeBg     = ['bg-indigo-500/20 border-indigo-500/40', 'bg-emerald-500/20 border-emerald-500/40', 'bg-amber-500/20 border-amber-500/40'];
+
+  const curFin = activeTab === 'chances' ? financials : billeteFinancials;
 
   return (
     <div className="space-y-5 mt-2 pb-8">
@@ -219,16 +290,41 @@ export default function AdminNumbers() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">Números vendidos</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Chance (2 cifras) · Vista global</p>
+          <p className="text-xs text-slate-500 mt-0.5">Vista global por tipo</p>
         </div>
-        {activeFilterCount > 0 && (
+        <div className="flex gap-2">
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => { setSellerId(''); setLotteryId(''); setDrawTimeId(''); setCurrency(''); setDate(today); }}
+              className="text-xs text-slate-400 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl transition"
+            >
+              Limpiar
+            </button>
+          )}
           <button
-            onClick={() => { setSellerId(''); setLotteryId(''); setDrawTimeId(''); setCurrency(''); setDate(today); }}
-            className="text-xs text-slate-400 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl transition"
+            onClick={() => loadData(sellers.map(s => s.id))}
+            disabled={loading}
+            className="text-xs text-indigo-400 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl transition disabled:opacity-50"
           >
-            Limpiar
+            {loading ? '...' : '↺ Actualizar'}
           </button>
-        )}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex bg-slate-900 border border-slate-700/60 rounded-xl p-1 gap-1">
+        <button
+          onClick={() => setActiveTab('chances')}
+          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'chances' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+        >
+          Chances (2 cifras)
+        </button>
+        <button
+          onClick={() => setActiveTab('billetes')}
+          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'billetes' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+        >
+          Billetes (4 cifras)
+        </button>
       </div>
 
       {/* Filtros */}
@@ -300,8 +396,13 @@ export default function AdminNumbers() {
             ].map(({ label, chance, full }, i) => (
               <div key={i} className={`border rounded-xl p-3 text-center ${prizeBg[i]}`}>
                 <p className="text-xs text-slate-400 mb-1">{label}</p>
-                <p className={`text-2xl font-extrabold ${prizeColors[i]}`}>{chance || '—'}</p>
-                {full && full !== chance && <p className="text-xs text-slate-500 mt-0.5">{full}</p>}
+                {activeTab === 'chances'
+                  ? <p className={`text-2xl font-extrabold ${prizeColors[i]}`}>{chance || '—'}</p>
+                  : <p className={`text-xl font-extrabold ${prizeColors[i]}`}>{full || '—'}</p>
+                }
+                {activeTab === 'chances' && full && full !== chance && (
+                  <p className="text-xs text-slate-500 mt-0.5">{full}</p>
+                )}
               </div>
             ))}
           </div>
@@ -309,54 +410,49 @@ export default function AdminNumbers() {
       )}
 
       {/* Resumen financiero */}
-      {!loading && financials && (
+      {!loading && curFin && (
         <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 border-b border-slate-800">
             <p className="text-sm font-semibold text-white">Resumen financiero</p>
           </div>
-
-          {/* Ganadores detalle */}
-          {financials.winners?.length > 0 && (
+          {curFin.winners?.length > 0 && (
             <div className="px-4 pt-3 pb-2">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Premios a pagar</p>
               <div className="space-y-1.5">
-                {financials.winners.map((w, i) => (
+                {curFin.winners.map((w, i) => (
                   <div key={i} className="flex items-center justify-between bg-slate-800/60 rounded-lg px-3 py-2">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-base font-bold text-white">{w.number}</span>
                       <span className="text-xs text-slate-400">{w.prize}</span>
                       <span className="text-xs text-slate-600">×{w.pieces} piezas</span>
                     </div>
-                    <span className="text-sm font-bold text-rose-400">{fmtAmt(w.pago, financials.sym)}</span>
+                    <span className="text-sm font-bold text-rose-400">{fmtAmt(w.pago, curFin.sym)}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-
-          {financials.winners?.length === 0 && winningNumbers && (
+          {curFin.winners?.length === 0 && winningNumbers && (
             <div className="px-4 pt-3 pb-1">
               <p className="text-xs text-center text-emerald-400 py-1">Sin ganadores en esta selección</p>
             </div>
           )}
-
-          {/* Totales */}
           <div className="px-4 py-3 space-y-2 border-t border-slate-800 mt-1">
             <div className="flex justify-between items-center">
               <span className="text-sm text-slate-400">Total recaudado</span>
-              <span className="text-sm font-bold text-emerald-400">{fmtAmt(financials.totalCobrado, financials.sym)}</span>
+              <span className="text-sm font-bold text-emerald-400">{fmtAmt(curFin.totalCobrado, curFin.sym)}</span>
             </div>
-            {financials.totalPago !== null && (
+            {curFin.totalPago !== null && (
               <>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-slate-400">Total a pagar</span>
-                  <span className="text-sm font-bold text-rose-400">{fmtAmt(financials.totalPago, financials.sym)}</span>
+                  <span className="text-sm font-bold text-rose-400">{fmtAmt(curFin.totalPago, curFin.sym)}</span>
                 </div>
                 <div className="flex justify-between items-center pt-2 border-t border-slate-800">
                   <span className="text-sm font-semibold text-white">Resultado</span>
-                  <span className={`text-sm font-bold ${financials.resultado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {financials.resultado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
-                    {fmtAmt(Math.abs(financials.resultado), financials.sym)}
+                  <span className={`text-sm font-bold ${curFin.resultado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {curFin.resultado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
+                    {fmtAmt(Math.abs(curFin.resultado), curFin.sym)}
                   </span>
                 </div>
               </>
@@ -365,97 +461,225 @@ export default function AdminNumbers() {
         </div>
       )}
 
-      {/* Stats */}
-      {!loading && (
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-            <p className="text-lg font-bold text-white">{Object.values(numberSales).filter(p => p > 0).length}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Números</p>
+      {/* Excedente */}
+      <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-4 space-y-3">
+        <p className="text-sm font-semibold text-white">Generar CSV de excedente</p>
+        <p className="text-xs text-slate-400">Ingresa el umbral: los números con más piezas vendidas que este valor aparecerán en el CSV con su excedente. No afecta la base de datos.</p>
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="text-xs font-medium text-slate-400 block mb-1.5">Umbral (piezas)</label>
+            <input
+              type="number" min="0" step="1"
+              value={umbral}
+              onChange={e => setUmbral(e.target.value)}
+              placeholder="Ej: 20"
+              className={inp}
+            />
           </div>
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-            <p className="text-lg font-bold text-indigo-400">{totalPieces}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
-          </div>
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-            <p className="text-lg font-bold text-violet-400">{topNumbers[0]?.[0] ?? '—'}</p>
-            <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
-          </div>
-        </div>
-      )}
-
-      {/* Top 3 */}
-      {!loading && topNumbers.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
-          <div className="space-y-2.5">
-            {topNumbers.map(([num, pieces], i) => {
-              const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
-              return (
-                <div key={num}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
-                      <span className="text-base font-bold text-white font-mono">{num}</span>
-                    </div>
-                    <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
-                  </div>
-                  <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                    <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxPieces) * 100)}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Grid 00-99 */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cuadrícula 00 – 99</p>
-          {winningNumbers && (
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
-            </div>
-          )}
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden">
-            {Array.from({ length: 100 }).map((_, i) => (
-              <div key={i} className="bg-slate-800 animate-pulse h-14 rounded" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden border border-slate-800">
-            {Array.from({ length: 100 }).map((_, i) => {
-              const num = i.toString().padStart(2, '0');
-              const pieces = numberSales[num] || 0;
-              const w1 = c1 === num, w2 = c2 === num, w3 = c3 === num;
-              return (
-                <div key={num} className={`flex flex-col items-center justify-center py-2.5 px-1 ${cellColor(pieces, maxPieces, w1, w2, w3)}`}>
-                  <span className="text-xs font-bold font-mono leading-none">{num}</span>
-                  <span className={`text-[11px] leading-none mt-0.5 ${pieces === 0 ? 'opacity-0' : ''}`}>{pieces}</span>
-                  {(w1 || w2 || w3) && (
-                    <span className="text-[9px] leading-none mt-0.5 font-bold">{w1 ? '1°' : w2 ? '2°' : '3°'}</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="mt-3 flex items-center gap-1">
-          {[['bg-slate-900 border border-slate-800','Sin ventas'],['bg-blue-950',''],['bg-indigo-900',''],['bg-indigo-800',''],['bg-violet-700',''],['bg-violet-500','Máximo']].map(([cls, label], i) => (
-            <div key={i} className="flex-1 flex flex-col items-center gap-1">
-              <div className={`w-full h-4 rounded ${cls}`} />
-              {label && <p className="text-[10px] text-slate-600">{label}</p>}
-            </div>
-          ))}
+          <button
+            onClick={() => generateExcessCSV(activeTab)}
+            disabled={!umbral}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition whitespace-nowrap"
+          >
+            ↓ CSV {activeTab === 'chances' ? 'Chances' : 'Billetes'}
+          </button>
         </div>
       </div>
+
+      {/* ===================== TAB: CHANCES ===================== */}
+      {activeTab === 'chances' && (
+        <>
+          {/* Stats */}
+          {!loading && (
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-white">{Object.values(numberSales).filter(p => p > 0).length}</p>
+                <p className="text-xs text-slate-500 mt-0.5">Números</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-indigo-400">{totalPieces}</p>
+                <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-violet-400">{topNumbers[0]?.[0] ?? '—'}</p>
+                <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
+              </div>
+            </div>
+          )}
+
+          {/* Top 3 */}
+          {!loading && topNumbers.length > 0 && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
+              <div className="space-y-2.5">
+                {topNumbers.map(([num, pieces], i) => {
+                  const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
+                  return (
+                    <div key={num}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
+                          <span className="text-base font-bold text-white font-mono">{num}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxPieces) * 100)}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Grid 00-99 */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cuadrícula 00 – 99</p>
+              {winningNumbers && (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
+                </div>
+              )}
+            </div>
+            {loading ? (
+              <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden">
+                {Array.from({ length: 100 }).map((_, i) => (
+                  <div key={i} className="bg-slate-800 animate-pulse h-14 rounded" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden border border-slate-800">
+                {Array.from({ length: 100 }).map((_, i) => {
+                  const num = i.toString().padStart(2, '0');
+                  const pieces = numberSales[num] || 0;
+                  const w1 = c1 === num, w2 = c2 === num, w3 = c3 === num;
+                  return (
+                    <div key={num} className={`flex flex-col items-center justify-center py-2.5 px-1 ${cellColor(pieces, maxPieces, w1, w2, w3)}`}>
+                      <span className="text-xs font-bold font-mono leading-none">{num}</span>
+                      <span className={`text-[11px] leading-none mt-0.5 ${pieces === 0 ? 'opacity-0' : ''}`}>{pieces}</span>
+                      {(w1 || w2 || w3) && (
+                        <span className="text-[9px] leading-none mt-0.5 font-bold">{w1 ? '1°' : w2 ? '2°' : '3°'}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="mt-3 flex items-center gap-1">
+              {[['bg-slate-900 border border-slate-800','Sin ventas'],['bg-blue-950',''],['bg-indigo-900',''],['bg-indigo-800',''],['bg-violet-700',''],['bg-violet-500','Máximo']].map(([cls, label], i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div className={`w-full h-4 rounded ${cls}`} />
+                  {label && <p className="text-[10px] text-slate-600">{label}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ===================== TAB: BILLETES ===================== */}
+      {activeTab === 'billetes' && (
+        <>
+          {/* Stats */}
+          {!loading && (
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-white">{sortedBilletes.length}</p>
+                <p className="text-xs text-slate-500 mt-0.5">Números</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-indigo-400">{totalBilletePieces}</p>
+                <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-violet-400">{topBilletes[0]?.[0] ?? '—'}</p>
+                <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
+              </div>
+            </div>
+          )}
+
+          {/* Top 3 billetes */}
+          {!loading && topBilletes.length > 0 && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
+              <div className="space-y-2.5">
+                {topBilletes.map(([num, pieces], i) => {
+                  const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
+                  return (
+                    <div key={num}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
+                          <span className="text-base font-bold text-white font-mono">{num}</span>
+                        </div>
+                        <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
+                      </div>
+                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                        <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxBilletePieces) * 100)}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Lista de billetes vendidos */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Billetes vendidos</p>
+              {winningNumbers && (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
+                </div>
+              )}
+            </div>
+
+            {loading ? (
+              <div className="space-y-1">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-slate-800 animate-pulse h-12 rounded-xl" />
+                ))}
+              </div>
+            ) : sortedBilletes.length === 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
+                <p className="text-slate-500 text-sm">No hay billetes vendidos con los filtros seleccionados</p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {sortedBilletes.map(([num, pieces]) => {
+                  const isW1 = b1 && num === b1;
+                  const isW2 = b2 && num === b2;
+                  const isW3 = b3 && num === b3;
+                  const isWinner = isW1 || isW2 || isW3;
+                  const prizeLabel = isW1 ? '1er Premio' : isW2 ? '2do Premio' : isW3 ? '3er Premio' : null;
+                  const winBg = isW1 ? 'bg-indigo-500/20 border-indigo-500/50' : isW2 ? 'bg-emerald-500/20 border-emerald-500/50' : isW3 ? 'bg-amber-500/20 border-amber-500/50' : 'bg-slate-900 border-slate-800';
+                  const numColor = isW1 ? 'text-indigo-300' : isW2 ? 'text-emerald-300' : isW3 ? 'text-amber-300' : 'text-white';
+                  return (
+                    <div key={num} className={`flex items-center justify-between px-4 py-3 rounded-xl border ${winBg}`}>
+                      <div className="flex items-center gap-3">
+                        <span className={`font-mono text-lg font-bold ${numColor}`}>{num}</span>
+                        {isWinner && (
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isW1 ? 'bg-indigo-500/30 text-indigo-300' : isW2 ? 'bg-emerald-500/30 text-emerald-300' : 'bg-amber-500/30 text-amber-300'}`}>
+                            {prizeLabel}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold text-slate-300">{pieces} {pieces === 1 ? 'pieza' : 'piezas'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

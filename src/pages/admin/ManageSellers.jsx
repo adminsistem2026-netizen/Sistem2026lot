@@ -52,6 +52,8 @@ export default function ManageSellers() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [currencies, setCurrencies] = useState([]);
+  const [deleteTarget, setDeleteTarget] = useState(null); // seller a eliminar
+  const [deleting, setDeleting] = useState(false);
 
   async function loadSellers() {
     setLoading(true);
@@ -153,6 +155,14 @@ export default function ManageSellers() {
         if (err) throw err;
         // Try extended fields — ignore error if columns don't exist yet
         await db.from('profiles').update(extendedFields).eq('id', editSeller.id);
+        // Change password if provided
+        if (form.password.trim()) {
+          const { error: pwError } = await db.rpc('change_user_password', {
+            p_user_id: editSeller.id,
+            p_new_password: form.password.trim(),
+          });
+          if (pwError) throw pwError;
+        }
       } else {
         const response = await createAuthUser(form.email.trim(), form.password, form.full_name.trim());
         const { error: profileError } = await db.rpc('setup_new_user', {
@@ -183,6 +193,21 @@ export default function ManageSellers() {
   async function toggleActive(seller) {
     await db.from('profiles').update({ is_active: !seller.is_active }).eq('id', seller.id);
     loadSellers();
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const { error } = await db.rpc('delete_seller', { p_seller_id: deleteTarget.id });
+      if (error) throw error;
+      setDeleteTarget(null);
+      loadSellers();
+    } catch (err) {
+      alert('Error al eliminar: ' + (err.message || JSON.stringify(err)));
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const isCustomCurrency = (seller) => seller.currency_code && seller.currency_code !== profile?.currency_code;
@@ -247,13 +272,49 @@ export default function ManageSellers() {
                   <button onClick={() => openEdit(seller)} className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition">
                     Editar
                   </button>
-                  <button onClick={() => toggleActive(seller)} className={`text-xs font-medium transition ${seller.is_active ? 'text-red-400 hover:text-red-300' : 'text-emerald-400 hover:text-emerald-300'}`}>
+                  <button onClick={() => toggleActive(seller)} className={`text-xs font-medium transition ${seller.is_active ? 'text-amber-400 hover:text-amber-300' : 'text-emerald-400 hover:text-emerald-300'}`}>
                     {seller.is_active ? 'Desactivar' : 'Activar'}
+                  </button>
+                  <button onClick={() => setDeleteTarget(seller)} className="text-xs text-red-400 hover:text-red-300 font-medium transition">
+                    Eliminar
                   </button>
                 </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal confirmar eliminación */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-base font-bold text-white">¿Eliminar vendedor?</h2>
+            <p className="text-sm text-slate-400">
+              Esta acción eliminará permanentemente a <span className="text-white font-semibold">{deleteTarget.full_name}</span> y todos sus tickets y registros. No se puede deshacer.
+            </p>
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 space-y-1">
+              <p className="text-xs text-red-400">Se eliminará permanentemente:</p>
+              <p className="text-xs text-red-300">• Perfil y acceso del vendedor</p>
+              <p className="text-xs text-red-300">• Todos sus tickets y números vendidos</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex-1 border border-slate-600 text-slate-300 hover:bg-slate-700 text-sm py-2.5 rounded-xl transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -272,17 +333,16 @@ export default function ManageSellers() {
               </div>
 
               {!editSeller && (
-                <>
-                  <div>
-                    <label className={labelCls}>Correo electrónico *</label>
-                    <input type="email" value={form.email} onChange={e => f('email', e.target.value)} className={inputCls} placeholder="correo@ejemplo.com" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Contraseña *</label>
-                    <input type="password" value={form.password} onChange={e => f('password', e.target.value)} className={inputCls} placeholder="Mínimo 6 caracteres" />
-                  </div>
-                </>
+                <div>
+                  <label className={labelCls}>Correo electrónico *</label>
+                  <input type="email" value={form.email} onChange={e => f('email', e.target.value)} className={inputCls} placeholder="correo@ejemplo.com" />
+                </div>
               )}
+
+              <div>
+                <label className={labelCls}>{editSeller ? 'Nueva contraseña (dejar en blanco para no cambiar)' : 'Contraseña *'}</label>
+                <input type="password" value={form.password} onChange={e => f('password', e.target.value)} className={inputCls} placeholder={editSeller ? 'Nueva contraseña...' : 'Mínimo 6 caracteres'} />
+              </div>
 
               <div>
                 <label className={labelCls}>Teléfono</label>

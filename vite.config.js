@@ -5,7 +5,6 @@ import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: '/lottery-system/',
   build: {
     rollupOptions: {
       input: {

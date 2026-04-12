@@ -2,8 +2,8 @@ import { createClient } from '@insforge/sdk';
 
 // ==================== InsForge Client ====================
 const client = createClient({
-    baseUrl: import.meta.env.VITE_INSFORGE_URL,
-    anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY,
+    baseUrl: import.meta.env.VITE_INSFORGE_URL || 'https://w54yh5ce.us-east.insforge.app',
+    anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY || 'ik_9d16e487f6a52cf24e19dda5922ff2de',
 });
 const auth = client.auth;
 const db = client.database;
@@ -64,6 +64,13 @@ async function checkPassword() {
         }
         currentUser = data.user;
         await loadProfile();
+        if (currentProfile?.is_active === false) {
+            await auth.signOut();
+            currentUser = null;
+            currentProfile = null;
+            errorEl.innerText = 'Tu cuenta está desactivada. Contacta al administrador.';
+            return;
+        }
         await initApp();
         showMainPage();
     } catch (err) {
@@ -104,10 +111,12 @@ async function loadProfile() {
                     currentProfile = {
                         ...currentProfile,
                         seller_code: codes[0].seller_code,
-                        admin_code: codes[0].admin_code,
                         parent_admin_id: codes[0].parent_admin_id,
+                        admin_code: codes[0].admin_code,
                     };
-                    sellerName = codes[0].seller_code || currentProfile.full_name || currentProfile.name || sellerName;
+                    const adminCode = codes[0].admin_code;
+                    const baseName = currentProfile.full_name || currentProfile.name || 'Vendedor';
+                    sellerName = adminCode ? `${adminCode} - ${baseName}` : (codes[0].seller_code || baseName);
                 } else {
                     sellerName = currentProfile.full_name || currentProfile.name || sellerName;
                 }
@@ -131,9 +140,11 @@ function getAdminId() {
 // ==================== Lotteries ====================
 async function loadLotteries() {
     try {
+        const adminId = getAdminId();
         const { data: lotData, error: lotError } = await db
             .from('lotteries')
-            .select('*');
+            .select('*')
+            .eq('admin_id', adminId);
         if (lotError) { console.error('lotteries error:', lotError); return; }
 
         const activeLotteries = (lotData || [])
@@ -268,8 +279,9 @@ function getDrawTimeLabelById(drawTimeId) {
 // ==================== Adapt DB ticket to UI format ====================
 function adaptTicket(t) {
     return {
-        id: t.ticket_number || t.id,
+        id: t.id,
         dbId: t.id,
+        ticketNumber: t.ticket_number || '',
         datetime: t.created_at || t.sale_date,
         saleDate: t.sale_date || '',
         lottery: getDisplayName(t.lottery_id),
@@ -292,29 +304,28 @@ function adaptTicket(t) {
 // ==================== Tickets (DB) ====================
 async function loadTickets(filters = {}) {
     try {
-        const adminId = getAdminId();
-        const { data: ticketsData, error: ticketsError } = await db.from('tickets').select('*');
+        const isSeller = currentProfile && currentProfile.parent_admin_id;
+        const { data: ticketsData, error: ticketsError } = await db.rpc('get_user_tickets', {
+            p_seller_id: isSeller ? currentProfile.id : null,
+            p_admin_id:  isSeller ? null : (currentProfile?.id || null),
+        });
         if (ticketsError) { console.error('loadTickets error:', ticketsError); return []; }
 
-        let result = (ticketsData || []).filter(t => !t.is_cancelled);
-        if (currentProfile && currentProfile.parent_admin_id) {
-            result = result.filter(t => t.seller_id === currentProfile.id);
-        } else if (currentProfile && !currentProfile.parent_admin_id) {
-            result = result.filter(t => t.admin_id === currentProfile.id);
-        }
-
+        const result = ticketsData || [];
         if (result.length === 0) return [];
 
-        // Fetch ticket_numbers separately and merge
-        const { data: numsData } = await db.from('ticket_numbers').select('*');
+        // Fetch ticket_numbers via RPC para evitar bug .in() de InsForge y traer solo los del usuario
+        const { data: numsData } = await db.rpc('get_ticket_numbers_for_user', {
+            p_seller_id: isSeller ? currentProfile.id : null,
+            p_admin_id:  isSeller ? null : currentProfile?.id || null,
+        });
         const numsByTicket = {};
         (numsData || []).forEach(n => {
             if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
             numsByTicket[n.ticket_id].push(n);
         });
-        result = result.map(t => ({ ...t, ticket_numbers: numsByTicket[t.id] || [] }));
 
-        return result.map(adaptTicket);
+        return result.map(t => adaptTicket({ ...t, ticket_numbers: numsByTicket[t.id] || [] }));
     } catch (e) {
         console.error('loadTickets exception:', e);
         return [];
@@ -347,7 +358,10 @@ async function generateTicket() {
 
     if (!validarHorarioVenta()) {
         if (lotteryObj && lotteryObj.draw_times && lotteryObj.draw_times.length > 0) {
-            showNotification('No se puede generar el ticket. Ventas bloqueadas 5 minutos antes y 20 minutos después del sorteo.', 'warning');
+            const _dtObj = getSelectedDrawTimeObj();
+            const _cut = _dtObj?.cutoff_minutes_before ?? 1;
+            const _blk = _dtObj?.block_minutes_after ?? 20;
+            showNotification(`No se puede generar el ticket. Ventas bloqueadas ${_cut} min antes y ${_blk} min después del sorteo.`, 'warning');
             return;
         }
     }
@@ -363,7 +377,15 @@ async function generateTicket() {
 
     showLoading();
     try {
-        // Usar RPC para evitar bug de schema cache de InsForge (admin_id ignorado en insert directo)
+        // Guardar ticket + números en una sola transacción atómica via RPC
+        const numberRows = numbers.map(n => ({
+            number:      n.number,
+            digit_count: n.number.length,
+            pieces:      n.pieces,
+            unit_price:  n.pieces > 0 ? parseFloat((n.subTotal / n.pieces).toFixed(4)) : 0,
+            subtotal:    n.subTotal,
+        }));
+
         const { data: rpcData, error: ticketError } = await db.rpc('save_ticket', {
             p_ticket_number:   ticketNumber,
             p_seller_id:       currentProfile ? currentProfile.id : currentUser?.id || null,
@@ -374,6 +396,7 @@ async function generateTicket() {
             p_total_amount:    totalAmount,
             p_currency_symbol: currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$',
             p_sale_date:       dateStr,
+            p_numbers:         numberRows,
         });
         if (ticketError) {
             console.error('Insert ticket error:', ticketError);
@@ -381,33 +404,13 @@ async function generateTicket() {
             return;
         }
 
-        let ticketId = rpcData || null;
-        if (!ticketId) {
-            const { data: fetched } = await db.from('tickets').select('id').eq('ticket_number', ticketNumber);
-            ticketId = fetched?.[0]?.id || null;
-        }
-
-        if (ticketId) {
-            const numberRows = numbers.map(n => ({
-                ticket_id: ticketId,
-                number: n.number,
-                digit_count: n.number.length,
-                pieces: n.pieces,
-                unit_price: n.pieces > 0 ? parseFloat((n.subTotal / n.pieces).toFixed(4)) : 0,
-                subtotal: n.subTotal,
-            }));
-            const { error: numError } = await db.from('ticket_numbers').insert(numberRows);
-            if (numError) {
-                showNotification('Error al guardar números: ' + (numError.message || JSON.stringify(numError)), 'error', 6000);
-            }
-        } else {
-            showNotification('No se pudo obtener ID del ticket para guardar números', 'error', 6000);
-        }
+        const ticketId = rpcData || null;
 
         // Build local ticket object for preview
         const ticket = {
-            id: ticketNumber,
+            id: ticketId,
             dbId: ticketId,
+            ticketNumber: ticketNumber,
             datetime: new Date().toISOString(),
             lottery: lotteryType,
             lotteryName: lotteryObj?.display_name || lotteryType,
@@ -499,10 +502,11 @@ async function deleteTicket(ticketId) {
                 return;
             }
 
-            displayTickets();
-            calculateCurrentSales();
+            closeTicket();
             const currentDate = document.getElementById('salesDate').value;
             if (currentDate) showSalesByDate(currentDate);
+            else { displayTickets(); }
+            calculateCurrentSales();
             showNotification('Ticket eliminado correctamente', 'success');
         } catch (e) {
             console.error('deleteTicket error:', e);
@@ -549,7 +553,7 @@ async function calculateCurrentSales() {
         const activeTickets = allTickets.filter(ticket => {
             const ticketDate = new Date(ticket.datetime);
             const tStr = `${ticketDate.getFullYear()}-${String(ticketDate.getMonth()+1).padStart(2,'0')}-${String(ticketDate.getDate()).padStart(2,'0')}`;
-            return !ticket.paid && tStr === todayStr;
+            return !ticket.paid && !ticket.cancelled && tStr === todayStr;
         });
 
         activeTickets.forEach(ticket => {
@@ -635,7 +639,7 @@ function updateDateTime() {
 
 // ==================== Page navigation ====================
 function showLoginPage() {
-    document.getElementById('loginPage').style.display = 'block';
+    document.getElementById('loginPage').style.display = 'flex';
     document.getElementById('mainPage').style.display = 'none';
     document.getElementById('salesPage').style.display = 'none';
     document.getElementById('numberSalesPage').style.display = 'none';
@@ -934,7 +938,7 @@ function showTicketPreview(ticket) {
 
       <!-- Column headers -->
       <div style="display:flex;justify-content:space-between;align-items:baseline;margin:3px 0;">
-        <span style="font-size:1.1em;font-weight:bold;">NUMERO&nbsp;&nbsp;PIEZA</span>
+        <span style="font-size:1.1em;font-weight:bold;">CIFRA&nbsp;&nbsp;CANT</span>
         <span style="font-size:0.82em;">SUBTOTAL</span>
       </div>
       <div style="border-bottom:1px solid #000;margin-bottom:4px;"></div>
@@ -954,7 +958,8 @@ function showTicketPreview(ticket) {
       <!-- Footer -->
       <div style="font-size:0.85em;margin-top:4px;">Vendedor: ${sellerName}</div>
       ${ticket.customerName ? `<div style="font-size:0.85em;">Cliente: ${ticket.customerName}</div>` : ''}
-      <div style="font-size:0.8em;word-break:break-all;">ID: ${ticket.id}</div>
+      ${ticket.ticketNumber ? `<div style="font-size:0.8em;font-weight:bold;">#${ticket.ticketNumber}</div>` : ''}
+      <div style="font-size:0.75em;word-break:break-all;color:#555;">${ticket.id}</div>
       <div style="font-size:0.85em;">SIN TICKET NO HAY RECLAMO</div>
     </div>
     `;
@@ -1063,9 +1068,10 @@ function viewTicket(ticketId) {
 function showSalesByDate(dateString) {
     loadTickets().then(allTickets => {
         const dayTickets = allTickets.filter(ticket => ticket.saleDate === dateString);
-        const totalAmount = dayTickets.reduce((sum, ticket) => sum + ticket.total, 0);
+        const activeTickets = dayTickets.filter(ticket => !ticket.cancelled);
+        const totalAmount = activeTickets.reduce((sum, ticket) => sum + ticket.total, 0);
         document.getElementById('currentSalesDate').textContent = dateString;
-        document.getElementById('totalTickets').textContent = dayTickets.length;
+        document.getElementById('totalTickets').textContent = activeTickets.length;
         document.getElementById('totalSales').textContent = totalAmount.toFixed(2);
         displayTickets(dayTickets);
     });
@@ -1090,9 +1096,10 @@ function initSalesTotals() {
             const ticketDate = new Date(ticket.datetime);
             return ticketDate >= selectedDate && ticketDate <= endDate;
         });
-        const totalAmount = dayTickets.reduce((sum, t) => sum + t.total, 0);
+        const activeDay = dayTickets.filter(t => !t.cancelled);
+        const totalAmount = activeDay.reduce((sum, t) => sum + t.total, 0);
         document.getElementById('currentSalesDate').textContent = selectedDate.toLocaleDateString('es-ES');
-        document.getElementById('totalTickets').textContent = dayTickets.length;
+        document.getElementById('totalTickets').textContent = activeDay.length;
         document.getElementById('totalSales').textContent = totalAmount.toFixed(2);
     });
 }
@@ -1100,7 +1107,8 @@ function initSalesTotals() {
 async function displayTickets(ticketsToShow = null) {
     const ticketsList = document.getElementById('ticketsList');
     try {
-        const tickets = ticketsToShow ?? await loadTickets();
+        const raw = ticketsToShow ?? await loadTickets();
+        const tickets = (raw || []).filter(t => !t.cancelled);
         if (!tickets || tickets.length === 0) {
             ticketsList.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No hay tickets registrados</p>';
             return;
@@ -1119,9 +1127,9 @@ async function displayTickets(ticketsToShow = null) {
                 <p><strong>Estado:</strong> ${ticket.paid ? 'Pagado' : 'Pendiente'}</p>
                 <div class="ticket-actions">
                     <button onclick="viewTicket('${ticket.id}')">Ver</button>
-                    <button onclick="deleteTicket('${ticket.id}')">clear</button>
-                    <button onclick="copyTicket('${ticket.id}')">copy</button>
-                    ${!ticket.paid ? `<button onclick="marcarComoPagado('${ticket.id}')">cobrar</button>` : ''}
+                    <button onclick="deleteTicket('${ticket.id}')" style="background:#e5e7eb;color:#374151;border:1px solid #d1d5db;">Clear</button>
+                    <button onclick="copyTicket('${ticket.id}')">Copy</button>
+                    ${!ticket.paid ? `<button onclick="marcarComoPagado('${ticket.id}')" style="background:#e5e7eb;color:#374151;border:1px solid #d1d5db;">Cobrar</button>` : ''}
                 </div>
             </div>`;
         }).join('');
@@ -1542,10 +1550,8 @@ async function loadAndDisplayWinningNumbers() {
                 }
 
                 if (prizeLabel) {
-                    const unitPrice = isChance
-                        ? (currentProfile?.price_2_digits_override ?? lotteryObj?.price_2_digits ?? 1.00)
-                        : (currentProfile?.price_4_digits_override ?? lotteryObj?.price_4_digits ?? 1.00);
-                    const pago = num.pieces * unitPrice * multiplier;
+                    // Premio = piezas × multiplicador (precio base $1 por pieza)
+                    const pago = num.pieces * multiplier;
                     totalPago += pago;
                     winners.push({ number: num.number, prizeLabel, pieces: num.pieces, pago });
                 }
@@ -2070,7 +2076,7 @@ async function openScannerModal() {
                 _qrModal = null;
                 document.getElementById('scannerModal').classList.remove('active');
                 const allTickets = await loadTickets();
-                const ticket = allTickets.find(t => t.id === decodedText);
+                const ticket = allTickets.find(t => t.id === decodedText || t.ticketNumber === decodedText);
                 if (ticket) {
                     showTicketPreview(ticket);
                 } else {
@@ -2105,7 +2111,7 @@ async function toggleScanner() {
                     _qrSales = null;
                     scannerContainer.style.display = 'none';
                     const allTickets = await loadTickets();
-                    const ticket = allTickets.find(t => t.id === decodedText);
+                    const ticket = allTickets.find(t => t.id === decodedText || t.ticketNumber === decodedText);
                     if (ticket) {
                         verificarTicket(ticket);
                     } else {
@@ -2301,24 +2307,20 @@ function switchLimitTab(tab) {
 
 // ==================== Schedule validation ====================
 function validarHorarioVenta() {
-    const lotteryType = document.getElementById('lotteryType').value;
-    const drawTime = getSelectedDrawTimeObj()?.time_label || '';
+    const dt = getSelectedDrawTimeObj();
+    if (!dt?.time_value) return false;
 
-    if (!drawTime) return false;
+    const cutoff = dt.cutoff_minutes_before ?? 1;
+    const blockAfter = dt.block_minutes_after ?? 20;
 
     const ahora = new Date();
-    let [tiempo, periodo] = drawTime.split(' ');
-    let [hora, minutos] = tiempo.split(':').map(Number);
-
-    if (periodo === 'PM' && hora !== 12) hora += 12;
-    else if (periodo === 'AM' && hora === 12) hora = 0;
-
+    const [hora, minutos] = dt.time_value.split(':').map(Number);
     const horaSorteoEnMinutos = hora * 60 + minutos;
     const horaActualEnMinutos = ahora.getHours() * 60 + ahora.getMinutes();
     const diferencia = horaSorteoEnMinutos - horaActualEnMinutos;
 
-    if (diferencia <= 1 && diferencia >= 0) return false;
-    if (diferencia < 0) return Math.abs(diferencia) > 20;
+    if (diferencia >= 0 && diferencia <= cutoff) return false;
+    if (diferencia < 0) return Math.abs(diferencia) > blockAfter;
     return true;
 }
 
@@ -2476,7 +2478,10 @@ function submitNumber() {
             }
 
             if (!validarHorarioVenta()) {
-                showNotification('No se pueden vender números. Ventas bloqueadas 1 minuto antes y 20 minutos después del sorteo.', 'warning');
+                const _dt3 = getSelectedDrawTimeObj();
+                const _cut3 = _dt3?.cutoff_minutes_before ?? 1;
+                const _blk3 = _dt3?.block_minutes_after ?? 20;
+                showNotification(`No se pueden vender números. Ventas bloqueadas ${_cut3} min antes y ${_blk3} min después del sorteo.`, 'warning');
                 return;
             }
 
@@ -2590,7 +2595,13 @@ function addSeguidilla() {
     if (desde < 0 || desde > 99 || hasta < 0 || hasta > 99) { showNotification('Los numeros deben estar entre 00 y 99', 'warning'); return; }
     if (desde > hasta) { showNotification('El numero "Desde" debe ser menor o igual al "Hasta"', 'warning'); return; }
     if (tiempos <= 0) { showNotification('Los tiempos deben ser mayor que 0', 'warning'); return; }
-    if (!validarHorarioVenta()) { showNotification('No se pueden agregar numeros. Ventas bloqueadas 1 minuto antes y 20 minutos despues del sorteo.', 'warning'); return; }
+    if (!validarHorarioVenta()) {
+        const _dtObj2 = getSelectedDrawTimeObj();
+        const _cut2 = _dtObj2?.cutoff_minutes_before ?? 1;
+        const _blk2 = _dtObj2?.block_minutes_after ?? 20;
+        showNotification(`No se pueden agregar numeros. Ventas bloqueadas ${_cut2} min antes y ${_blk2} min despues del sorteo.`, 'warning');
+        return;
+    }
 
     let processed = 0;
     let blocked = 0;
@@ -2706,6 +2717,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (session?.user) {
             currentUser = session.user;
             await loadProfile();
+            if (currentProfile?.is_active === false) {
+                await auth.signOut();
+                currentUser = null;
+                currentProfile = null;
+                showLoginPage();
+                return;
+            }
             await initApp();
             showMainPage();
         } else {

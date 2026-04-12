@@ -5,7 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export default function AdminSettings() {
   const { profile } = useAuth();
   const [currencies, setCurrencies] = useState([]);
-  const [form, setForm] = useState({ currency_code: 'USD', currency_symbol: '$', seller_percentage: '13' });
+  const [form, setForm] = useState({ currency_code: 'USD', currency_symbol: '$', seller_percentage: '13', admin_code: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -20,6 +20,7 @@ export default function AdminSettings() {
         currency_code: profile.currency_code || 'USD',
         currency_symbol: profile.currency_symbol || '$',
         seller_percentage: String(profile.seller_percentage ?? 13),
+        admin_code: profile.admin_code || '',
       });
     }
   }, [profile]);
@@ -35,6 +36,7 @@ export default function AdminSettings() {
       currency_code: form.currency_code,
       currency_symbol: form.currency_symbol,
       seller_percentage: parseFloat(form.seller_percentage),
+      admin_code: form.admin_code.trim().toUpperCase() || null,
     }).eq('id', profile.id);
     setSaving(false);
     setSaved(true);
@@ -55,6 +57,18 @@ export default function AdminSettings() {
             {currencies.map(c => <option key={c.code} value={c.code} style={{background:'#1e293b'}}>{c.symbol} — {c.name}</option>)}
           </select>
           <p className="text-xs text-slate-500 mt-1.5">Moneda que heredarán tus vendedores y loterías</p>
+        </div>
+
+        <div>
+          <label className={labelCls}>Código identificador (aparece en tickets de tus vendedores)</label>
+          <input
+            type="text" maxLength={10}
+            placeholder="Ej: ADM01"
+            value={form.admin_code}
+            onChange={e => setForm(f => ({ ...f, admin_code: e.target.value.toUpperCase() }))}
+            className={inputCls}
+          />
+          <p className="text-xs text-slate-500 mt-1.5">Código corto que identifica tu sistema. Todos tus vendedores lo mostrarán en sus tickets.</p>
         </div>
 
         <div>

@@ -20,6 +20,9 @@ export default function ManageAdmins() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null); // admin a eliminar
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   async function loadAdmins() {
     setLoading(true);
@@ -97,6 +100,14 @@ export default function ManageAdmins() {
           p_max_sellers: maxSellers,
         });
         if (updateError) throw updateError;
+
+        if (form.password.trim()) {
+          const { error: pwError } = await db.rpc('change_user_password', {
+            p_user_id:     editAdmin.id,
+            p_new_password: form.password.trim(),
+          });
+          if (pwError) throw pwError;
+        }
       } else {
         const response = await createAuthUser(form.email.trim(), form.password, form.full_name.trim());
 
@@ -124,6 +135,22 @@ export default function ManageAdmins() {
   async function toggleActive(admin) {
     await db.from('profiles').update({ is_active: !admin.is_active }).eq('id', admin.id);
     loadAdmins();
+  }
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const { error } = await db.rpc('delete_admin_cascade', { p_admin_id: confirmDelete.id });
+      if (error) throw error;
+      setConfirmDelete(null);
+      loadAdmins();
+    } catch (err) {
+      setDeleteError(err.message || 'Error al eliminar');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function expiryStatus(expires_at) {
@@ -205,15 +232,53 @@ export default function ManageAdmins() {
                     </button>
                     <button
                       onClick={() => toggleActive(admin)}
-                      className={`text-xs font-medium ${admin.is_active ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'}`}
+                      className={`text-xs font-medium ${admin.is_active ? 'text-orange-400 hover:text-orange-600' : 'text-green-500 hover:text-green-700'}`}
                     >
                       {admin.is_active ? 'Desactivar' : 'Activar'}
+                    </button>
+                    <button
+                      onClick={() => { setConfirmDelete(admin); setDeleteError(''); }}
+                      className="text-xs text-red-500 hover:text-red-700 font-medium"
+                    >
+                      Eliminar
                     </button>
                   </div>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal confirmar eliminación */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-lg font-bold text-gray-800">Eliminar administrador</h2>
+            <p className="text-sm text-gray-600">
+              ¿Estás seguro de eliminar a <span className="font-semibold text-gray-800">{confirmDelete.full_name}</span>?
+            </p>
+            <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+              Se eliminarán todos sus vendedores, loterías, horarios, ventas y registros. Esta acción no se puede deshacer.
+            </p>
+            {deleteError && <p className="text-red-500 text-xs text-center">{deleteError}</p>}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="flex-1 border border-gray-200 text-gray-600 text-sm py-2.5 rounded-lg hover:bg-gray-50 transition"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 bg-red-600 text-white text-sm py-2.5 rounded-lg hover:bg-red-700 transition disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Sí, eliminar todo'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -238,29 +303,30 @@ export default function ManageAdmins() {
               </div>
 
               {!editAdmin && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Correo electrónico *</label>
-                    <input
-                      type="email"
-                      value={form.email}
-                      onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                      placeholder="correo@ejemplo.com"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Contraseña *</label>
-                    <input
-                      type="password"
-                      value={form.password}
-                      onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-                      placeholder="Mínimo 6 caracteres"
-                    />
-                  </div>
-                </>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Correo electrónico *</label>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                    placeholder="correo@ejemplo.com"
+                  />
+                </div>
               )}
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Contraseña {editAdmin ? '(dejar en blanco para no cambiar)' : '*'}
+                </label>
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  placeholder={editAdmin ? 'Nueva contraseña...' : 'Mínimo 6 caracteres'}
+                />
+              </div>
 
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Teléfono</label>

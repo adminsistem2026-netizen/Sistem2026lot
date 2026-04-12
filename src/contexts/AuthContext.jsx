@@ -27,7 +27,6 @@ export function AuthProvider({ children }) {
         return {
           ...data,
           seller_code: codes[0].seller_code,
-          admin_code:  codes[0].admin_code,
         };
       }
     } catch (_) { /* no crítico */ }
@@ -71,6 +70,11 @@ export function AuthProvider({ children }) {
         const session = insforge.auth.tokenManager.getSession();
         if (session?.user) {
           const profileData = await loadProfile(session.user.id);
+          if (!profileData.is_active || (profileData.expires_at && new Date(profileData.expires_at) < new Date())) {
+            await insforge.auth.signOut();
+            // No se setea user ni profile → ProtectedRoute redirige a /login cuando loading=false
+            return;
+          }
           setUser(session.user);
           setProfile(profileData);
         }

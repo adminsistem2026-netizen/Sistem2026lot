@@ -1,3 +1,5 @@
+import { createClient } from '@insforge/sdk';
+
 /**
  * Genera un número de ticket único (ej: "TK-20260320-A3F9")
  */
@@ -22,7 +24,8 @@ export function formatCurrency(amount, symbol = '$', decimals = 2) {
  * Retorna la fecha actual en formato YYYY-MM-DD
  */
 export function today() {
-  return new Date().toISOString().split('T')[0];
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
 /**
@@ -52,27 +55,23 @@ export function parseQuickInput(input) {
 
 /**
  * Crea un usuario en InsForge sin afectar la sesión actual.
- * Usa fetch directo con el ANON_KEY en lugar del token del usuario autenticado.
+ * Usa una instancia separada del SDK para no tocar la sesión del admin.
  * Retorna { user: { id, email } } o lanza un error.
  */
 export async function createAuthUser(email, password, name) {
-  const url = `${import.meta.env.VITE_INSFORGE_URL}/api/auth/users`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_INSFORGE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ email, password, name }),
+  const tempClient = createClient({
+    baseUrl: import.meta.env.VITE_INSFORGE_URL || 'https://e8cpb3g3.us-east.insforge.app',
+    anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY || 'ik_1016f97bf745645904003df562a619b1',
   });
 
-  if (res.status === 409) throw new Error('Este correo ya está registrado');
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message || `Error al crear usuario (${res.status})`);
-  }
+  const { data, error } = await tempClient.auth.signUp({ email, password, name });
 
-  const data = await res.json();
+  if (error) {
+    if (error.statusCode === 409 || error.message?.toLowerCase().includes('already')) {
+      throw new Error('Este correo ya está registrado');
+    }
+    throw new Error(error.message || `Error al crear usuario`);
+  }
   if (!data?.user?.id) throw new Error('No se recibió ID del nuevo usuario');
   return data;
 }

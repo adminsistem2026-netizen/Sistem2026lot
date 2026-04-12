@@ -38,7 +38,7 @@ export default function ManageResults() {
   }, [selectedLottery, selectedDrawTime, selectedDate]);
 
   async function loadLotteries() {
-    const { data: lots } = await db.from('lotteries').select('id, display_name, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').order('display_name');
+    const { data: lots } = await db.from('lotteries').select('id, display_name, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').eq('admin_id', profile.id).order('display_name');
     const { data: dts } = await db.from('draw_times').select('id, lottery_id, time_label, custom_prize_1st_multiplier, custom_prize_2nd_multiplier, custom_prize_3rd_multiplier').order('time_value');
     const withDt = (lots || []).map(l => ({ ...l, draw_times: (dts || []).filter(d => d.lottery_id === l.id) }));
     setLotteries(withDt);

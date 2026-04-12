@@ -31,11 +31,74 @@
         }
 
         #loginPage {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
+            position: fixed;
+            inset: 0;
+            background: #f0f2f5;
+            z-index: 10;
+        }
+
+        #loginCard {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 28px 20px 24px;
+            width: 260px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10);
             text-align: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        #loginCard h2 {
+            font-size: 1.4em;
+            font-weight: 700;
+            color: #111827;
+            margin: 0 0 20px;
+        }
+
+        #loginCard .input-group {
+            margin-bottom: 12px;
+            text-align: left;
+        }
+
+        #loginCard .input-group input {
+            width: 100%;
+            padding: 11px 14px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 12px;
+            font-size: 0.95em;
+            background: #f9fafb;
+            color: #111827;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        #loginCard .input-group input:focus {
+            border-color: #4f46e5;
+            background: #fff;
+        }
+
+        #loginCard button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 0.95em;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            margin-top: 4px;
+            margin-bottom: 0;
+            box-shadow: none;
+        }
+
+        #loginCard #error {
+            font-size: 0.8em;
+            margin-top: 8px;
+            min-height: 18px;
         }
 
         .container {
@@ -1466,15 +1529,18 @@
 <div id="loadingOverlay">Cargando...</div>
 
 <div id="loginPage" style="display: none;">
-    <h2>Iniciar Sesión</h2>
-    <div class="input-group" style="margin-bottom: 10px;">
-        <input type="email" id="emailInput" placeholder="Correo electrónico" />
+    <div id="loginCard">
+        <h2>Iniciar Sesión</h2>
+        <div class="input-group">
+            <input type="email" id="emailInput" placeholder="Correo electrónico" />
+        </div>
+        <div class="input-group">
+            <input type="password" id="passwordInput" placeholder="Contraseña"
+                   onkeydown="if(event.key==='Enter') checkPassword()" />
+        </div>
+        <button onclick="checkPassword()">INGRESAR</button>
+        <p id="error" style="color:red;"></p>
     </div>
-    <div class="input-group">
-        <input type="password" id="passwordInput" placeholder="Contraseña" />
-        <button onclick="checkPassword()">Ingresar</button>
-    </div>
-    <p id="error" style="color:red;"></p>
 </div>
 
 <div id="mainPage" class="container" style="display: none;">

@@ -11,7 +11,7 @@ const IcHash    = () => <svg className="w-5 h-5" fill="none" stroke="currentColo
 const IcShield  = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>;
 const IcChevron = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>;
 const IcTicket  = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>;
-const IcStar    = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" /></svg>;
+const IcTrash   = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 
 const fmt = (n, sym = '$') =>
   `${sym}${Number(n || 0).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -82,15 +82,15 @@ export default function AdminDashboard() {
         )}
         <p className="text-indigo-200 text-sm mt-1 relative">Total recaudado hoy</p>
 
-        <div className="flex gap-4 mt-5 relative">
-          <div className="bg-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2.5">
+        <div className="flex gap-4 mt-5 relative overflow-x-auto" style={{scrollbarWidth:'none', msOverflowStyle:'none'}}>
+          <div className="bg-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 shrink-0">
             <IcTicket />
             <div>
               <p className="text-xl font-bold text-white leading-none">{loading ? '—' : stats?.count ?? 0}</p>
-              <p className="text-xs text-indigo-200 mt-0.5">Tickets activos</p>
+              <p className="text-xs text-indigo-200 mt-0.5">Activos</p>
             </div>
           </div>
-          <div className="bg-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2.5">
+          <div className="bg-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 shrink-0">
             <IcUsers />
             <div>
               <p className="text-xl font-bold text-white leading-none">{loading ? '—' : stats?.sellers ?? 0}</p>
@@ -98,8 +98,8 @@ export default function AdminDashboard() {
             </div>
           </div>
           {stats?.cancelled > 0 && (
-            <div className="bg-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2.5">
-              <IcStar />
+            <div className="bg-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 shrink-0">
+              <IcTrash />
               <div>
                 <p className="text-xl font-bold text-white leading-none">{stats.cancelled}</p>
                 <p className="text-xs text-indigo-200 mt-0.5">Cancelados</p>
@@ -108,6 +108,48 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+
+      {/* Plan info */}
+      {profile && (() => {
+        const maxSellers = profile.max_sellers ?? 5;
+        const usedSellers = stats?.sellers ?? 0;
+        const pct = Math.min((usedSellers / maxSellers) * 100, 100);
+        const barColor = pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-400' : 'bg-emerald-500';
+
+        const exp = profile.expires_at ? new Date(profile.expires_at) : null;
+        const diffDays = exp ? Math.ceil((exp - new Date()) / (1000 * 60 * 60 * 24)) : null;
+        const expLabel = !exp ? null : diffDays < 0 ? 'Vencido' : diffDays === 0 ? 'Vence hoy' : `Vence en ${diffDays} día${diffDays !== 1 ? 's' : ''}`;
+        const expColor = !exp ? '' : diffDays < 0 ? 'text-red-400' : diffDays <= 7 ? 'text-amber-400' : 'text-emerald-400';
+
+        return (
+          <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-4 space-y-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Mi plan</p>
+
+            {/* Vendedores */}
+            <div>
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-sm text-slate-300">Vendedores usados</span>
+                <span className={`text-sm font-bold ${pct >= 100 ? 'text-red-400' : 'text-white'}`}>{usedSellers} / {maxSellers}</span>
+              </div>
+              <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+              </div>
+              {pct >= 100 && <p className="text-xs text-red-400 mt-1">Límite alcanzado — no puedes crear más vendedores</p>}
+            </div>
+
+            {/* Vencimiento */}
+            {expLabel && (
+              <div className="flex justify-between items-center border-t border-slate-800 pt-3">
+                <span className="text-sm text-slate-300">Vencimiento</span>
+                <div className="text-right">
+                  <p className={`text-sm font-semibold ${expColor}`}>{expLabel}</p>
+                  <p className="text-xs text-slate-500">{exp.toLocaleDateString('es-ES')}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Quick actions */}
       <div>

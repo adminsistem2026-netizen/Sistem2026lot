@@ -26,6 +26,7 @@ import SuperAdminLayout from './pages/superadmin/SuperAdminLayout';
 import SuperDashboard from './pages/superadmin/SuperDashboard';
 import ManageAdmins from './pages/superadmin/ManageAdmins';
 import GlobalConfig from './pages/superadmin/GlobalConfig';
+import CleanupData from './pages/superadmin/CleanupData';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +81,7 @@ export default function App() {
                 <Route index element={<SuperDashboard />} />
                 <Route path="admins" element={<ManageAdmins />} />
                 <Route path="config" element={<GlobalConfig />} />
+                <Route path="cleanup" element={<CleanupData />} />
               </Route>
 
               {/* Fallback */}

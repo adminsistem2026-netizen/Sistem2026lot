@@ -47,7 +47,15 @@ export default function SuperAdminLayout() {
             `flex-1 py-3 text-center text-xs font-medium transition ${isActive ? 'text-gray-900 border-t-2 border-gray-900' : 'text-gray-400'}`
           }
         >
-          Configuración
+          Config
+        </NavLink>
+        <NavLink
+          to="/superadmin/cleanup"
+          className={({ isActive }) =>
+            `flex-1 py-3 text-center text-xs font-medium transition ${isActive ? 'text-gray-900 border-t-2 border-gray-900' : 'text-gray-400'}`
+          }
+        >
+          Limpieza
         </NavLink>
       </nav>
     </div>

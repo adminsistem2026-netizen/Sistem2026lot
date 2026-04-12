@@ -50,6 +50,87 @@ function StatCard({ label, value, icon, gradient, sub }) {
   );
 }
 
+function TicketModal({ ticket, sellerName, lotteryName, drawTimeName, sym, onClose }) {
+  const [lines, setLines] = useState(null);
+
+  useEffect(() => {
+    if (!ticket) return;
+    db.from('ticket_numbers').select('number, pieces, subtotal').eq('ticket_id', ticket.id)
+      .then(({ data }) => setLines(data || []));
+  }, [ticket]);
+
+  if (!ticket) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70" onClick={onClose}>
+      <div
+        className="bg-slate-900 border border-slate-700 rounded-t-2xl w-full max-w-lg p-5 pb-8 space-y-4"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-mono font-bold text-white text-base">#{ticket.ticket_number || ticket.id.slice(0,8)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              {ticket.sale_date}
+              {ticket.created_at && (
+                <span className="ml-2">
+                  {new Date(ticket.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-slate-600 mt-0.5 font-mono break-all">{ticket.id}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/20 font-medium">Cancelado</span>}
+            {ticket.is_paid && !ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-medium">Pagado</span>}
+            <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><IconX /></button>
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="bg-slate-800 rounded-xl p-3 space-y-1.5 text-sm">
+          <div className="flex justify-between"><span className="text-slate-400">Vendedor</span><span className="text-white font-medium">{sellerName}</span></div>
+          <div className="flex justify-between"><span className="text-slate-400">Lotería</span><span className="text-white">{lotteryName}</span></div>
+          {drawTimeName && <div className="flex justify-between"><span className="text-slate-400">Sorteo</span><span className="text-white">{drawTimeName}</span></div>}
+          {ticket.customer_name && <div className="flex justify-between"><span className="text-slate-400">Cliente</span><span className="text-white">{ticket.customer_name}</span></div>}
+        </div>
+
+        {/* Números */}
+        <div>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Números</p>
+          {lines === null ? (
+            <p className="text-slate-500 text-sm">Cargando...</p>
+          ) : lines.length === 0 ? (
+            <p className="text-slate-500 text-sm">Sin números registrados</p>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex justify-between text-xs text-slate-500 px-1 mb-1">
+                <span>Cifra</span><span>Cant.</span><span>Subtotal</span>
+              </div>
+              {lines.map((n, i) => (
+                <div key={i} className="flex justify-between bg-slate-800 rounded-lg px-3 py-2 text-sm">
+                  <span className="font-mono font-bold text-white">{n.number}</span>
+                  <span className="text-slate-300">{n.pieces}</span>
+                  <span className="text-emerald-400 font-medium">{sym}{Number(n.subtotal || 0).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Total */}
+        <div className="flex justify-between items-center border-t border-slate-700 pt-3">
+          <span className="text-sm font-semibold text-slate-300">Total</span>
+          <span className={`text-xl font-bold ${ticket.is_cancelled ? 'text-slate-500 line-through' : 'text-emerald-400'}`}>
+            {fmt(ticket.total_amount, sym)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminSales() {
   const { profile } = useAuth();
   const _d = new Date();
@@ -62,6 +143,7 @@ export default function AdminSales() {
   const [drawTimeId, setDrawTimeId] = useState('');
   const [showCancelled, setShowCancelled] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [selectedTicket, setSelectedTicket] = useState(null);
 
   const [tickets, setTickets] = useState([]);
   const [sellers, setSellers] = useState([]);
@@ -92,7 +174,7 @@ export default function AdminSales() {
   async function loadFiltersData() {
     const [{ data: s }, { data: l }, { data: dt }] = await Promise.all([
       db.rpc('get_admin_sellers', { p_admin_id: profile.id }),
-      db.from('lotteries').select('id, display_name').or(`admin_id.eq.${profile.id},admin_id.is.null`).order('display_name'),
+      db.from('lotteries').select('id, display_name').eq('admin_id', profile.id).order('display_name'),
       db.from('draw_times').select('id, time_label, lottery_id').order('time_value'),
     ]);
     const s2 = s || [];
@@ -103,16 +185,15 @@ export default function AdminSales() {
   }
 
   async function loadTickets(lim = pageSize, sellerIds) {
-    if (!sellerIds?.length) { setTickets([]); setLoading(false); return; }
+    if (!profile?.id) { setTickets([]); setLoading(false); return; }
     setLoading(true);
-    // Filtra por seller_id (columna original, InsForge la conoce) en vez de admin_id
-    let q = db.from('tickets').select('*').in('seller_id', sellerIds);
+    let q = db.from('tickets').select('*').eq('admin_id', profile.id);
     if (dateFrom)    q = q.gte('sale_date', dateFrom);
     if (dateTo)      q = q.lte('sale_date', dateTo);
     if (sellerId)    q = q.eq('seller_id', sellerId);
     if (lotteryId)   q = q.eq('lottery_id', lotteryId);
     if (drawTimeId)  q = q.eq('draw_time_id', drawTimeId);
-    const { data, error } = await q.order('sale_date', { ascending: false }).limit(lim + 1);
+    const { data } = await q.order('sale_date', { ascending: false }).limit(lim + 1);
     const rows = data || [];
     setHasMore(rows.length > lim);
     setTickets(rows.slice(0, lim));
@@ -162,11 +243,20 @@ export default function AdminSales() {
             {new Date().toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
-        {isFiltered && (
-          <button onClick={clearFilters} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 rounded-xl transition">
-            <IconX /> Limpiar
+        <div className="flex gap-2">
+          {isFiltered && (
+            <button onClick={clearFilters} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 rounded-xl transition">
+              <IconX /> Limpiar
+            </button>
+          )}
+          <button
+            onClick={() => loadTickets(pageSize, sellers.map(s => s.id))}
+            disabled={loading}
+            className="text-xs text-indigo-400 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl transition disabled:opacity-50"
+          >
+            {loading ? '...' : '↺ Actualizar'}
           </button>
-        )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -306,12 +396,13 @@ export default function AdminSales() {
         ) : (
           <div className="space-y-2">
             {displayed.map(t => (
-              <div
+              <button
                 key={t.id}
-                className={`border rounded-2xl px-4 py-3.5 transition ${
+                onClick={() => setSelectedTicket(t)}
+                className={`w-full text-left border rounded-2xl px-4 py-3.5 transition cursor-pointer ${
                   t.is_cancelled
                     ? 'bg-slate-900/50 border-slate-800 opacity-50'
-                    : 'bg-slate-900 border-slate-700/60 hover:border-slate-600'
+                    : 'bg-slate-900 border-slate-700/60 hover:border-slate-600 active:scale-[0.99]'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -344,8 +435,14 @@ export default function AdminSales() {
                       {t.customer_name && (
                         <p className="text-xs text-slate-600">Cliente: <span className="text-slate-500">{t.customer_name}</span></p>
                       )}
-                      <p className="text-xs text-slate-700">{t.sale_date}</p>
+                      <p className="text-xs text-slate-500">
+                        {t.sale_date}
+                        {t.created_at && (
+                          <span className="ml-1">{new Date(t.created_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</span>
+                        )}
+                      </p>
                     </div>
+                    <p className="text-xs text-slate-500 font-mono mt-0.5 break-all">{t.id}</p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className={`text-base font-bold ${t.is_cancelled ? 'text-slate-600 line-through' : 'text-emerald-400'}`}>
@@ -353,7 +450,7 @@ export default function AdminSales() {
                     </p>
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
 
             {hasMore && (
@@ -367,6 +464,15 @@ export default function AdminSales() {
           </div>
         )}
       </div>
+
+      <TicketModal
+        ticket={selectedTicket}
+        sellerName={selectedTicket ? (sellerMap[selectedTicket.seller_id] || '—') : ''}
+        lotteryName={selectedTicket ? (lotteryMap[selectedTicket.lottery_id] || '—') : ''}
+        drawTimeName={selectedTicket ? (drawTimeMap[selectedTicket.draw_time_id] || '') : ''}
+        sym={sym}
+        onClose={() => setSelectedTicket(null)}
+      />
     </div>
   );
 }
