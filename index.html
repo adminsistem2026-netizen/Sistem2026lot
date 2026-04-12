@@ -1755,6 +1755,10 @@
             <span class="menu-icon">📊</span>
             <span>Tiempos Vendidos</span>
         </div>
+        <div class="menu-item" onclick="showCobrosPage()">
+            <span class="menu-icon">💳</span>
+            <span>Mis Cobros</span>
+        </div>
         <div class="menu-item" onclick="showPrinterConfig()">
             <span class="menu-icon">🖨️</span>
             <span>Configurar Impresora</span>
@@ -2060,6 +2064,46 @@
 
     <!-- Botón para guardar configuración y volver -->
     <button onclick="saveConfigAndReturn()" style="margin-top: 20px;">Guardar Config y Volver</button>
+</div>
+
+<!-- Página de Cobros -->
+<div id="cobrosPage" class="container" style="display: none;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <button onclick="showMainPage()" style="background:none;border:none;font-size:1.4em;cursor:pointer;padding:0;color:#333;">&#8592;</button>
+        <h2 style="margin:0;font-size:1.2em;">Mis Cobros</h2>
+    </div>
+
+    <!-- Resumen financiero -->
+    <div id="cobrosResumen" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);border-radius:16px;padding:16px;color:white;margin-bottom:16px;">
+        <p style="margin:0 0 4px;font-size:0.75em;text-transform:uppercase;letter-spacing:1px;opacity:0.8;">Mi estado de cuenta</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
+                <p style="margin:0;font-size:0.7em;opacity:0.8;">Total vendido</p>
+                <p id="cobrosTotal" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;">$0.00</p>
+            </div>
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
+                <p style="margin:0;font-size:0.7em;opacity:0.8;">Mi comisión</p>
+                <p id="cobrosComision" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;">$0.00</p>
+            </div>
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
+                <p style="margin:0;font-size:0.7em;opacity:0.8;">Total pagado</p>
+                <p id="cobrosPagado" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;color:#86efac;">$0.00</p>
+            </div>
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
+                <p style="margin:0;font-size:0.7em;opacity:0.8;">Saldo pendiente</p>
+                <p id="cobrosSaldo" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;color:#fca5a5;">$0.00</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historial de pagos -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <p style="margin:0;font-weight:600;font-size:0.95em;">Historial de cobros</p>
+        <button onclick="loadCobros()" style="font-size:0.8em;background:#f1f5f9;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;">↺ Actualizar</button>
+    </div>
+    <div id="cobrosHistorial" style="display:flex;flex-direction:column;gap:8px;">
+        <p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>
+    </div>
 </div>
 
 <!-- Modal configurar impresora Bluetooth -->

@@ -638,13 +638,16 @@ function updateDateTime() {
 }
 
 // ==================== Page navigation ====================
+function hideAllPages() {
+    ['loginPage','mainPage','salesPage','numberSalesPage','verifyWinnersPage','configPage','cobrosPage'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+}
+
 function showLoginPage() {
+    hideAllPages();
     document.getElementById('loginPage').style.display = 'flex';
-    document.getElementById('mainPage').style.display = 'none';
-    document.getElementById('salesPage').style.display = 'none';
-    document.getElementById('numberSalesPage').style.display = 'none';
-    document.getElementById('verifyWinnersPage').style.display = 'none';
-    document.getElementById('configPage').style.display = 'none';
 
     const passwordInput = document.getElementById('passwordInput');
     if (passwordInput) {
@@ -655,11 +658,7 @@ function showLoginPage() {
 }
 
 function showMainPage() {
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('salesPage').style.display = 'none';
-    document.getElementById('numberSalesPage').style.display = 'none';
-    document.getElementById('verifyWinnersPage').style.display = 'none';
-    document.getElementById('configPage').style.display = 'none';
+    hideAllPages();
     document.getElementById('ticketPreview').style.display = 'none';
     document.getElementById('mainPage').style.display = 'block';
 
@@ -669,11 +668,7 @@ function showMainPage() {
 }
 
 function showMainPageOnly() {
-    document.getElementById('loginPage').style.display = 'none';
-    document.getElementById('salesPage').style.display = 'none';
-    document.getElementById('numberSalesPage').style.display = 'none';
-    document.getElementById('verifyWinnersPage').style.display = 'none';
-    document.getElementById('configPage').style.display = 'none';
+    hideAllPages();
     document.getElementById('mainPage').style.display = 'block';
 
     document.getElementById('number').value = '';
@@ -743,6 +738,63 @@ function showConfigPage() {
     updateLimitBilleteDrawTimes();
     displayCurrentLimits('chances');
     displayCurrentLimits('billetes');
+}
+
+function showCobrosPage() {
+    closeMenu();
+    hideAllPages();
+    document.getElementById('cobrosPage').style.display = 'block';
+    loadCobros();
+}
+
+async function loadCobros() {
+    const sym = currentProfile?.currency_symbol || '$';
+    const histDiv = document.getElementById('cobrosHistorial');
+    histDiv.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>';
+
+    try {
+        // Balance del vendedor
+        const { data: balances } = await db.rpc('get_seller_balances', {
+            p_admin_id: currentProfile.parent_admin_id,
+        });
+        const myBalance = (balances || []).find(b => b.seller_id === currentProfile.id);
+        const totalSales = parseFloat(myBalance?.total_sales || 0);
+        const pct = parseFloat(myBalance?.seller_percentage || currentProfile?.seller_percentage || 0);
+        const commission = totalSales * (pct / 100);
+        const owes = totalSales - commission;
+        const paid = parseFloat(myBalance?.total_paid || 0);
+        const balance = owes - paid;
+
+        document.getElementById('cobrosTotal').textContent = `${sym}${totalSales.toFixed(2)}`;
+        document.getElementById('cobrosComision').textContent = `${sym}${commission.toFixed(2)}`;
+        document.getElementById('cobrosPagado').textContent = `${sym}${paid.toFixed(2)}`;
+        const saldoEl = document.getElementById('cobrosSaldo');
+        saldoEl.textContent = balance <= 0 ? '✓ Al día' : `${sym}${balance.toFixed(2)}`;
+        saldoEl.style.color = balance <= 0 ? '#86efac' : '#fca5a5';
+
+        // Historial de pagos
+        const { data: payments } = await db.rpc('get_seller_payments', {
+            p_seller_id: currentProfile.id,
+        });
+
+        if (!payments || payments.length === 0) {
+            histDiv.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Sin cobros registrados</p>';
+            return;
+        }
+
+        histDiv.innerHTML = payments.map(p => `
+            <div style="background:white;border-radius:12px;padding:12px 14px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:1.1em;font-weight:bold;color:#16a34a;">${sym}${parseFloat(p.amount).toFixed(2)}</span>
+                    <span style="font-size:0.75em;color:#888;">${new Date(p.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(p.created_at).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</span>
+                </div>
+                ${p.notes ? `<p style="margin:4px 0 0;font-size:0.8em;color:#666;">${p.notes}</p>` : ''}
+            </div>
+        `).join('');
+    } catch (e) {
+        histDiv.innerHTML = '<p style="text-align:center;color:red;padding:20px 0;">Error al cargar cobros</p>';
+        console.error('loadCobros error:', e);
+    }
 }
 
 // ==================== Draw time selects ====================
@@ -2702,6 +2754,7 @@ Object.assign(window, {
     setGlobalLimit, setIndividualLimit, removeLimitConfig, saveConfigAndReturn, switchLimitTab,
     showPrinterConfig, closePrinterConfig, loadPairedDevices, selectPrinter, printCurrentTicket,
     openPercentageModal, closePercentageModal, saveSellerConfig,
+    showCobrosPage, loadCobros,
     showNotification, closeNotification, showConfirm,
     showKeyboard, hideKeyboard, addDigit, deleteDigit, submitNumber,
     toggleMenu, openMenu, closeMenu,
