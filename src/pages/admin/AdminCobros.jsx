@@ -182,12 +182,12 @@ export default function AdminCobros() {
         {/* Historial de pagos */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-semibold text-white">Historial de abonos</p>
+            <p className="text-sm font-semibold text-white">Historial de cobros</p>
             <button
               onClick={openCreate}
               className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-xl transition"
             >
-              <IcPlus /> Registrar abono
+              <IcPlus /> Registrar cobro
             </button>
           </div>
 

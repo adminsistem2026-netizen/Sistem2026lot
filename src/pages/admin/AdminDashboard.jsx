@@ -12,6 +12,7 @@ const IcShield  = () => <svg className="w-5 h-5" fill="none" stroke="currentColo
 const IcChevron = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>;
 const IcTicket  = () => <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>;
 const IcTrash   = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
+const IcMoney   = () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>;
 
 const fmt = (n, sym = '$') =>
   `${sym}${Number(n || 0).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -22,6 +23,7 @@ const QUICK = [
   { to: '/admin/ventas',     icon: <IcSales />,  label: 'Ventas',          desc: 'Consultar ventas con filtros',          from: 'from-emerald-600',to2: 'to-emerald-800'},
   { to: '/admin/numeros',    icon: <IcHash />,   label: 'Números vendidos',desc: 'Cuadrícula de números por sorteo',      from: 'from-amber-600',  to2: 'to-amber-800'  },
   { to: '/admin/limites',    icon: <IcShield />, label: 'Límites',         desc: 'Configurar topes de venta por número',  from: 'from-rose-600',   to2: 'to-rose-800'   },
+  { to: '/admin/cobros',     icon: <IcMoney />,  label: 'Cobros',          desc: 'Gestionar cobros y abonos por vendedor', from: 'from-teal-600',   to2: 'to-teal-800'   },
 ];
 
 export default function AdminDashboard() {
