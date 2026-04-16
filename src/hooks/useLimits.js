@@ -18,27 +18,25 @@ export function useLimits(lotteryId, drawTimeId) {
         .select('*')
         .eq('admin_id', adminId)
         .eq('lottery_id', lotteryId)
-        .or(`seller_id.eq.${profile.id},seller_id.is.null`)
         .or(`draw_time_id.eq.${drawTimeId || '00000000-0000-0000-0000-000000000000'},draw_time_id.is.null`);
 
       setLimits(limitsData || []);
 
-      // Cargar tiempos ya vendidos hoy para esta lotería/sorteo
-      const { data: tickets } = await db
-        .from('tickets')
-        .select('ticket_numbers(number, pieces, digit_count)')
-        .eq('seller_id', profile.id)
-        .eq('lottery_id', lotteryId)
-        .eq('draw_time_id', drawTimeId)
-        .eq('is_cancelled', false)
-        .eq('sale_date', new Date().toISOString().split('T')[0]);
+      // Cargar tiempos ya vendidos hoy para esta lotería/sorteo entre TODOS los vendedores del admin
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+      const { data: salesData } = await db.rpc('get_admin_daily_sales', {
+        p_admin_id: adminId,
+        p_date: todayStr,
+      });
 
       const pieces = {};
-      (tickets || []).forEach(t => {
-        (t.ticket_numbers || []).forEach(n => {
-          pieces[n.number] = (pieces[n.number] || 0) + n.pieces;
+      (salesData || [])
+        .filter(row => row.lottery_id === lotteryId && (!drawTimeId || row.draw_time_id === drawTimeId))
+        .forEach(row => {
+          pieces[row.number] = (pieces[row.number] || 0) + parseInt(row.total_pieces, 10);
         });
-      });
       setSoldPieces(pieces);
     }
 

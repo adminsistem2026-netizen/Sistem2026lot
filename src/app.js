@@ -541,33 +541,37 @@ async function loadLimitsFromDB() {
 }
 
 // ==================== Calculate current sales from DB ====================
+// Carga el total vendido de TODOS los vendedores del admin (límite global compartido)
 async function calculateCurrentSales() {
     currentSales = { chances: {}, billetes: {} };
 
     try {
-        const allTickets = await loadTickets();
+        const adminId = getAdminId();
+        if (!adminId) return;
 
         const today = new Date();
         const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
 
-        const activeTickets = allTickets.filter(ticket => {
-            const ticketDate = new Date(ticket.datetime);
-            const tStr = `${ticketDate.getFullYear()}-${String(ticketDate.getMonth()+1).padStart(2,'0')}-${String(ticketDate.getDate()).padStart(2,'0')}`;
-            return !ticket.paid && !ticket.cancelled && tStr === todayStr;
+        const { data, error } = await db.rpc('get_admin_daily_sales', {
+            p_admin_id: adminId,
+            p_date: todayStr,
         });
 
-        activeTickets.forEach(ticket => {
-            const key = `${ticket.lotteryId}_${ticket.drawTime || 'default'}`;
-            ticket.numbers.forEach(num => {
-                const pieces = parseInt(num.pieces, 10);
-                if (num.number.length === 2) {
-                    if (!currentSales.chances[key]) currentSales.chances[key] = {};
-                    currentSales.chances[key][num.number] = (currentSales.chances[key][num.number] || 0) + pieces;
-                } else if (num.number.length === 4) {
-                    if (!currentSales.billetes[key]) currentSales.billetes[key] = {};
-                    currentSales.billetes[key][num.number] = (currentSales.billetes[key][num.number] || 0) + pieces;
-                }
-            });
+        if (error) {
+            console.error('calculateCurrentSales error:', error);
+            return;
+        }
+
+        (data || []).forEach(row => {
+            const key = `${row.lottery_id}_${row.time_label || 'default'}`;
+            const pieces = parseInt(row.total_pieces, 10);
+            if (row.digit_count === 2) {
+                if (!currentSales.chances[key]) currentSales.chances[key] = {};
+                currentSales.chances[key][row.number] = (currentSales.chances[key][row.number] || 0) + pieces;
+            } else if (row.digit_count === 4) {
+                if (!currentSales.billetes[key]) currentSales.billetes[key] = {};
+                currentSales.billetes[key][row.number] = (currentSales.billetes[key][row.number] || 0) + pieces;
+            }
         });
     } catch (e) {
         console.error('calculateCurrentSales error:', e);
