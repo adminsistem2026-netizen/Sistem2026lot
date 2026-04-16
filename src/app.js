@@ -645,6 +645,9 @@ async function initApp() {
     await loadLimitsFromDB();
     await calculateCurrentSales();
 
+    // Refrescar totales globales cada 30 segundos para detectar ventas de otros vendedores
+    setInterval(calculateCurrentSales, 30000);
+
     initKeyboardEvents();
 }
 
