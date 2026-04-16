@@ -377,6 +377,18 @@ async function generateTicket() {
 
     showLoading();
     try {
+        // Refrescar totales globales para capturar ventas de otros vendedores
+        await calculateCurrentSales();
+
+        // Re-validar cada número con datos frescos antes de guardar
+        for (const num of numbers) {
+            if (!checkLimits(num.number, num.pieces)) {
+                return; // checkLimits ya muestra la notificación
+            }
+            // Acumular este número para que los siguientes en el mismo ticket lo vean
+            updateCurrentSales(num.number, num.pieces, true);
+        }
+
         // Guardar ticket + números en una sola transacción atómica via RPC
         const numberRows = numbers.map(n => ({
             number:      n.number,
