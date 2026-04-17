@@ -300,6 +300,7 @@ export default function ManageLotteries() {
 
   const f = lotteryForm;
   const isRev = f.lottery_type === 'reventado';
+  const isPale = f.lottery_type === 'pale';
 
   return (
     <div className="space-y-4 mt-2">
@@ -333,7 +334,9 @@ export default function ManageLotteries() {
                 <div className="flex items-center justify-between px-4 py-3 cursor-pointer" onClick={() => toggleExpand(lot.id)}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-white text-sm">{lot.display_name}</p>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-400">{lot.lottery_type}</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-400">
+                      {lot.lottery_type === 'pale' ? 'Palé' : lot.lottery_type === 'reventado' ? 'Reventado' : 'Regular'}
+                    </span>
                     <span className="text-xs text-slate-500">{lot.currency_symbol}</span>
                   </div>
                   <div className="flex items-center gap-3">
@@ -451,7 +454,8 @@ export default function ManageLotteries() {
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1.5">Tipo</label>
                 <select value={f.lottery_type} onChange={e => setLotteryForm(p => ({ ...p, lottery_type: e.target.value }))} className={inputCls} style={{background:'#0f172a'}}>
-                  <option value="regular">Regular</option>
+                  <option value="regular">Regular (2 y 4 cifras)</option>
+                  <option value="pale">Palé (chance + palé)</option>
                   <option value="reventado">Reventado</option>
                 </select>
               </div>
@@ -469,7 +473,7 @@ export default function ManageLotteries() {
                     onChange={e => setLotteryForm(p => isRev ? ({ ...p, reventado_price_2_digits: e.target.value }) : ({ ...p, price_2_digits: e.target.value }))} className={inputCls} />
                 </div>
                 <div>
-                  <label className="block text-xs text-slate-500 mb-1">Billete (4 cifras)</label>
+                  <label className="block text-xs text-slate-500 mb-1">{isPale ? 'Palé (4 cifras)' : 'Billete (4 cifras)'}</label>
                   <input type="number" step="0.01" value={isRev ? f.reventado_price_4_digits : f.price_4_digits}
                     onChange={e => setLotteryForm(p => isRev ? ({ ...p, reventado_price_4_digits: e.target.value }) : ({ ...p, price_4_digits: e.target.value }))} className={inputCls} />
                 </div>
@@ -496,7 +500,12 @@ export default function ManageLotteries() {
                       </div>
                     ))}
                   </div>
-                  <p className="text-xs font-semibold text-slate-400 pt-1">Multiplicadores — Billete (4 cifras)</p>
+                  <p className="text-xs font-semibold text-slate-400 pt-1">Multiplicadores — {isPale ? 'Palé (4 cifras)' : 'Billete (4 cifras)'}</p>
+                  {isPale && (
+                    <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                      Palé: 1er=P1+P2 · 2do=P1+P3 · 3er=P2+P3
+                    </p>
+                  )}
                   <div className="grid grid-cols-3 gap-3">
                     {[['1er', 'billete_prize_1st_multiplier'], ['2do', 'billete_prize_2nd_multiplier'], ['3er', 'billete_prize_3rd_multiplier']].map(([label, key]) => (
                       <div key={key}>

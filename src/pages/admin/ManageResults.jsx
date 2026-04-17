@@ -38,7 +38,7 @@ export default function ManageResults() {
   }, [selectedLottery, selectedDrawTime, selectedDate]);
 
   async function loadLotteries() {
-    const { data: lots } = await db.from('lotteries').select('id, display_name, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').eq('admin_id', profile.id).order('display_name');
+    const { data: lots } = await db.from('lotteries').select('id, display_name, lottery_type, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').eq('admin_id', profile.id).order('display_name');
     const { data: dts } = await db.from('draw_times').select('id, lottery_id, time_label, custom_prize_1st_multiplier, custom_prize_2nd_multiplier, custom_prize_3rd_multiplier').order('time_value');
     const withDt = (lots || []).map(l => ({ ...l, draw_times: (dts || []).filter(d => d.lottery_id === l.id) }));
     setLotteries(withDt);
@@ -94,12 +94,17 @@ export default function ManageResults() {
 
   const lot = lotteries.find(l => l.id === selectedLottery);
   const dt = drawTimes.find(d => d.id === selectedDrawTime);
+  const isPale = lot?.lottery_type === 'pale';
   const mult1 = dt?.custom_prize_1st_multiplier ?? lot?.prize_1st_multiplier ?? 11;
   const mult2 = dt?.custom_prize_2nd_multiplier ?? lot?.prize_2nd_multiplier ?? 3;
   const mult3 = dt?.custom_prize_3rd_multiplier ?? lot?.prize_3rd_multiplier ?? 2;
   const bmult1 = lot?.billete_prize_1st_multiplier ?? 2000;
   const bmult2 = lot?.billete_prize_2nd_multiplier ?? 600;
   const bmult3 = lot?.billete_prize_3rd_multiplier ?? 300;
+  // Combinaciones palé: 1er=P1+P2, 2do=P1+P3, 3er=P2+P3
+  const paleCombo1 = isPale && form.first.length === 2 && form.second.length === 2 ? form.first + form.second : null;
+  const paleCombo2 = isPale && form.first.length === 2 && form.third.length === 2  ? form.first + form.third  : null;
+  const paleCombo3 = isPale && form.second.length === 2 && form.third.length === 2 ? form.second + form.third : null;
 
   return (
     <div className="p-4 space-y-5 max-w-lg mx-auto pb-24">
@@ -139,7 +144,10 @@ export default function ManageResults() {
       {selectedLottery && (
         <div className="bg-slate-800 rounded-2xl border border-slate-700 p-5 space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-white font-semibold text-sm">Números Ganadores <span className="text-slate-500 font-normal">(4 cifras)</span></h2>
+            <h2 className="text-white font-semibold text-sm">
+              Números Ganadores{' '}
+              <span className="text-slate-500 font-normal">({isPale ? 'Palé — 2 cifras por premio' : '4 cifras'})</span>
+            </h2>
             {loading && <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
           </div>
 
@@ -148,14 +156,14 @@ export default function ManageResults() {
               <div key={key} className="text-center">
                 <label className="block text-xs font-medium text-slate-400 mb-1.5">{label}</label>
                 <input
-                  type="text" inputMode="numeric" maxLength={4}
+                  type="text" inputMode="numeric" maxLength={isPale ? 2 : 4}
                   value={form[key]}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value.replace(/\D/g,'').slice(0,4) }))}
-                  placeholder="0000"
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value.replace(/\D/g,'').slice(0, isPale ? 2 : 4) }))}
+                  placeholder={isPale ? '00' : '0000'}
                   className={inputCls}
-                  style={{ borderColor: form[key].length === 4 ? color : undefined }}
+                  style={{ borderColor: form[key].length === (isPale ? 2 : 4) ? color : undefined }}
                 />
-                {form[key].length >= 2 && (
+                {!isPale && form[key].length >= 2 && (
                   <p className="text-xs text-slate-500 mt-1">
                     Chance: <span className="text-white font-bold">{form[key].slice(-2)}</span>
                   </p>
@@ -163,6 +171,21 @@ export default function ManageResults() {
               </div>
             ))}
           </div>
+
+          {/* Combinaciones palé */}
+          {isPale && (
+            <div className="bg-slate-900/60 border border-amber-500/20 rounded-xl p-3 space-y-1.5">
+              <p className="text-[10px] text-amber-400 font-semibold uppercase tracking-wide">Combinaciones Palé (4 cifras ganadoras)</p>
+              {[['1er', paleCombo1, '#6366f1'], ['2do', paleCombo2, '#22c55e'], ['3er', paleCombo3, '#f59e0b']].map(([lbl, combo, color]) => (
+                <div key={lbl} className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">{lbl} premio:</span>
+                  <span className="font-bold tracking-widest" style={{ color: combo ? color : '#475569' }}>
+                    {combo ?? '——'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Multipliers info */}
           <div className="space-y-2">
@@ -175,15 +198,32 @@ export default function ManageResults() {
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Billete (×precio)</p>
-            <div className="flex gap-3 bg-slate-900/50 rounded-xl p-3">
-              {[[bmult1,'1er','text-indigo-400'],[bmult2,'2do','text-emerald-400'],[bmult3,'3er','text-amber-400']].map(([v,l,c]) => (
-                <div key={l} className="flex-1 text-center">
-                  <p className="text-[10px] text-slate-500">{l} ×</p>
-                  <p className={`${c} font-bold text-sm`}>{v}</p>
+            {!isPale && (
+              <>
+                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Billete (×precio)</p>
+                <div className="flex gap-3 bg-slate-900/50 rounded-xl p-3">
+                  {[[bmult1,'1er','text-indigo-400'],[bmult2,'2do','text-emerald-400'],[bmult3,'3er','text-amber-400']].map(([v,l,c]) => (
+                    <div key={l} className="flex-1 text-center">
+                      <p className="text-[10px] text-slate-500">{l} ×</p>
+                      <p className={`${c} font-bold text-sm`}>{v}</p>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              </>
+            )}
+            {isPale && (
+              <>
+                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Palé (×precio)</p>
+                <div className="flex gap-3 bg-slate-900/50 rounded-xl p-3">
+                  {[[bmult1,'1er','text-indigo-400'],[bmult2,'2do','text-emerald-400'],[bmult3,'3er','text-amber-400']].map(([v,l,c]) => (
+                    <div key={l} className="flex-1 text-center">
+                      <p className="text-[10px] text-slate-500">{l} ×</p>
+                      <p className={`${c} font-bold text-sm`}>{v}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <button
