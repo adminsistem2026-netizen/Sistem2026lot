@@ -674,16 +674,22 @@ async function initApp() {
         }
     }, 3 * 60 * 1000);
 
-    // Verificar estado de cuenta cada 60 segundos — cierra sesión si el admin desactivó al vendedor
+    // Verificar estado de cuenta y loterías cada 60 segundos
     setInterval(async () => {
         if (!currentUser) return;
         try {
             const { data } = await db.from('profiles').select('is_active').eq('id', currentUser.id);
             if (data?.[0]?.is_active === false) {
                 await forceLogoutSuspended();
+                return;
             }
         } catch (e) {
             console.warn('Account status check failed:', e);
+        }
+        try {
+            await loadLotteries();
+        } catch (e) {
+            console.warn('Lotteries refresh failed:', e);
         }
     }, 60 * 1000);
 
