@@ -332,11 +332,28 @@ async function loadTickets(filters = {}) {
     }
 }
 
+async function forceLogoutSuspended() {
+    try { await auth.signOut(); } catch (_) {}
+    currentUser = null;
+    currentProfile = null;
+    showLoginPage();
+    showNotification('Tu cuenta ha sido desactivada. Contacta al administrador.');
+}
+
 async function generateTicket() {
     if (numbers.length === 0) {
         showNotification('Agregue números al ticket');
         return;
     }
+
+    // Verificar que la cuenta siga activa antes de registrar la venta
+    try {
+        const { data: profileCheck } = await db.from('profiles').select('is_active').eq('id', currentUser.id);
+        if (profileCheck?.[0]?.is_active === false) {
+            await forceLogoutSuspended();
+            return;
+        }
+    } catch (_) { /* si falla la red, se deja pasar — el check periódico lo capturará */ }
 
     const lotteryType = document.getElementById('lotteryType').value;
     const drawTime = document.getElementById('drawTimeSelect').value;
@@ -656,6 +673,19 @@ async function initApp() {
             console.warn('Token refresh failed:', e);
         }
     }, 3 * 60 * 1000);
+
+    // Verificar estado de cuenta cada 60 segundos — cierra sesión si el admin desactivó al vendedor
+    setInterval(async () => {
+        if (!currentUser) return;
+        try {
+            const { data } = await db.from('profiles').select('is_active').eq('id', currentUser.id);
+            if (data?.[0]?.is_active === false) {
+                await forceLogoutSuspended();
+            }
+        } catch (e) {
+            console.warn('Account status check failed:', e);
+        }
+    }, 60 * 1000);
 
     initKeyboardEvents();
 }
