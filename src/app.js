@@ -2860,7 +2860,7 @@ Object.assign(window, {
     setGlobalLimit, setIndividualLimit, removeLimitConfig, saveConfigAndReturn, switchLimitTab,
     showPrinterConfig, closePrinterConfig, loadPairedDevices, selectPrinter, printCurrentTicket,
     openPercentageModal, closePercentageModal, saveSellerConfig,
-    showCobrosPage, loadCobros,
+    showCobrosPage, loadCobros, filterCobrosHistorial, clearCobrosFilter,
     showNotification, closeNotification, showConfirm,
     showKeyboard, hideKeyboard, addDigit, deleteDigit, submitNumber,
     toggleMenu, openMenu, closeMenu,
