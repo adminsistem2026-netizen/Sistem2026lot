@@ -648,14 +648,14 @@ async function initApp() {
     // Refrescar totales globales cada 30 segundos para detectar ventas de otros vendedores
     setInterval(calculateCurrentSales, 30000);
 
-    // Refrescar token JWT cada 45 minutos para evitar "invalid token"
+    // Refrescar token JWT cada 3 minutos (expira en ~5 min en InsForge)
     setInterval(async () => {
         try {
             await auth.refreshSession();
         } catch (e) {
             console.warn('Token refresh failed:', e);
         }
-    }, 45 * 60 * 1000);
+    }, 3 * 60 * 1000);
 
     initKeyboardEvents();
 }
