@@ -648,6 +648,15 @@ async function initApp() {
     // Refrescar totales globales cada 30 segundos para detectar ventas de otros vendedores
     setInterval(calculateCurrentSales, 30000);
 
+    // Refrescar token JWT cada 45 minutos para evitar "invalid token"
+    setInterval(async () => {
+        try {
+            await auth.refreshSession();
+        } catch (e) {
+            console.warn('Token refresh failed:', e);
+        }
+    }, 45 * 60 * 1000);
+
     initKeyboardEvents();
 }
 
@@ -2785,7 +2794,16 @@ Object.assign(window, {
 document.addEventListener('DOMContentLoaded', async () => {
     showLoading();
     try {
-        const session = auth.tokenManager.getSession();
+        let session = auth.tokenManager.getSession();
+
+        // Si no hay token en memoria, intentar refrescar usando la cookie de sesión
+        if (!session?.user) {
+            const { data } = await auth.refreshSession();
+            if (data?.user) {
+                session = { user: data.user };
+            }
+        }
+
         if (session?.user) {
             currentUser = session.user;
             await loadProfile();
