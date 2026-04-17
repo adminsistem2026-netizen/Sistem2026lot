@@ -85,6 +85,17 @@ export function AuthProvider({ children }) {
       }
     }
     restoreSession();
+
+    // Refrescar token JWT cada 3 minutos (expira en ~5 min en InsForge)
+    const interval = setInterval(async () => {
+      try {
+        await insforge.auth.refreshSession();
+      } catch (e) {
+        console.warn('Admin token refresh failed:', e);
+      }
+    }, 3 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, []);
 
   return (
