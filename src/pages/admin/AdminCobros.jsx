@@ -32,6 +32,10 @@ export default function AdminCobros() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Filtros de fecha
+  const [filterFrom, setFilterFrom] = useState('');
+  const [filterTo, setFilterTo] = useState('');
+
   useEffect(() => {
     if (profile?.id) loadBalances();
   }, [profile]);
@@ -52,6 +56,8 @@ export default function AdminCobros() {
   async function loadDetail(seller) {
     setSelected(seller);
     setLoadingDetail(true);
+    setFilterFrom('');
+    setFilterTo('');
     const { data } = await db.rpc('get_seller_payments', { p_seller_id: seller.seller_id });
     setPayments(data || []);
     setLoadingDetail(false);
@@ -135,7 +141,15 @@ export default function AdminCobros() {
   // ── VISTA DETALLE ──
   if (selected) {
     const { totalSales, commission, owes, paid, balance } = calcDebt(selected);
-    const totalPayments = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+
+    const filteredPayments = payments.filter(p => {
+      const d = p.created_at.slice(0, 10);
+      if (filterFrom && d < filterFrom) return false;
+      if (filterTo && d > filterTo) return false;
+      return true;
+    });
+    const isFiltered = filterFrom || filterTo;
+    const totalPayments = filteredPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
 
     return (
       <div className="space-y-5 mt-2 pb-8">
@@ -191,15 +205,40 @@ export default function AdminCobros() {
             </button>
           </div>
 
+          {/* Filtro de fechas */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <input
+              type="date"
+              value={filterFrom}
+              onChange={e => setFilterFrom(e.target.value)}
+              className="bg-slate-800 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <span className="text-slate-500 text-xs">—</span>
+            <input
+              type="date"
+              value={filterTo}
+              onChange={e => setFilterTo(e.target.value)}
+              className="bg-slate-800 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            {isFiltered && (
+              <button
+                onClick={() => { setFilterFrom(''); setFilterTo(''); }}
+                className="text-xs text-slate-400 hover:text-white bg-slate-800 border border-slate-700 px-3 py-2 rounded-xl transition"
+              >
+                ✕ Limpiar
+              </button>
+            )}
+          </div>
+
           {loadingDetail ? (
             <p className="text-center text-slate-500 text-sm py-10">Cargando...</p>
-          ) : payments.length === 0 ? (
+          ) : filteredPayments.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-slate-500 text-sm">Sin abonos registrados</p>
+              <p className="text-slate-500 text-sm">{isFiltered ? 'Sin cobros en ese período' : 'Sin abonos registrados'}</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {payments.map(p => (
+              {filteredPayments.map(p => (
                 <div key={p.id} className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <p className="text-emerald-400 font-bold text-base">{fmt(p.amount, sym)}</p>
@@ -217,7 +256,7 @@ export default function AdminCobros() {
                 </div>
               ))}
               <div className="bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 flex justify-between items-center">
-                <span className="text-sm text-slate-400">Total abonado</span>
+                <span className="text-sm text-slate-400">{isFiltered ? 'Total en período' : 'Total abonado'}</span>
                 <span className="text-emerald-400 font-bold">{fmt(totalPayments, sym)}</span>
               </div>
             </div>

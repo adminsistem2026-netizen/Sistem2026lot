@@ -775,10 +775,20 @@ function showCobrosPage() {
     loadCobros();
 }
 
+let cobrosAllPayments = [];
+
 async function loadCobros() {
     const sym = currentProfile?.currency_symbol || '$';
     const histDiv = document.getElementById('cobrosHistorial');
     histDiv.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>';
+
+    // Limpiar filtros al recargar
+    const fromEl = document.getElementById('cobrosFilterFrom');
+    const toEl   = document.getElementById('cobrosFilterTo');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    const clearBtn = document.getElementById('cobrosFilterClear');
+    if (clearBtn) clearBtn.style.display = 'none';
 
     try {
         // Balance del vendedor
@@ -805,24 +815,67 @@ async function loadCobros() {
             p_seller_id: currentProfile.id,
         });
 
-        if (!payments || payments.length === 0) {
-            histDiv.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Sin cobros registrados</p>';
-            return;
-        }
-
-        histDiv.innerHTML = payments.map(p => `
-            <div style="background:#f1f5f9;border-radius:12px;padding:12px 14px;border:1px solid #e2e8f0;">
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <span style="font-size:1.1em;font-weight:bold;color:#16a34a;">${sym}${parseFloat(p.amount).toFixed(2)}</span>
-                    <span style="font-size:0.75em;color:#64748b;">${new Date(p.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(p.created_at).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</span>
-                </div>
-                ${p.notes ? `<p style="margin:4px 0 0;font-size:0.8em;color:#475569;">${p.notes}</p>` : ''}
-            </div>
-        `).join('');
+        cobrosAllPayments = payments || [];
+        renderCobrosHistorial();
     } catch (e) {
-        histDiv.innerHTML = '<p style="text-align:center;color:red;padding:20px 0;">Error al cargar cobros</p>';
+        document.getElementById('cobrosHistorial').innerHTML = '<p style="text-align:center;color:red;padding:20px 0;">Error al cargar cobros</p>';
         console.error('loadCobros error:', e);
     }
+}
+
+function filterCobrosHistorial() {
+    const clearBtn = document.getElementById('cobrosFilterClear');
+    const from = document.getElementById('cobrosFilterFrom')?.value || '';
+    const to   = document.getElementById('cobrosFilterTo')?.value   || '';
+    if (clearBtn) clearBtn.style.display = (from || to) ? 'block' : 'none';
+    renderCobrosHistorial();
+}
+
+function clearCobrosFilter() {
+    const fromEl = document.getElementById('cobrosFilterFrom');
+    const toEl   = document.getElementById('cobrosFilterTo');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    const clearBtn = document.getElementById('cobrosFilterClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    renderCobrosHistorial();
+}
+
+function renderCobrosHistorial() {
+    const sym    = currentProfile?.currency_symbol || '$';
+    const histDiv = document.getElementById('cobrosHistorial');
+    const from   = document.getElementById('cobrosFilterFrom')?.value || '';
+    const to     = document.getElementById('cobrosFilterTo')?.value   || '';
+
+    const filtered = cobrosAllPayments.filter(p => {
+        const d = p.created_at.slice(0, 10);
+        if (from && d < from) return false;
+        if (to   && d > to)   return false;
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        histDiv.innerHTML = `<p style="text-align:center;color:#888;padding:20px 0;">${(from || to) ? 'Sin cobros en ese período' : 'Sin cobros registrados'}</p>`;
+        return;
+    }
+
+    const totalFiltered = filtered.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const isFiltered = from || to;
+
+    histDiv.innerHTML = filtered.map(p => `
+        <div style="background:#f1f5f9;border-radius:12px;padding:12px 14px;border:1px solid #e2e8f0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:1.1em;font-weight:bold;color:#16a34a;">${sym}${parseFloat(p.amount).toFixed(2)}</span>
+                <span style="font-size:0.75em;color:#64748b;">${new Date(p.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(p.created_at).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</span>
+            </div>
+            ${p.notes ? `<p style="margin:4px 0 0;font-size:0.8em;color:#475569;">${p.notes}</p>` : ''}
+        </div>
+    `).join('') + `
+        <div style="background:#e2e8f0;border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.85em;color:#475569;">${isFiltered ? 'Total en período' : 'Total abonado'}</span>
+            <span style="font-weight:bold;color:#16a34a;">${sym}${totalFiltered.toFixed(2)}</span>
+        </div>
+    `;
 }
 
 // ==================== Draw time selects ====================
