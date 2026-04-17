@@ -2104,10 +2104,10 @@
 
     <!-- Filtro de fechas -->
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <input type="date" id="cobrosFilterFrom" oninput="filterCobrosHistorial()"
+        <input type="date" id="cobrosFilterFrom" onchange="filterCobrosHistorial()" oninput="filterCobrosHistorial()"
             style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
         <span style="color:#94a3b8;font-size:0.8em;">—</span>
-        <input type="date" id="cobrosFilterTo" oninput="filterCobrosHistorial()"
+        <input type="date" id="cobrosFilterTo" onchange="filterCobrosHistorial()" oninput="filterCobrosHistorial()"
             style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
         <button id="cobrosFilterClear" onclick="clearCobrosFilter()" style="display:none;background:#e2e8f0;border:none;border-radius:10px;padding:7px 12px;font-size:0.8em;color:#475569;cursor:pointer;white-space:nowrap;">✕ Limpiar</button>
     </div>
