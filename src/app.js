@@ -1325,7 +1325,7 @@ async function displayTickets(ticketsToShow = null) {
             const total = typeof ticket.total === 'number' && !isNaN(ticket.total) ? ticket.total.toFixed(2) : '0.00';
             const fecha = ticket.datetime ? new Date(ticket.datetime).toLocaleString() : '';
             return `
-            <div class="ticket-item">
+            <div class="ticket-item" style="${ticket.paid ? 'background:#fff3e0;border-left:4px solid #ffb74d;' : ''}">
                 <p><strong>ID:</strong> ${ticket.id}</p>
                 <p><strong>Fecha:</strong> ${fecha}</p>
                 <p><strong>Lotería:</strong> ${ticket.lottery || ''}</p>
