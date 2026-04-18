@@ -1807,6 +1807,14 @@
             <input type="date" id="salesDate" onchange="showSalesByDate(this.value)">
             <button class="btn-sm" onclick="showTodaySales()">Hoy</button>
         </div>
+        <div class="date-filter-row" style="margin-top:8px;">
+            <select id="salesFilterLottery" onchange="onSalesLotteryFilter()" style="flex:1;padding:8px;border-radius:8px;border:1px solid #d1d5db;font-size:14px;">
+                <option value="">Todas las loterías</option>
+            </select>
+            <select id="salesFilterDrawTime" onchange="showSalesByDate(document.getElementById('salesDate').value)" style="flex:1;padding:8px;border-radius:8px;border:1px solid #d1d5db;font-size:14px;">
+                <option value="">Todos los sorteos</option>
+            </select>
+        </div>
         <div class="sales-stats">
             <p><strong>Fecha:</strong> <span id="currentSalesDate"></span></p>
             <p><strong>Total Tickets:</strong> <span id="totalTickets">0</span></p>

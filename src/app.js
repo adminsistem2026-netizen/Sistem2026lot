@@ -763,8 +763,18 @@ function showSalesPage() {
     document.getElementById('numberSalesPage').style.display = 'none';
     const salesDateEl = document.getElementById('salesDate');
     if (salesDateEl && !salesDateEl.value) salesDateEl.value = getTodayStr();
+    // Poblar filtro de loterías (todas, no filtrar por hora)
+    const lotSel = document.getElementById('salesFilterLottery');
+    if (lotSel) {
+        lotSel.innerHTML = '<option value="">Todas las loterías</option>';
+        lotteries.forEach(lot => {
+            const o = document.createElement('option');
+            o.value = lot.id; o.textContent = lot.display_name;
+            lotSel.appendChild(o);
+        });
+    }
+    document.getElementById('salesFilterDrawTime').innerHTML = '<option value="">Todos los sorteos</option>';
     showSalesByDate(document.getElementById('salesDate').value || getTodayStr());
-    displayTickets();
 }
 
 function showNumberSalesPage() {
@@ -1245,9 +1255,27 @@ function viewTicket(ticketId) {
 }
 
 // ==================== Sales page ====================
+function onSalesLotteryFilter() {
+    const lotteryId = document.getElementById('salesFilterLottery').value;
+    const dtSel = document.getElementById('salesFilterDrawTime');
+    dtSel.innerHTML = '<option value="">Todos los sorteos</option>';
+    if (lotteryId) {
+        (drawTimesMap[lotteryId] || []).forEach(dt => {
+            const o = document.createElement('option');
+            o.value = dt.id; o.textContent = dt.time_label;
+            dtSel.appendChild(o);
+        });
+    }
+    showSalesByDate(document.getElementById('salesDate').value || getTodayStr());
+}
+
 function showSalesByDate(dateString) {
+    const filterLottery = document.getElementById('salesFilterLottery')?.value || '';
+    const filterDrawTime = document.getElementById('salesFilterDrawTime')?.value || '';
     loadTickets().then(allTickets => {
-        const dayTickets = allTickets.filter(ticket => ticket.saleDate === dateString);
+        let dayTickets = allTickets.filter(ticket => ticket.saleDate === dateString);
+        if (filterLottery) dayTickets = dayTickets.filter(t => t.lotteryId === filterLottery);
+        if (filterDrawTime) dayTickets = dayTickets.filter(t => t.drawTimeId === filterDrawTime);
         const activeTickets = dayTickets.filter(ticket => !ticket.cancelled);
         const totalAmount = activeTickets.reduce((sum, ticket) => sum + ticket.total, 0);
         document.getElementById('currentSalesDate').textContent = dateString;
@@ -2899,7 +2927,7 @@ Object.assign(window, {
     updateDrawTimes, updateFilterDrawTimes, updateWinnerDrawTimes, updateLimitDrawTimes, updateLimitBilleteDrawTimes,
     generateTicket, marcarComoPagado, deleteTicket, copyTicket, viewTicket, closeTicket,
     compartirTicket, captureAndShareScreen, shareReport, toggleScanner, openScannerModal, closeScannerModal,
-    searchTickets, showSalesByDate, showTodaySales, displayTickets, deleteSalesByDate, borrarTodasVentas,
+    searchTickets, showSalesByDate, showTodaySales, onSalesLotteryFilter, displayTickets, deleteSalesByDate, borrarTodasVentas,
     processQuickInput, editPieces, removeNumber,
     applyFilters, switchTab, updateNumberSalesTable, updateBilletesSalesTable,
     checkWinningTickets,
