@@ -210,7 +210,11 @@ function populateLotteryDropdowns() {
         const firstOptionText = isFilter ? 'Todas las Loterías' : 'Elegir loteria';
         sel.innerHTML = `<option value="">${firstOptionText}</option>`;
 
-        lotteries.forEach(lot => {
+        const isTicketSelect = id === 'lotteryType';
+        const lotList = isTicketSelect
+            ? lotteries.filter(lot => (drawTimesMap[lot.id] || []).some(dt => !isDrawTimePast(dt)))
+            : lotteries;
+        lotList.forEach(lot => {
             const opt = document.createElement('option');
             opt.value = lot.id;           // value = DB id (uuid)
             opt.textContent = lot.display_name;
