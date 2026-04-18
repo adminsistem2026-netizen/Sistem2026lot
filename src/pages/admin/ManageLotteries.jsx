@@ -204,11 +204,7 @@ export default function ManageLotteries() {
       const { error: e4 } = await db.from('sales_limits').delete().eq('lottery_id', lot.id);
       if (e4) throw new Error('sales_limits: ' + e4.message);
 
-      // 4. Desvincular reventados que apuntan a esta lotería como base
-      const { error: e5 } = await db.from('lotteries').update({ base_lottery_id: null }).eq('base_lottery_id', lot.id);
-      if (e5) throw new Error('base_lottery_id: ' + e5.message);
-
-      // 5. Lotería (draw_times se borran por CASCADE)
+      // 4. Lotería (draw_times se borran por CASCADE)
       const { error: e6 } = await db.from('lotteries').delete().eq('id', lot.id);
       if (e6) throw new Error('lotteries: ' + e6.message);
 
