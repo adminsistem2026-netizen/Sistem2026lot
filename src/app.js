@@ -229,10 +229,17 @@ function getDrawTimesForCode(code) {
     return getDrawTimesForId(code);
 }
 
+function isDrawTimePast(dt) {
+    if (!dt?.time_value) return false;
+    const now = new Date();
+    const [h, m] = dt.time_value.split(':').map(Number);
+    return (now.getHours() * 60 + now.getMinutes()) >= (h * 60 + m);
+}
+
 function populateDrawTimeSelect(selectEl, lotteryId, defaultText = 'Hora de sorteo') {
     selectEl.innerHTML = `<option value="">${defaultText}</option>`;
     if (!lotteryId) { selectEl.disabled = true; return; }
-    const times = getDrawTimesForId(lotteryId);
+    const times = getDrawTimesForId(lotteryId).filter(dt => !isDrawTimePast(dt));
     if (times.length === 0) { selectEl.disabled = true; return; }
     times.forEach(dt => {
         const opt = document.createElement('option');

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLotteries, isDrawTimeBlocked } from '../../hooks/useLotteries';
+import { useLotteries, isDrawTimeBlocked, isDrawTimePast } from '../../hooks/useLotteries';
 import { useTickets } from '../../hooks/useTickets';
 import { useLimits } from '../../hooks/useLimits';
 import { calculatePrice } from '../../lib/priceCalculator';
@@ -53,6 +53,14 @@ export default function SellerDashboard() {
   const selectedLottery = lotteries.find(l => l.id === selectedLotteryId) || null;
   const selectedDrawTime = (drawTimes[selectedLotteryId] || []).find(d => d.id === selectedDrawTimeId) || null;
   const currentDrawTimes = selectedLotteryId ? (drawTimes[selectedLotteryId] || []) : [];
+  const visibleDrawTimes = currentDrawTimes.filter(d => !isDrawTimePast(d));
+
+  // Auto-limpiar sorteo seleccionado si ya pasó su hora
+  useEffect(() => {
+    if (selectedDrawTime && isDrawTimePast(selectedDrawTime)) {
+      setSelectedDrawTimeId('');
+    }
+  }, [dt]);
 
   const dateStr = dt.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const timeStr = dt.toLocaleTimeString('es-ES');
@@ -257,7 +265,7 @@ export default function SellerDashboard() {
           <select
             value={selectedDrawTimeId}
             onChange={e => {
-              const found = currentDrawTimes.find(d => d.id === e.target.value);
+              const found = visibleDrawTimes.find(d => d.id === e.target.value);
               if (found) {
                 const st = isDrawTimeBlocked(found);
                 if (st.blocked) { showToast(`Bloqueado: ${st.reason}`, 'error'); return; }
@@ -269,7 +277,7 @@ export default function SellerDashboard() {
             className="w-full border border-gray-300 rounded-lg px-3 py-3 text-base bg-white disabled:bg-gray-100 disabled:text-gray-400"
           >
             <option value="">Hora de sort</option>
-            {currentDrawTimes.map(d => {
+            {visibleDrawTimes.map(d => {
               const st = isDrawTimeBlocked(d);
               return (
                 <option key={d.id} value={d.id} disabled={st.blocked}>

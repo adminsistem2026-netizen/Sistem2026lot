@@ -184,8 +184,19 @@ export default function ManageLotteries() {
 
   async function deleteLottery(lot) {
     if (!window.confirm(`¿Eliminar "${lot.display_name}" permanentemente? Esta acción no se puede deshacer.`)) return;
-    const { error: err } = await db.rpc('delete_lottery', { p_id: lot.id });
-    if (err) { setError('Error al eliminar: ' + err.message); return; }
+    // Borrar en orden para respetar foreign keys (tickets y sales_limits no tienen cascade)
+    const ticketIds = await db.from('tickets').select('id').eq('lottery_id', lot.id);
+    if (ticketIds.data?.length) {
+      const ids = ticketIds.data.map(t => t.id);
+      const { error: e1 } = await db.from('ticket_numbers').delete().in('ticket_id', ids);
+      if (e1) { setError('Error al eliminar números: ' + e1.message); return; }
+    }
+    const { error: e2 } = await db.from('tickets').delete().eq('lottery_id', lot.id);
+    if (e2) { setError('Error al eliminar tickets: ' + e2.message); return; }
+    const { error: e3 } = await db.from('sales_limits').delete().eq('lottery_id', lot.id);
+    if (e3) { setError('Error al eliminar límites: ' + e3.message); return; }
+    const { error: e4 } = await db.from('lotteries').delete().eq('id', lot.id);
+    if (e4) { setError('Error al eliminar lotería: ' + e4.message); return; }
     loadLotteries();
   }
 

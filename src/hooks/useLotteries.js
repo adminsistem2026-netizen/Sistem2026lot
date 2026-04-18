@@ -39,6 +39,19 @@ export function useLotteries() {
 }
 
 /**
+ * Retorna true si la hora del sorteo ya pasó (se oculta del selector del vendedor).
+ * Se oculta exactamente a la hora del sorteo y reaparece al día siguiente.
+ */
+export function isDrawTimePast(drawTime) {
+  if (!drawTime?.time_value) return false;
+  const now = new Date();
+  const [h, m] = drawTime.time_value.split(':').map(Number);
+  const drawMinutes = h * 60 + m;
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  return nowMinutes >= drawMinutes;
+}
+
+/**
  * Verifica si un horario está bloqueado para ventas.
  * Bloquea: cutoff_minutes_before antes del sorteo y block_minutes_after después.
  */
