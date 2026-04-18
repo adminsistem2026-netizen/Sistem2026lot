@@ -184,20 +184,39 @@ export default function ManageLotteries() {
 
   async function deleteLottery(lot) {
     if (!window.confirm(`¿Eliminar "${lot.display_name}" permanentemente? Esta acción no se puede deshacer.`)) return;
-    // Borrar en orden para respetar foreign keys (tickets y sales_limits no tienen cascade)
-    const ticketIds = await db.from('tickets').select('id').eq('lottery_id', lot.id);
-    if (ticketIds.data?.length) {
-      const ids = ticketIds.data.map(t => t.id);
-      const { error: e1 } = await db.from('ticket_numbers').delete().in('ticket_id', ids);
-      if (e1) { setError('Error al eliminar números: ' + e1.message); return; }
+    setError('');
+    try {
+      // 1. ticket_numbers → tickets
+      const { data: tks } = await db.from('tickets').select('id').eq('lottery_id', lot.id);
+      if (tks?.length) {
+        const ids = tks.map(t => t.id);
+        const { error: e1 } = await db.from('ticket_numbers').delete().in('ticket_id', ids);
+        if (e1) throw new Error('ticket_numbers: ' + e1.message);
+      }
+      const { error: e2 } = await db.from('tickets').delete().eq('lottery_id', lot.id);
+      if (e2) throw new Error('tickets: ' + e2.message);
+
+      // 2. winning_numbers
+      const { error: e3 } = await db.from('winning_numbers').delete().eq('lottery_id', lot.id);
+      if (e3) throw new Error('winning_numbers: ' + e3.message);
+
+      // 3. sales_limits
+      const { error: e4 } = await db.from('sales_limits').delete().eq('lottery_id', lot.id);
+      if (e4) throw new Error('sales_limits: ' + e4.message);
+
+      // 4. Desvincular reventados que apuntan a esta lotería como base
+      const { error: e5 } = await db.from('lotteries').update({ base_lottery_id: null }).eq('base_lottery_id', lot.id);
+      if (e5) throw new Error('base_lottery_id: ' + e5.message);
+
+      // 5. Lotería (draw_times se borran por CASCADE)
+      const { error: e6 } = await db.from('lotteries').delete().eq('id', lot.id);
+      if (e6) throw new Error('lotteries: ' + e6.message);
+
+      loadLotteries();
+    } catch (err) {
+      console.error('deleteLottery error:', err);
+      alert('Error al eliminar: ' + err.message);
     }
-    const { error: e2 } = await db.from('tickets').delete().eq('lottery_id', lot.id);
-    if (e2) { setError('Error al eliminar tickets: ' + e2.message); return; }
-    const { error: e3 } = await db.from('sales_limits').delete().eq('lottery_id', lot.id);
-    if (e3) { setError('Error al eliminar límites: ' + e3.message); return; }
-    const { error: e4 } = await db.from('lotteries').delete().eq('id', lot.id);
-    if (e4) { setError('Error al eliminar lotería: ' + e4.message); return; }
-    loadLotteries();
   }
 
   // ── Draw time modal ──
