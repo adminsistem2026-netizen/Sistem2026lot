@@ -204,7 +204,11 @@ export default function ManageLotteries() {
       const { error: e4 } = await db.from('sales_limits').delete().eq('lottery_id', lot.id);
       if (e4) throw new Error('sales_limits: ' + e4.message);
 
-      // 4. Lotería (draw_times se borran por CASCADE)
+      // 4. draw_times (CASCADE no activo en InsForge)
+      const { error: e5 } = await db.from('draw_times').delete().eq('lottery_id', lot.id);
+      if (e5) throw new Error('draw_times: ' + e5.message);
+
+      // 5. Lotería
       const { error: e6 } = await db.from('lotteries').delete().eq('id', lot.id);
       if (e6) throw new Error('lotteries: ' + e6.message);
 
