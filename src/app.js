@@ -1325,7 +1325,7 @@ async function displayTickets(ticketsToShow = null) {
             const total = typeof ticket.total === 'number' && !isNaN(ticket.total) ? ticket.total.toFixed(2) : '0.00';
             const fecha = ticket.datetime ? new Date(ticket.datetime).toLocaleString() : '';
             const dtObj = ticket.drawTimeId ? getDrawTimeById(ticket.drawTimeId) : null;
-            const drawPast = dtObj ? isDrawTimePast(dtObj) : false;
+            const drawPast = dtObj ? (isDrawTimeBlocked(dtObj).blocked || isDrawTimePast(dtObj)) : false;
             return `
             <div class="ticket-item" style="${ticket.paid ? 'background:#fff3e0;border-left:4px solid #ffb74d;' : ''}">
                 <p><strong>ID:</strong> ${ticket.id}</p>
