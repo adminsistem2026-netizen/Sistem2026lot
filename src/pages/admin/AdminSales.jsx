@@ -83,7 +83,8 @@ function TicketModal({ ticket, sellerName, lotteryName, drawTimeName, sym, onClo
           </div>
           <div className="flex items-center gap-2">
             {ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/20 font-medium">Cancelado</span>}
-            {ticket.is_paid && !ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-medium">Pagado</span>}
+            {ticket.is_winner && !ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-bold">GANADOR</span>}
+            {ticket.is_paid && !ticket.is_cancelled && !ticket.is_winner && <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-medium">Pagado</span>}
             <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><IconX /></button>
           </div>
         </div>
@@ -184,6 +185,46 @@ export default function AdminSales() {
     return s2.map(x => x.id);
   }
 
+  async function getWinnerTicketIds(pageRows) {
+    if (!pageRows.length) return new Set();
+    let wq = db.from('winning_numbers')
+      .select('lottery_id, draw_time_id, draw_date, first_prize, second_prize, third_prize');
+    if (dateFrom) wq = wq.gte('draw_date', dateFrom);
+    if (dateTo)   wq = wq.lte('draw_date', dateTo);
+    const { data: winningData } = await wq;
+    if (!winningData || !winningData.length) return new Set();
+
+    // Build map: "lottery_id|draw_time_id|draw_date" -> Set of winning numbers
+    const winMap = {};
+    const allPrizes = new Set();
+    for (const w of winningData) {
+      const key = `${w.lottery_id}|${w.draw_time_id}|${w.draw_date}`;
+      const prizes = [w.first_prize, w.second_prize, w.third_prize].filter(Boolean);
+      winMap[key] = prizes;
+      prizes.forEach(p => allPrizes.add(p));
+    }
+    if (!allPrizes.size) return new Set();
+
+    const ticketIds = pageRows.map(t => t.id);
+    const { data: tnData } = await db
+      .from('ticket_numbers')
+      .select('ticket_id, number')
+      .in('ticket_id', ticketIds)
+      .in('number', [...allPrizes])
+      .eq('digit_count', 2);
+
+    const winnerIds = new Set();
+    for (const tn of (tnData || [])) {
+      const ticket = pageRows.find(t => t.id === tn.ticket_id);
+      if (!ticket) continue;
+      const key = `${ticket.lottery_id}|${ticket.draw_time_id}|${ticket.sale_date}`;
+      if (winMap[key] && winMap[key].includes(tn.number)) {
+        winnerIds.add(tn.ticket_id);
+      }
+    }
+    return winnerIds;
+  }
+
   async function loadTickets(lim = pageSize, sellerIds) {
     if (!profile?.id) { setTickets([]); setLoading(false); return; }
     setLoading(true);
@@ -196,7 +237,9 @@ export default function AdminSales() {
     const { data } = await q.order('sale_date', { ascending: false }).limit(lim + 1);
     const rows = data || [];
     setHasMore(rows.length > lim);
-    setTickets(rows.slice(0, lim));
+    const pageRows = rows.slice(0, lim);
+    const winnerIds = await getWinnerTicketIds(pageRows);
+    setTickets(pageRows.map(t => ({ ...t, is_winner: winnerIds.has(t.id) })));
     setLoading(false);
   }
 
@@ -402,6 +445,8 @@ export default function AdminSales() {
                 className={`w-full text-left border rounded-2xl px-4 py-3.5 transition cursor-pointer ${
                   t.is_cancelled
                     ? 'bg-slate-900/50 border-slate-800 opacity-50'
+                    : t.is_winner
+                    ? 'bg-green-950/40 border-green-700/50 hover:border-green-600/60 active:scale-[0.99]'
                     : 'bg-slate-900 border-slate-700/60 hover:border-slate-600 active:scale-[0.99]'
                 }`}
               >
@@ -414,7 +459,12 @@ export default function AdminSales() {
                           Cancelado
                         </span>
                       )}
-                      {t.is_paid && !t.is_cancelled && (
+                      {t.is_winner && !t.is_cancelled && (
+                        <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-bold border border-green-500/30">
+                          GANADOR
+                        </span>
+                      )}
+                      {t.is_paid && !t.is_cancelled && !t.is_winner && (
                         <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium border border-emerald-500/20">
                           Pagado
                         </span>
