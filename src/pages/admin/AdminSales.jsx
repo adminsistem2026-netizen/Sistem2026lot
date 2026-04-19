@@ -189,8 +189,7 @@ export default function AdminSales() {
     if (!profile?.id) { setTickets([]); setLoading(false); return; }
     setLoading(true);
 
-    // Include ticket_numbers in the join to avoid InsForge .in() bug
-    let q = db.from('tickets').select('*, ticket_numbers(number, digit_count)').eq('admin_id', profile.id);
+    let q = db.from('tickets').select('*').eq('admin_id', profile.id);
     if (dateFrom)    q = q.gte('sale_date', dateFrom);
     if (dateTo)      q = q.lte('sale_date', dateTo);
     if (sellerId)    q = q.eq('seller_id', sellerId);
@@ -201,7 +200,7 @@ export default function AdminSales() {
     setHasMore(rows.length > lim);
     const pageRows = rows.slice(0, lim);
 
-    // Fetch winning numbers for the date range
+    // Fetch winning numbers and detect winners without using .in() (InsForge bug)
     let wq = db.from('winning_numbers')
       .select('lottery_id, draw_time_id, draw_date, first_prize, second_prize, third_prize');
     if (dateFrom) wq = wq.gte('draw_date', dateFrom);
@@ -209,28 +208,40 @@ export default function AdminSales() {
     const { data: winningData } = await wq;
     const wins = winningData || [];
 
-    const enriched = pageRows.map(t => {
-      const win = wins.find(w =>
-        w.lottery_id === t.lottery_id &&
-        w.draw_date === t.sale_date &&
-        (w.draw_time_id === null || w.draw_time_id === t.draw_time_id)
-      );
+    // For each unique 2-digit prize, query ticket_numbers by eq (avoids .in() bug)
+    const pageTicketIds = new Set(pageRows.map(t => t.id));
+    const winnerIds = new Set();
 
-      let is_winner = false;
-      if (win) {
-        const prizes = [win.first_prize, win.second_prize, win.third_prize].filter(Boolean);
-        is_winner = (t.ticket_numbers || []).some(n => {
-          if (n.digit_count === 2) {
-            return prizes.some(p => p.slice(-2) === n.number);
-          }
-          return prizes.some(p => p === n.number);
-        });
+    if (wins.length > 0) {
+      const prizes2d = new Set();
+      wins.forEach(w => {
+        [w.first_prize, w.second_prize, w.third_prize].filter(Boolean)
+          .forEach(p => prizes2d.add(p.slice(-2)));
+      });
+
+      for (const prize of prizes2d) {
+        const { data: tnData } = await db
+          .from('ticket_numbers')
+          .select('ticket_id, number')
+          .eq('number', prize)
+          .eq('digit_count', 2);
+
+        for (const tn of (tnData || [])) {
+          if (!pageTicketIds.has(tn.ticket_id)) continue;
+          const ticket = pageRows.find(t => t.id === tn.ticket_id);
+          if (!ticket) continue;
+          const win = wins.find(w =>
+            w.lottery_id === ticket.lottery_id &&
+            w.draw_date === ticket.sale_date &&
+            (w.draw_time_id === null || w.draw_time_id === ticket.draw_time_id) &&
+            [w.first_prize, w.second_prize, w.third_prize].filter(Boolean).some(p => p.slice(-2) === prize)
+          );
+          if (win) winnerIds.add(tn.ticket_id);
+        }
       }
+    }
 
-      return { ...t, is_winner };
-    });
-
-    setTickets(enriched);
+    setTickets(pageRows.map(t => ({ ...t, is_winner: winnerIds.has(t.id) })));
     setLoading(false);
   }
 
