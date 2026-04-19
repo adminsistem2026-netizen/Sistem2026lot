@@ -6,7 +6,6 @@ import QRScannerModal from '../../components/common/QRScannerModal';
 import { usePrinter } from '../../contexts/PrinterContext';
 import { useToast } from '../../components/common/Toast';
 import { today } from '../../lib/helpers';
-import { db } from '../../lib/insforge';
 
 export default function SellerSales() {
   const { loadTodayTickets, markAsPaid, cancelTicket } = useTickets();
@@ -30,43 +29,13 @@ export default function SellerSales() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ticketData, { data: winningData }] = await Promise.all([
-        loadTodayTickets({ date: filterDate }),
-        db.from('winning_numbers')
-          .select('lottery_id, draw_time_id, first_prize, second_prize, third_prize')
-          .eq('draw_date', filterDate),
-      ]);
-
-      const wins = winningData || [];
-
-      const enriched = ticketData.map(t => {
-        // Match: same lottery, same date, and either no specific draw_time or same draw_time
-        const win = wins.find(w =>
-          w.lottery_id === t.lottery_id &&
-          (w.draw_time_id === null || w.draw_time_id === t.draw_time_id)
-        );
-
-        let is_winner = false;
-        if (win) {
-          const prizes = [win.first_prize, win.second_prize, win.third_prize].filter(Boolean);
-          is_winner = (t.ticket_numbers || []).some(n => {
-            if (n.digit_count === 2) {
-              // Compare last 2 digits of prize against 2-digit number
-              return prizes.some(p => p.slice(-2) === n.number);
-            }
-            // 4-digit billete: exact match
-            return prizes.some(p => p === n.number);
-          });
-        }
-
-        return {
-          ...t,
-          lottery_display_name: lotteries.find(l => l.id === t.lottery_id)?.display_name || '—',
-          draw_time_label: Object.values(drawTimes).flat().find(dt => dt.id === t.draw_time_id)?.time_label || '—',
-          numbers: t.ticket_numbers || [],
-          is_winner,
-        };
-      });
+      const data = await loadTodayTickets({ date: filterDate });
+      const enriched = data.map(t => ({
+        ...t,
+        lottery_display_name: lotteries.find(l => l.id === t.lottery_id)?.display_name || '—',
+        draw_time_label: Object.values(drawTimes).flat().find(dt => dt.id === t.draw_time_id)?.time_label || '—',
+        numbers: t.ticket_numbers || [],
+      }));
       setTickets(enriched);
     } catch (e) {
       showToast(e.message, 'error');
@@ -223,13 +192,7 @@ export default function SellerSales() {
             <button
               key={t.id}
               onClick={() => setSelectedTicket(t)}
-              className={`w-full rounded-xl border px-4 py-3 text-left shadow-sm ${
-                t.is_winner
-                  ? 'bg-green-50 border-green-300 active:bg-green-100'
-                  : t.is_paid
-                  ? 'bg-orange-50 border-orange-200 active:bg-orange-100'
-                  : 'bg-white border-gray-200 active:bg-gray-50'
-              }`}
+              className="w-full bg-white rounded-xl border border-gray-200 px-4 py-3 text-left active:bg-gray-50 shadow-sm"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -251,13 +214,8 @@ export default function SellerSales() {
                   <span className="text-base font-bold text-gray-900">
                     {t.currency_symbol || '$'}{Number(t.total_amount).toFixed(2)}
                   </span>
-                  {t.is_winner && (
-                    <span className="text-[10px] bg-green-200 text-green-800 px-2 py-0.5 rounded-full font-bold">
-                      GANADOR
-                    </span>
-                  )}
-                  {t.is_paid && !t.is_winner && (
-                    <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">
+                  {t.is_paid && (
+                    <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-bold">
                       COBRADO
                     </span>
                   )}

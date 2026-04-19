@@ -83,8 +83,7 @@ function TicketModal({ ticket, sellerName, lotteryName, drawTimeName, sym, onClo
           </div>
           <div className="flex items-center gap-2">
             {ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/20 font-medium">Cancelado</span>}
-            {ticket.is_winner && !ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 font-bold">GANADOR</span>}
-            {ticket.is_paid && !ticket.is_cancelled && !ticket.is_winner && <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-medium">Pagado</span>}
+            {ticket.is_paid && !ticket.is_cancelled && <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 font-medium">Pagado</span>}
             <button onClick={onClose} className="text-slate-400 hover:text-white p-1"><IconX /></button>
           </div>
         </div>
@@ -188,7 +187,6 @@ export default function AdminSales() {
   async function loadTickets(lim = pageSize, sellerIds) {
     if (!profile?.id) { setTickets([]); setLoading(false); return; }
     setLoading(true);
-
     let q = db.from('tickets').select('*').eq('admin_id', profile.id);
     if (dateFrom)    q = q.gte('sale_date', dateFrom);
     if (dateTo)      q = q.lte('sale_date', dateTo);
@@ -198,50 +196,7 @@ export default function AdminSales() {
     const { data } = await q.order('sale_date', { ascending: false }).limit(lim + 1);
     const rows = data || [];
     setHasMore(rows.length > lim);
-    const pageRows = rows.slice(0, lim);
-
-    // Fetch winning numbers and detect winners without using .in() (InsForge bug)
-    let wq = db.from('winning_numbers')
-      .select('lottery_id, draw_time_id, draw_date, first_prize, second_prize, third_prize');
-    if (dateFrom) wq = wq.gte('draw_date', dateFrom);
-    if (dateTo)   wq = wq.lte('draw_date', dateTo);
-    const { data: winningData } = await wq;
-    const wins = winningData || [];
-
-    // For each unique 2-digit prize, query ticket_numbers by eq (avoids .in() bug)
-    const pageTicketIds = new Set(pageRows.map(t => t.id));
-    const winnerIds = new Set();
-
-    if (wins.length > 0) {
-      const prizes2d = new Set();
-      wins.forEach(w => {
-        [w.first_prize, w.second_prize, w.third_prize].filter(Boolean)
-          .forEach(p => prizes2d.add(p.slice(-2)));
-      });
-
-      for (const prize of prizes2d) {
-        const { data: tnData } = await db
-          .from('ticket_numbers')
-          .select('ticket_id, number')
-          .eq('number', prize)
-          .eq('digit_count', 2);
-
-        for (const tn of (tnData || [])) {
-          if (!pageTicketIds.has(tn.ticket_id)) continue;
-          const ticket = pageRows.find(t => t.id === tn.ticket_id);
-          if (!ticket) continue;
-          const win = wins.find(w =>
-            w.lottery_id === ticket.lottery_id &&
-            w.draw_date === ticket.sale_date &&
-            (w.draw_time_id === null || w.draw_time_id === ticket.draw_time_id) &&
-            [w.first_prize, w.second_prize, w.third_prize].filter(Boolean).some(p => p.slice(-2) === prize)
-          );
-          if (win) winnerIds.add(tn.ticket_id);
-        }
-      }
-    }
-
-    setTickets(pageRows.map(t => ({ ...t, is_winner: winnerIds.has(t.id) })));
+    setTickets(rows.slice(0, lim));
     setLoading(false);
   }
 
@@ -447,8 +402,6 @@ export default function AdminSales() {
                 className={`w-full text-left border rounded-2xl px-4 py-3.5 transition cursor-pointer ${
                   t.is_cancelled
                     ? 'bg-slate-900/50 border-slate-800 opacity-50'
-                    : t.is_winner
-                    ? 'bg-green-950/40 border-green-700/50 hover:border-green-600/60 active:scale-[0.99]'
                     : 'bg-slate-900 border-slate-700/60 hover:border-slate-600 active:scale-[0.99]'
                 }`}
               >
@@ -461,12 +414,7 @@ export default function AdminSales() {
                           Cancelado
                         </span>
                       )}
-                      {t.is_winner && !t.is_cancelled && (
-                        <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 font-bold border border-green-500/30">
-                          GANADOR
-                        </span>
-                      )}
-                      {t.is_paid && !t.is_cancelled && !t.is_winner && (
+                      {t.is_paid && !t.is_cancelled && (
                         <span className="inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium border border-emerald-500/20">
                           Pagado
                         </span>
