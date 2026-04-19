@@ -37,19 +37,28 @@ export default function SellerSales() {
           .eq('draw_date', filterDate),
       ]);
 
-      // Build map: "lottery_id|draw_time_id" -> Set of winning numbers
-      const winMap = {};
-      for (const w of (winningData || [])) {
-        const key = `${w.lottery_id}|${w.draw_time_id}`;
-        winMap[key] = new Set([w.first_prize, w.second_prize, w.third_prize].filter(Boolean));
-      }
+      const wins = winningData || [];
 
       const enriched = ticketData.map(t => {
-        const key = `${t.lottery_id}|${t.draw_time_id}`;
-        const prizes = winMap[key];
-        const is_winner = prizes
-          ? (t.ticket_numbers || []).some(n => n.digit_count === 2 && prizes.has(n.number))
-          : false;
+        // Match: same lottery, same date, and either no specific draw_time or same draw_time
+        const win = wins.find(w =>
+          w.lottery_id === t.lottery_id &&
+          (w.draw_time_id === null || w.draw_time_id === t.draw_time_id)
+        );
+
+        let is_winner = false;
+        if (win) {
+          const prizes = [win.first_prize, win.second_prize, win.third_prize].filter(Boolean);
+          is_winner = (t.ticket_numbers || []).some(n => {
+            if (n.digit_count === 2) {
+              // Compare last 2 digits of prize against 2-digit number
+              return prizes.some(p => p.slice(-2) === n.number);
+            }
+            // 4-digit billete: exact match
+            return prizes.some(p => p === n.number);
+          });
+        }
+
         return {
           ...t,
           lottery_display_name: lotteries.find(l => l.id === t.lottery_id)?.display_name || '—',

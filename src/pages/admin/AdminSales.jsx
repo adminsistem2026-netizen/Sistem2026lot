@@ -185,50 +185,12 @@ export default function AdminSales() {
     return s2.map(x => x.id);
   }
 
-  async function getWinnerTicketIds(pageRows) {
-    if (!pageRows.length) return new Set();
-    let wq = db.from('winning_numbers')
-      .select('lottery_id, draw_time_id, draw_date, first_prize, second_prize, third_prize');
-    if (dateFrom) wq = wq.gte('draw_date', dateFrom);
-    if (dateTo)   wq = wq.lte('draw_date', dateTo);
-    const { data: winningData } = await wq;
-    if (!winningData || !winningData.length) return new Set();
-
-    // Build map: "lottery_id|draw_time_id|draw_date" -> Set of winning numbers
-    const winMap = {};
-    const allPrizes = new Set();
-    for (const w of winningData) {
-      const key = `${w.lottery_id}|${w.draw_time_id}|${w.draw_date}`;
-      const prizes = [w.first_prize, w.second_prize, w.third_prize].filter(Boolean);
-      winMap[key] = prizes;
-      prizes.forEach(p => allPrizes.add(p));
-    }
-    if (!allPrizes.size) return new Set();
-
-    const ticketIds = pageRows.map(t => t.id);
-    const { data: tnData } = await db
-      .from('ticket_numbers')
-      .select('ticket_id, number')
-      .in('ticket_id', ticketIds)
-      .in('number', [...allPrizes])
-      .eq('digit_count', 2);
-
-    const winnerIds = new Set();
-    for (const tn of (tnData || [])) {
-      const ticket = pageRows.find(t => t.id === tn.ticket_id);
-      if (!ticket) continue;
-      const key = `${ticket.lottery_id}|${ticket.draw_time_id}|${ticket.sale_date}`;
-      if (winMap[key] && winMap[key].includes(tn.number)) {
-        winnerIds.add(tn.ticket_id);
-      }
-    }
-    return winnerIds;
-  }
-
   async function loadTickets(lim = pageSize, sellerIds) {
     if (!profile?.id) { setTickets([]); setLoading(false); return; }
     setLoading(true);
-    let q = db.from('tickets').select('*').eq('admin_id', profile.id);
+
+    // Include ticket_numbers in the join to avoid InsForge .in() bug
+    let q = db.from('tickets').select('*, ticket_numbers(number, digit_count)').eq('admin_id', profile.id);
     if (dateFrom)    q = q.gte('sale_date', dateFrom);
     if (dateTo)      q = q.lte('sale_date', dateTo);
     if (sellerId)    q = q.eq('seller_id', sellerId);
@@ -238,8 +200,37 @@ export default function AdminSales() {
     const rows = data || [];
     setHasMore(rows.length > lim);
     const pageRows = rows.slice(0, lim);
-    const winnerIds = await getWinnerTicketIds(pageRows);
-    setTickets(pageRows.map(t => ({ ...t, is_winner: winnerIds.has(t.id) })));
+
+    // Fetch winning numbers for the date range
+    let wq = db.from('winning_numbers')
+      .select('lottery_id, draw_time_id, draw_date, first_prize, second_prize, third_prize');
+    if (dateFrom) wq = wq.gte('draw_date', dateFrom);
+    if (dateTo)   wq = wq.lte('draw_date', dateTo);
+    const { data: winningData } = await wq;
+    const wins = winningData || [];
+
+    const enriched = pageRows.map(t => {
+      const win = wins.find(w =>
+        w.lottery_id === t.lottery_id &&
+        w.draw_date === t.sale_date &&
+        (w.draw_time_id === null || w.draw_time_id === t.draw_time_id)
+      );
+
+      let is_winner = false;
+      if (win) {
+        const prizes = [win.first_prize, win.second_prize, win.third_prize].filter(Boolean);
+        is_winner = (t.ticket_numbers || []).some(n => {
+          if (n.digit_count === 2) {
+            return prizes.some(p => p.slice(-2) === n.number);
+          }
+          return prizes.some(p => p === n.number);
+        });
+      }
+
+      return { ...t, is_winner };
+    });
+
+    setTickets(enriched);
     setLoading(false);
   }
 
