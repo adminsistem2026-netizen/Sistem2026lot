@@ -254,10 +254,11 @@ function isDrawTimeBlocked(dt) {
     return { blocked: false };
 }
 
-function populateDrawTimeSelect(selectEl, lotteryId, defaultText = 'Hora de sorteo') {
+function populateDrawTimeSelect(selectEl, lotteryId, defaultText = 'Hora de sorteo', filterPast = true) {
     selectEl.innerHTML = `<option value="">${defaultText}</option>`;
     if (!lotteryId) { selectEl.disabled = true; return; }
-    const times = getDrawTimesForId(lotteryId).filter(dt => !isDrawTimePast(dt));
+    const allTimes = getDrawTimesForId(lotteryId);
+    const times = filterPast ? allTimes.filter(dt => !isDrawTimePast(dt)) : allTimes;
     if (times.length === 0) { selectEl.disabled = true; return; }
     times.forEach(dt => {
         const opt = document.createElement('option');
@@ -959,13 +960,13 @@ function updateDrawTimes() {
 function updateFilterDrawTimes() {
     const lotteryCode = document.getElementById('filterLotteryType').value;
     const timeSelect = document.getElementById('filterDrawTimeSelect');
-    populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas');
+    populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas', false);
 }
 
 function updateWinnerDrawTimes() {
     const lotteryCode = document.getElementById('filterLottery').value;
     const timeSelect = document.getElementById('filterDrawTime');
-    populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas');
+    populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas', false);
 }
 
 function updateLimitDrawTimes() {
