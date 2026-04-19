@@ -1324,6 +1324,8 @@ async function displayTickets(ticketsToShow = null) {
         ticketsList.innerHTML = tickets.map(ticket => {
             const total = typeof ticket.total === 'number' && !isNaN(ticket.total) ? ticket.total.toFixed(2) : '0.00';
             const fecha = ticket.datetime ? new Date(ticket.datetime).toLocaleString() : '';
+            const dtObj = ticket.drawTimeId ? getDrawTimeById(ticket.drawTimeId) : null;
+            const drawPast = dtObj ? isDrawTimePast(dtObj) : false;
             return `
             <div class="ticket-item" style="${ticket.paid ? 'background:#fff3e0;border-left:4px solid #ffb74d;' : ''}">
                 <p><strong>ID:</strong> ${ticket.id}</p>
@@ -1335,7 +1337,7 @@ async function displayTickets(ticketsToShow = null) {
                 <p><strong>Estado:</strong> ${ticket.paid ? 'Pagado' : 'Pendiente'}</p>
                 <div class="ticket-actions">
                     <button onclick="viewTicket('${ticket.id}')">Ver</button>
-                    <button onclick="deleteTicket('${ticket.id}')" style="background:#e5e7eb;color:#374151;border:1px solid #d1d5db;">Clear</button>
+                    ${!drawPast ? `<button onclick="deleteTicket('${ticket.id}')" style="background:#e5e7eb;color:#374151;border:1px solid #d1d5db;">Clear</button>` : ''}
                     <button onclick="copyTicket('${ticket.id}')">Copy</button>
                     ${!ticket.paid ? `<button onclick="marcarComoPagado('${ticket.id}')" style="background:#e5e7eb;color:#374151;border:1px solid #d1d5db;">Cobrar</button>` : ''}
                 </div>
