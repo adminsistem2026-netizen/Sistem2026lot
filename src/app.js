@@ -240,6 +240,20 @@ function isDrawTimePast(dt) {
     return (now.getHours() * 60 + now.getMinutes()) >= (h * 60 + m);
 }
 
+function isDrawTimeBlocked(dt) {
+    if (!dt?.time_value) return { blocked: false };
+    const now = new Date();
+    const [h, m] = dt.time_value.split(':').map(Number);
+    const drawMinutes = h * 60 + m;
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const diff = drawMinutes - nowMinutes;
+    const cutoff = dt.cutoff_minutes_before ?? 1;
+    const blockAfter = dt.block_minutes_after ?? 20;
+    if (diff >= 0 && diff <= cutoff) return { blocked: true, reason: `Cierra en ${diff} min` };
+    if (diff < 0 && Math.abs(diff) <= blockAfter) return { blocked: true, reason: `Bloqueado ${blockAfter - Math.abs(diff)} min más` };
+    return { blocked: false };
+}
+
 function populateDrawTimeSelect(selectEl, lotteryId, defaultText = 'Hora de sorteo') {
     selectEl.innerHTML = `<option value="">${defaultText}</option>`;
     if (!lotteryId) { selectEl.disabled = true; return; }
