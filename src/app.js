@@ -1334,7 +1334,7 @@ async function displayTickets(ticketsToShow = null) {
                 ${ticket.drawTime ? `<p><strong>Sorteo:</strong> ${ticket.drawTime}</p>` : ''}
                 ${ticket.customerName ? `<p><strong>Cliente:</strong> ${ticket.customerName}</p>` : ''}
                 <p><strong>Total:</strong> ${total}</p>
-                <p><strong>Estado:</strong> ${ticket.paid ? 'Pagado' : 'Pendiente'}</p>
+                <p><strong>Estado:</strong> ${ticket.paid ? '<span style="display:inline-block;background:#f57c00;color:#fff;font-weight:700;font-size:13px;padding:2px 10px;border-radius:20px;letter-spacing:1px;">✓ COBRADO</span>' : 'Pendiente'}</p>
                 <div class="ticket-actions">
                     <button onclick="viewTicket('${ticket.id}')">Ver</button>
                     ${!drawPast ? `<button onclick="deleteTicket('${ticket.id}')" style="background:#e5e7eb;color:#374151;border:1px solid #d1d5db;">Clear</button>` : ''}
