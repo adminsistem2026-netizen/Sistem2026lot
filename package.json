@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "deploy": "npm run build && gh-pages -d dist",
+    "deploy": "npm run build && wrangler deploy",
     "lint": "eslint .",
-    "preview": "vite preview",
+    "preview": "npm run build && wrangler dev",
     "sync": "npm run build && npx cap sync android",
     "apk": "npm run build && npx cap sync android && cd android && gradlew assembleDebug",
     "apk:release": "npm run build && npx cap sync android && cd android && gradlew assembleRelease"
@@ -26,6 +26,7 @@
     "react-router-dom": "^7.13.1"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.32.3",
     "@eslint/js": "^9.39.4",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.2.14",
@@ -37,6 +38,7 @@
     "gh-pages": "^6.3.0",
     "globals": "^17.4.0",
     "tailwindcss": "^4.2.2",
-    "vite": "^8.0.1"
+    "vite": "^8.0.1",
+    "wrangler": "^4.83.0"
   }
 }
