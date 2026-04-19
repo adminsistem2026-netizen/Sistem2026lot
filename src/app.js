@@ -221,6 +221,21 @@ function populateLotteryDropdowns() {
             sel.appendChild(opt);
         });
     });
+
+    // Restaurar lotería y hora seleccionadas antes de salir de la app
+    const savedLottery = localStorage.getItem('sel_lottery');
+    if (savedLottery) {
+        const lotterySelect = document.getElementById('lotteryType');
+        if (lotterySelect && [...lotterySelect.options].some(o => o.value === savedLottery)) {
+            lotterySelect.value = savedLottery;
+            const timeSelect = document.getElementById('drawTimeSelect');
+            populateDrawTimeSelect(timeSelect, savedLottery);
+            const savedDrawTime = localStorage.getItem('sel_draw_time');
+            if (savedDrawTime && [...timeSelect.options].some(o => o.value === savedDrawTime)) {
+                timeSelect.value = savedDrawTime;
+            }
+        }
+    }
 }
 
 // ==================== Draw times helpers ====================
@@ -538,6 +553,12 @@ async function deleteTicket(ticketId) {
         return;
     }
 
+    const ticketDate = ticketToDelete.datetime ? new Date(ticketToDelete.datetime).toDateString() : null;
+    if (ticketDate && ticketDate !== new Date().toDateString()) {
+        showNotification('🚫 No se puede eliminar un ticket de días anteriores', 'warning', 5000);
+        return;
+    }
+
     const validationResult = validarHorarioEliminacion(ticketToDelete.lottery, ticketToDelete.drawTime);
     if (!validationResult.allowed) {
         const message = getEliminationBlockMessage(validationResult);
@@ -578,17 +599,19 @@ async function loadLimitsFromDB() {
         if (!adminId) return;
         const { data, error } = await db.from('sales_limits')
             .select('*, draw_times(time_label)')
-            .eq('admin_id', adminId)
-            .is('number', null);
+            .eq('admin_id', adminId);
         if (error) { console.error('loadLimitsFromDB error:', error); return; }
         salesLimits = { chances: {}, billetes: {} };
         (data || []).forEach(row => {
             const drawLabel = row.draw_times?.time_label || 'default';
-            // lottery_id null = global limit (applies to all lotteries)
             const key = row.lottery_id ? `${row.lottery_id}_${drawLabel}` : '__global__';
             const type = row.digit_type === 4 ? 'billetes' : 'chances';
             if (!salesLimits[type][key]) salesLimits[type][key] = { globalLimit: 0, numbers: {} };
-            salesLimits[type][key].globalLimit = row.max_pieces;
+            if (row.number === null) {
+                salesLimits[type][key].globalLimit = row.max_pieces;
+            } else {
+                salesLimits[type][key].numbers[row.number] = row.max_pieces;
+            }
         });
     } catch (e) {
         console.error('loadLimitsFromDB exception:', e);
@@ -720,6 +743,18 @@ async function initApp() {
     }, 60 * 1000);
 
     initKeyboardEvents();
+
+    // Persistir hora de sorteo seleccionada en localStorage
+    const drawTimeSelect = document.getElementById('drawTimeSelect');
+    if (drawTimeSelect) {
+        drawTimeSelect.addEventListener('change', function () {
+            if (this.value) {
+                localStorage.setItem('sel_draw_time', this.value);
+            } else {
+                localStorage.removeItem('sel_draw_time');
+            }
+        });
+    }
 }
 
 function updateDateTime() {
@@ -953,6 +988,12 @@ function renderCobrosHistorial() {
 // ==================== Draw time selects ====================
 function updateDrawTimes() {
     const lotteryCode = document.getElementById('lotteryType').value;
+    if (lotteryCode) {
+        localStorage.setItem('sel_lottery', lotteryCode);
+    } else {
+        localStorage.removeItem('sel_lottery');
+        localStorage.removeItem('sel_draw_time');
+    }
     const timeSelect = document.getElementById('drawTimeSelect');
     populateDrawTimeSelect(timeSelect, lotteryCode);
 }
@@ -1340,7 +1381,9 @@ async function displayTickets(ticketsToShow = null) {
             const total = typeof ticket.total === 'number' && !isNaN(ticket.total) ? ticket.total.toFixed(2) : '0.00';
             const fecha = ticket.datetime ? new Date(ticket.datetime).toLocaleString() : '';
             const dtObj = ticket.drawTimeId ? getDrawTimeById(ticket.drawTimeId) : null;
-            const drawPast = dtObj ? (isDrawTimeBlocked(dtObj).blocked || isDrawTimePast(dtObj)) : false;
+            const ticketDate = ticket.datetime ? new Date(ticket.datetime).toDateString() : null;
+            const isFromPreviousDay = ticketDate && ticketDate !== new Date().toDateString();
+            const drawPast = isFromPreviousDay || (dtObj ? (isDrawTimeBlocked(dtObj).blocked || isDrawTimePast(dtObj)) : false);
             return `
             <div class="ticket-item" style="${ticket.paid ? 'background:#fff3e0;border-left:4px solid #ffb74d;' : ''}">
                 <p><strong>ID:</strong> ${ticket.id}</p>
