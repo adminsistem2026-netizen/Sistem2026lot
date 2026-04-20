@@ -343,6 +343,13 @@ export default function AdminNumbers() {
   const resultadoCombinado = totalPagoCombinado !== null ? totalCombinado - totalPagoCombinado : null;
   const showResumenCombinado = financials !== null || billeteFinancials !== null;
 
+  // % vendedor: usa el del vendedor seleccionado, si no el del perfil admin
+  const selectedSeller = sellerId ? sellers.find(s => s.id === sellerId) : null;
+  const sellerPct  = parseFloat(selectedSeller?.seller_percentage ?? profile?.seller_percentage ?? 13);
+  const sellerLabel = selectedSeller ? selectedSeller.full_name : 'Vendedores';
+  const sellerAmt  = totalCombinado * (sellerPct / 100);
+  const adminAmt   = totalCombinado - sellerAmt;
+
   return (
     <div className="space-y-5 mt-2 pb-8">
 
@@ -424,6 +431,66 @@ export default function AdminNumbers() {
           </div>
         )}
       </div>
+
+      {/* ===================== RESUMEN TOTAL COMBINADO ===================== */}
+      {!loading && showResumenCombinado && (
+        <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 bg-slate-700/50 border-b border-slate-600">
+            <p className="text-sm font-bold text-white">Resumen Total Combinado</p>
+            <p className="text-xs text-slate-400 mt-0.5">Chances + Billetes</p>
+          </div>
+          <div className="px-4 py-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-300">Chances recaudado</span>
+              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(financials?.totalCobrado || 0, sym)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-300">Billetes recaudado</span>
+              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(billeteFinancials?.totalCobrado || 0, sym)}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-700">
+              <span className="text-sm font-bold text-white">Total recaudado</span>
+              <span className="text-base font-bold text-emerald-300">{fmtAmt(totalCombinado, sym)}</span>
+            </div>
+            {totalPagoCombinado !== null && (
+              <>
+                <div className="flex justify-between items-center pt-1 border-t border-slate-700">
+                  <span className="text-sm text-slate-300">Chances a pagar</span>
+                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(financials?.totalPago || 0, sym)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-300">Billetes a pagar</span>
+                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(billeteFinancials?.totalPago || 0, sym)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-slate-700">
+                  <span className="text-sm font-bold text-white">Total a pagar</span>
+                  <span className="text-base font-bold text-rose-300">{fmtAmt(totalPagoCombinado, sym)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-3 border-t-2 border-slate-500">
+                  <span className="text-base font-bold text-white">Resultado final</span>
+                  <span className={`text-lg font-extrabold ${resultadoCombinado >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {resultadoCombinado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
+                    {fmtAmt(Math.abs(resultadoCombinado), sym)}
+                  </span>
+                </div>
+              </>
+            )}
+            {/* % Vendedor / Admin */}
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-700">
+              <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-indigo-400">{fmtAmt(sellerAmt, sym)}</p>
+                <p className="text-xs text-slate-400 mt-0.5">{sellerLabel}</p>
+                <p className="text-xs text-slate-600">{sellerPct.toFixed(1)}%</p>
+              </div>
+              <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 text-center">
+                <p className="text-lg font-bold text-emerald-400">{fmtAmt(adminAmt, sym)}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Admin</p>
+                <p className="text-xs text-slate-600">{(100 - sellerPct).toFixed(1)}%</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Ganadores */}
       {winningNumbers && (
@@ -686,54 +753,6 @@ export default function AdminNumbers() {
         {!loading && <FinancialCard fin={billeteFinancials} />}
       </div>
 
-      {/* ===================== RESUMEN TOTAL COMBINADO ===================== */}
-      {!loading && showResumenCombinado && (
-        <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 bg-slate-700/50 border-b border-slate-600">
-            <p className="text-sm font-bold text-white">Resumen Total Combinado</p>
-            <p className="text-xs text-slate-400 mt-0.5">Chances + Billetes</p>
-          </div>
-          <div className="px-4 py-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <div>
-                <span className="text-sm text-slate-300">Chances recaudado</span>
-              </div>
-              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(financials?.totalCobrado || 0, sym)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-300">Billetes recaudado</span>
-              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(billeteFinancials?.totalCobrado || 0, sym)}</span>
-            </div>
-            <div className="flex justify-between items-center pt-2 border-t border-slate-700">
-              <span className="text-sm font-bold text-white">Total recaudado</span>
-              <span className="text-base font-bold text-emerald-300">{fmtAmt(totalCombinado, sym)}</span>
-            </div>
-            {totalPagoCombinado !== null && (
-              <>
-                <div className="flex justify-between items-center pt-1 border-t border-slate-700">
-                  <span className="text-sm text-slate-300">Chances a pagar</span>
-                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(financials?.totalPago || 0, sym)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-300">Billetes a pagar</span>
-                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(billeteFinancials?.totalPago || 0, sym)}</span>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t border-slate-700">
-                  <span className="text-sm font-bold text-white">Total a pagar</span>
-                  <span className="text-base font-bold text-rose-300">{fmtAmt(totalPagoCombinado, sym)}</span>
-                </div>
-                <div className="flex justify-between items-center pt-3 border-t-2 border-slate-500">
-                  <span className="text-base font-bold text-white">Resultado final</span>
-                  <span className={`text-lg font-extrabold ${resultadoCombinado >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                    {resultadoCombinado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
-                    {fmtAmt(Math.abs(resultadoCombinado), sym)}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
 
     </div>
   );
