@@ -693,11 +693,8 @@ function saveSellerConfig() {
 
     closePercentageModal();
 
-    if (activeTab === 'tiempos') {
-        updateNumberSalesTable();
-    } else {
-        updateBilletesSalesTable();
-    }
+    updateNumberSalesTable();
+    updateBilletesSalesTable();
 
     showNotification(`Configuración actualizada:\nVendedor: ${sellerName}\nPorcentaje: ${sellerPercentage}%`);
 }
@@ -1524,12 +1521,9 @@ function processQuickInput() {
 
 // ==================== Number sales page ====================
 function applyFilters() {
-    if (activeTab === 'tiempos') {
-        updateNumberSalesTable();
-        setTimeout(() => loadAndDisplayWinningNumbers(), 100);
-    } else {
-        updateBilletesSalesTable();
-    }
+    updateNumberSalesTable();
+    updateBilletesSalesTable();
+    setTimeout(() => loadAndDisplayWinningNumbers(), 100);
 }
 
 function updateNumberSalesTable() {
@@ -1648,23 +1642,44 @@ function calculateSalesTotals(type) {
 
 function displaySalesSummary(type) {
     calculateSalesTotals(type).then(totals => {
-        const summaryBox = document.getElementById('salesSummaryBox');
+        const isChance = type === 'tiempos';
+        const boxId     = isChance ? 'salesSummaryBox' : 'salesSummaryBoxBilletes';
+        const piezasId  = isChance ? 'totalTiempos'    : 'totalBilletePiezas';
+        const colonesId = isChance ? 'totalColones'     : 'totalBilleteColones';
+
+        const summaryBox = document.getElementById(boxId);
+        if (!summaryBox) return;
         summaryBox.style.display = 'block';
 
-        const totalTiemposDisplay = totals.totalTiempos % 1 !== 0
+        const totalDisplay = totals.totalTiempos % 1 !== 0
             ? totals.totalTiempos.toFixed(1)
             : totals.totalTiempos.toString();
 
-        document.getElementById('totalTiempos').textContent = totalTiemposDisplay;
-        document.getElementById('totalColones').textContent = '$' + totals.totalColones.toFixed(2);
+        document.getElementById(piezasId).textContent  = totalDisplay;
+        document.getElementById(colonesId).textContent = '$' + totals.totalColones.toFixed(2);
 
-        const title = type === 'tiempos' ? 'Resumen de Chances' : 'Resumen de Billetes';
-        summaryBox.querySelector('h3').textContent = title;
+        if (isChance) addPercentageBreakdown(summaryBox, totals.totalColones);
 
-        addPercentageBreakdown(summaryBox, totals.totalColones);
-
-        showWinningNumbersSection();
+        updateCombinedSummary();
+        if (isChance) showWinningNumbersSection();
     });
+}
+
+function updateCombinedSummary() {
+    const parseAmt = id => {
+        const el = document.getElementById(id);
+        return el ? parseFloat(el.textContent.replace('$', '') || 0) : 0;
+    };
+    const chanceAmt  = parseAmt('totalColones');
+    const billeteAmt = parseAmt('totalBilleteColones');
+    const total = chanceAmt + billeteAmt;
+
+    const box = document.getElementById('combinedSummaryBox');
+    if (!box) return;
+    box.style.display = 'block';
+    document.getElementById('combinedChanceColones').textContent  = '$' + chanceAmt.toFixed(2);
+    document.getElementById('combinedBilleteColones').textContent = '$' + billeteAmt.toFixed(2);
+    document.getElementById('combinedTotal').textContent          = '$' + total.toFixed(2);
 }
 
 function addPercentageBreakdown(summaryBox, totalAmount) {
@@ -1692,13 +1707,8 @@ function addPercentageBreakdown(summaryBox, totalAmount) {
 }
 
 function switchTab(tabName) {
-    activeTab = tabName;
-    document.getElementById('tiemposTab').classList.toggle('active', tabName === 'tiempos');
-    document.getElementById('billetesTab').classList.toggle('active', tabName === 'billetes');
-    document.getElementById('tiemposContainer').style.display = tabName === 'tiempos' ? 'block' : 'none';
-    document.getElementById('billetesContainer').style.display = tabName === 'billetes' ? 'block' : 'none';
+    // Tabs removed — both sections always visible
     applyFilters();
-    showWinningNumbersSection();
 }
 
 // ==================== Winning numbers section ====================
@@ -1766,84 +1776,65 @@ async function loadAndDisplayWinningNumbers() {
         const p2 = row.second_prize || '';
         const p3 = row.third_prize || '';
         const c1 = p1.slice(-2), c2 = p2.slice(-2), c3 = p3.slice(-2);
-        const isChanceTab = activeTab === 'tiempos';
 
-        // Calculate winnings — use filter dropdowns, not the ticket-creation dropdown
         const lotteryObj = lotteries.find(l => l.id === filterLottery) || null;
         const isPale = lotteryObj?.lottery_type === 'pale';
-
-        // Para loterías palé los premios se guardan como 2 cifras y se combinan para el palé
-        const pale1 = isPale && p1.length === 2 && p2.length === 2 ? p1 + p2 : null; // 1er palé
-        const pale2 = isPale && p1.length === 2 && p3.length === 2 ? p1 + p3 : null; // 2do palé
-        const pale3 = isPale && p2.length === 2 && p3.length === 2 ? p2 + p3 : null; // 3er palé
+        const pale1 = isPale && p1.length === 2 && p2.length === 2 ? p1 + p2 : null;
+        const pale2 = isPale && p1.length === 2 && p3.length === 2 ? p1 + p3 : null;
+        const pale3 = isPale && p2.length === 2 && p3.length === 2 ? p2 + p3 : null;
 
         const colors = ['#6366f1','#22c55e','#f59e0b'];
-        if (isPale && !isChanceTab) {
-            // Mostrar combinaciones de 4 cifras para tab palé
-            displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
-                ${[['1er', pale1, colors[0]], ['2do', pale2, colors[1]], ['3er', pale3, colors[2]]].map(([lbl, num, col]) =>
-                    `<div style="text-align:center;">
-                        <div style="font-size:10px;color:#888;margin-bottom:3px;">${lbl} Palé</div>
-                        <div style="font-size:20px;font-weight:bold;color:${col};background:#f8f8f8;border:2px solid ${col};border-radius:8px;padding:6px 0;">${num || '——'}</div>
-                        <div style="font-size:9px;color:#aaa;margin-top:2px;">${lbl === '1er' ? `${p1}+${p2}` : lbl === '2do' ? `${p1}+${p3}` : `${p2}+${p3}`}</div>
-                    </div>`
-                ).join('')}
-            </div>`;
-        } else {
-            displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
-                ${[['1er', isChanceTab ? c1 : p1, colors[0]], ['2do', isChanceTab ? c2 : p2, colors[1]], ['3er', isChanceTab ? c3 : p3, colors[2]]].map(([lbl, num, col]) =>
-                    `<div style="text-align:center;">
-                        <div style="font-size:10px;color:#888;margin-bottom:3px;">${lbl} Premio</div>
-                        <div style="font-size:22px;font-weight:bold;color:${col};background:#f8f8f8;border:2px solid ${col};border-radius:8px;padding:6px 0;">${num || '—'}</div>
-                    </div>`
-                ).join('')}
-            </div>`;
-        }
+        // Mostrar siempre ambos formatos: chance (2 cifras) + completo
+        displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
+            ${[['1er', c1, p1, colors[0]], ['2do', c2, p2, colors[1]], ['3er', c3, p3, colors[2]]].map(([lbl, chance, full, col]) =>
+                `<div style="text-align:center;">
+                    <div style="font-size:10px;color:#888;margin-bottom:3px;">${lbl} Premio</div>
+                    <div style="font-size:22px;font-weight:bold;color:${col};background:#f8f8f8;border:2px solid ${col};border-radius:8px;padding:4px 0;">${chance || '—'}</div>
+                    ${full && full !== chance ? `<div style="font-size:11px;color:#666;margin-top:2px;">${full}</div>` : ''}
+                </div>`
+            ).join('')}
+        </div>`;
 
         const drawTimeObj = filterTime ? (drawTimesMap[filterLottery] || []).find(dt => dt.id === filterTime) || null : null;
-        const m1 = getPrizeMultiplier(1, lotteryObj, drawTimeObj, !isChanceTab);
-        const m2 = getPrizeMultiplier(2, lotteryObj, drawTimeObj, !isChanceTab);
-        const m3 = getPrizeMultiplier(3, lotteryObj, drawTimeObj, !isChanceTab);
+        const cm1 = getPrizeMultiplier(1, lotteryObj, drawTimeObj, false);
+        const cm2 = getPrizeMultiplier(2, lotteryObj, drawTimeObj, false);
+        const cm3 = getPrizeMultiplier(3, lotteryObj, drawTimeObj, false);
+        const bm1 = getPrizeMultiplier(1, lotteryObj, drawTimeObj, true);
+        const bm2 = getPrizeMultiplier(2, lotteryObj, drawTimeObj, true);
+        const bm3 = getPrizeMultiplier(3, lotteryObj, drawTimeObj, true);
         const sym = currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$';
 
         const allTickets = await loadTickets();
         let filtered = allTickets;
         if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
-        if (filterTime) filtered = filtered.filter(t => t.drawTimeId === filterTime);
-        if (filterDate) filtered = filtered.filter(t => t.saleDate === filterDate);
+        if (filterTime)    filtered = filtered.filter(t => t.drawTimeId === filterTime);
+        if (filterDate)    filtered = filtered.filter(t => t.saleDate === filterDate);
 
         const winners = [];
-        let totalPago = 0;
-        let totalCobrado = 0;
+        let totalPago = 0, totalCobrado = 0;
         const adminPct = (100 - (sellerPercentage || 0)) / 100;
 
         filtered.forEach(ticket => {
             ticket.numbers.forEach(num => {
                 const isChance = num.number.length === 2;
-                // Solo contar números del tab activo
-                if (isChanceTab && !isChance) return;
-                if (!isChanceTab && isChance) return;
-
                 totalCobrado += num.subTotal || 0;
 
                 let prizeLabel = null, multiplier = 0;
-                if (isChanceTab) {
-                    if (c1 && num.number === c1) { prizeLabel = '1er Premio'; multiplier = m1; }
-                    else if (c2 && num.number === c2) { prizeLabel = '2do Premio'; multiplier = m2; }
-                    else if (c3 && num.number === c3) { prizeLabel = '3er Premio'; multiplier = m3; }
+                if (isChance) {
+                    if (c1 && num.number === c1) { prizeLabel = '1er Premio'; multiplier = cm1; }
+                    else if (c2 && num.number === c2) { prizeLabel = '2do Premio'; multiplier = cm2; }
+                    else if (c3 && num.number === c3) { prizeLabel = '3er Premio'; multiplier = cm3; }
                 } else if (isPale) {
-                    // Comparar contra las combinaciones de 4 cifras del palé
-                    if (pale1 && num.number === pale1) { prizeLabel = '1er Palé'; multiplier = m1; }
-                    else if (pale2 && num.number === pale2) { prizeLabel = '2do Palé'; multiplier = m2; }
-                    else if (pale3 && num.number === pale3) { prizeLabel = '3er Palé'; multiplier = m3; }
+                    if (pale1 && num.number === pale1) { prizeLabel = '1er Palé'; multiplier = bm1; }
+                    else if (pale2 && num.number === pale2) { prizeLabel = '2do Palé'; multiplier = bm2; }
+                    else if (pale3 && num.number === pale3) { prizeLabel = '3er Palé'; multiplier = bm3; }
                 } else {
-                    if (p1 && num.number === p1) { prizeLabel = '1er Premio'; multiplier = m1; }
-                    else if (p2 && num.number === p2) { prizeLabel = '2do Premio'; multiplier = m2; }
-                    else if (p3 && num.number === p3) { prizeLabel = '3er Premio'; multiplier = m3; }
+                    if (p1 && num.number === p1) { prizeLabel = '1er Premio'; multiplier = bm1; }
+                    else if (p2 && num.number === p2) { prizeLabel = '2do Premio'; multiplier = bm2; }
+                    else if (p3 && num.number === p3) { prizeLabel = '3er Premio'; multiplier = bm3; }
                 }
 
                 if (prizeLabel) {
-                    // Premio = piezas × multiplicador (precio base $1 por pieza)
                     const pago = num.pieces * multiplier;
                     totalPago += pago;
                     winners.push({ number: num.number, prizeLabel, pieces: num.pieces, pago });
