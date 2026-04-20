@@ -39,12 +39,65 @@ function getBilleteMultiplier(pos, lottObj) {
   return val || defaults[pos];
 }
 
+function FinancialCard({ fin }) {
+  if (!fin) return null;
+  return (
+    <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-800">
+        <p className="text-sm font-semibold text-white">Resumen financiero</p>
+      </div>
+      {fin.winners?.length > 0 && (
+        <div className="px-4 pt-3 pb-2">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Premios a pagar</p>
+          <div className="space-y-1.5">
+            {fin.winners.map((w, i) => (
+              <div key={i} className="flex items-center justify-between bg-slate-800/60 rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-base font-bold text-white">{w.number}</span>
+                  <span className="text-xs text-slate-400">{w.prize}</span>
+                  <span className="text-xs text-slate-600">×{w.pieces} piezas</span>
+                </div>
+                <span className="text-sm font-bold text-rose-400">{fmtAmt(w.pago, fin.sym)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {fin.winners?.length === 0 && fin.totalPago !== null && (
+        <div className="px-4 pt-3 pb-1">
+          <p className="text-xs text-center text-emerald-400 py-1">Sin ganadores en esta selección</p>
+        </div>
+      )}
+      <div className="px-4 py-3 space-y-2 border-t border-slate-800 mt-1">
+        <div className="flex justify-between items-center">
+          <span className="text-sm text-slate-400">Total recaudado</span>
+          <span className="text-sm font-bold text-emerald-400">{fmtAmt(fin.totalCobrado, fin.sym)}</span>
+        </div>
+        {fin.totalPago !== null && (
+          <>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-400">Total a pagar</span>
+              <span className="text-sm font-bold text-rose-400">{fmtAmt(fin.totalPago, fin.sym)}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-800">
+              <span className="text-sm font-semibold text-white">Resultado</span>
+              <span className={`text-sm font-bold ${fin.resultado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {fin.resultado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
+                {fmtAmt(Math.abs(fin.resultado), fin.sym)}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminNumbers() {
   const { profile } = useAuth();
   const _d = new Date();
   const today = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
 
-  const [activeTab, setActiveTab]         = useState('chances');
   const [umbral, setUmbral]               = useState('');
   const [date, setDate]                   = useState(today);
   const [sellerId, setSellerId]           = useState('');
@@ -281,7 +334,14 @@ export default function AdminNumbers() {
   const prizeColors = ['text-indigo-400', 'text-emerald-400', 'text-amber-400'];
   const prizeBg     = ['bg-indigo-500/20 border-indigo-500/40', 'bg-emerald-500/20 border-emerald-500/40', 'bg-amber-500/20 border-amber-500/40'];
 
-  const curFin = activeTab === 'chances' ? financials : billeteFinancials;
+  // Totales combinados
+  const sym = profile?.currency_symbol || '$';
+  const totalCombinado = (financials?.totalCobrado || 0) + (billeteFinancials?.totalCobrado || 0);
+  const totalPagoCombinado = (financials?.totalPago ?? null) !== null || (billeteFinancials?.totalPago ?? null) !== null
+    ? (financials?.totalPago || 0) + (billeteFinancials?.totalPago || 0)
+    : null;
+  const resultadoCombinado = totalPagoCombinado !== null ? totalCombinado - totalPagoCombinado : null;
+  const showResumenCombinado = financials !== null || billeteFinancials !== null;
 
   return (
     <div className="space-y-5 mt-2 pb-8">
@@ -290,7 +350,7 @@ export default function AdminNumbers() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white">Números vendidos</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Vista global por tipo</p>
+          <p className="text-xs text-slate-500 mt-0.5">Chances y billetes</p>
         </div>
         <div className="flex gap-2">
           {activeFilterCount > 0 && (
@@ -309,22 +369,6 @@ export default function AdminNumbers() {
             {loading ? '...' : '↺ Actualizar'}
           </button>
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex bg-slate-900 border border-slate-700/60 rounded-xl p-1 gap-1">
-        <button
-          onClick={() => setActiveTab('chances')}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'chances' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-        >
-          Chances (2 cifras)
-        </button>
-        <button
-          onClick={() => setActiveTab('billetes')}
-          className={`flex-1 py-2 text-sm font-semibold rounded-lg transition ${activeTab === 'billetes' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-        >
-          Billetes (4 cifras)
-        </button>
       </div>
 
       {/* Filtros */}
@@ -396,75 +440,18 @@ export default function AdminNumbers() {
             ].map(({ label, chance, full }, i) => (
               <div key={i} className={`border rounded-xl p-3 text-center ${prizeBg[i]}`}>
                 <p className="text-xs text-slate-400 mb-1">{label}</p>
-                {activeTab === 'chances'
-                  ? <p className={`text-2xl font-extrabold ${prizeColors[i]}`}>{chance || '—'}</p>
-                  : <p className={`text-xl font-extrabold ${prizeColors[i]}`}>{full || '—'}</p>
-                }
-                {activeTab === 'chances' && full && full !== chance && (
-                  <p className="text-xs text-slate-500 mt-0.5">{full}</p>
-                )}
+                <p className={`text-2xl font-extrabold ${prizeColors[i]}`}>{chance || '—'}</p>
+                {full && <p className="text-xs text-slate-500 mt-0.5">{full}</p>}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Resumen financiero */}
-      {!loading && curFin && (
-        <div className="bg-slate-900 border border-slate-700/60 rounded-2xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-slate-800">
-            <p className="text-sm font-semibold text-white">Resumen financiero</p>
-          </div>
-          {curFin.winners?.length > 0 && (
-            <div className="px-4 pt-3 pb-2">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Premios a pagar</p>
-              <div className="space-y-1.5">
-                {curFin.winners.map((w, i) => (
-                  <div key={i} className="flex items-center justify-between bg-slate-800/60 rounded-lg px-3 py-2">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-base font-bold text-white">{w.number}</span>
-                      <span className="text-xs text-slate-400">{w.prize}</span>
-                      <span className="text-xs text-slate-600">×{w.pieces} piezas</span>
-                    </div>
-                    <span className="text-sm font-bold text-rose-400">{fmtAmt(w.pago, curFin.sym)}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {curFin.winners?.length === 0 && winningNumbers && (
-            <div className="px-4 pt-3 pb-1">
-              <p className="text-xs text-center text-emerald-400 py-1">Sin ganadores en esta selección</p>
-            </div>
-          )}
-          <div className="px-4 py-3 space-y-2 border-t border-slate-800 mt-1">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-400">Total recaudado</span>
-              <span className="text-sm font-bold text-emerald-400">{fmtAmt(curFin.totalCobrado, curFin.sym)}</span>
-            </div>
-            {curFin.totalPago !== null && (
-              <>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-400">Total a pagar</span>
-                  <span className="text-sm font-bold text-rose-400">{fmtAmt(curFin.totalPago, curFin.sym)}</span>
-                </div>
-                <div className="flex justify-between items-center pt-2 border-t border-slate-800">
-                  <span className="text-sm font-semibold text-white">Resultado</span>
-                  <span className={`text-sm font-bold ${curFin.resultado >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {curFin.resultado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
-                    {fmtAmt(Math.abs(curFin.resultado), curFin.sym)}
-                  </span>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Excedente */}
+      {/* Excedente CSV */}
       <div className="bg-slate-900 border border-slate-700/60 rounded-2xl p-4 space-y-3">
         <p className="text-sm font-semibold text-white">Generar CSV de excedente</p>
-        <p className="text-xs text-slate-400">Ingresa el umbral: los números con más piezas vendidas que este valor aparecerán en el CSV con su excedente. No afecta la base de datos.</p>
+        <p className="text-xs text-slate-400">Ingresa el umbral: los números con más piezas vendidas que este valor aparecerán en el CSV con su excedente.</p>
         <div className="flex gap-3 items-end">
           <div className="flex-1">
             <label className="text-xs font-medium text-slate-400 block mb-1.5">Umbral (piezas)</label>
@@ -477,209 +464,277 @@ export default function AdminNumbers() {
             />
           </div>
           <button
-            onClick={() => generateExcessCSV(activeTab)}
+            onClick={() => generateExcessCSV('chances')}
             disabled={!umbral}
-            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition whitespace-nowrap"
+            className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-sm font-semibold px-3 py-2.5 rounded-xl transition whitespace-nowrap"
           >
-            ↓ CSV {activeTab === 'chances' ? 'Chances' : 'Billetes'}
+            ↓ CSV Chances
+          </button>
+          <button
+            onClick={() => generateExcessCSV('billetes')}
+            disabled={!umbral}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-semibold px-3 py-2.5 rounded-xl transition whitespace-nowrap"
+          >
+            ↓ CSV Billetes
           </button>
         </div>
       </div>
 
-      {/* ===================== TAB: CHANCES ===================== */}
-      {activeTab === 'chances' && (
-        <>
-          {/* Stats */}
-          {!loading && (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-                <p className="text-lg font-bold text-white">{Object.values(numberSales).filter(p => p > 0).length}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Números</p>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-                <p className="text-lg font-bold text-indigo-400">{totalPieces}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-                <p className="text-lg font-bold text-violet-400">{topNumbers[0]?.[0] ?? '—'}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
-              </div>
-            </div>
-          )}
+      {/* ===================== SECCIÓN CHANCES ===================== */}
+      <div className="bg-slate-900/50 border border-blue-500/20 rounded-2xl p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-blue-400 uppercase tracking-wider">Chances</span>
+          <span className="text-xs text-slate-500">2 cifras (00–99)</span>
+        </div>
 
-          {/* Top 3 */}
-          {!loading && topNumbers.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
-              <div className="space-y-2.5">
-                {topNumbers.map(([num, pieces], i) => {
-                  const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
-                  return (
-                    <div key={num}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
-                          <span className="text-base font-bold text-white font-mono">{num}</span>
-                        </div>
-                        <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
-                      </div>
-                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxPieces) * 100)}%` }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+        {/* Stats chances */}
+        {!loading && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-white">{Object.values(numberSales).filter(p => p > 0).length}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Números</p>
             </div>
-          )}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-indigo-400">{totalPieces}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-violet-400">{topNumbers[0]?.[0] ?? '—'}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
+            </div>
+          </div>
+        )}
 
-          {/* Grid 00-99 */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cuadrícula 00 – 99</p>
-              {winningNumbers && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
-                </div>
-              )}
-            </div>
-            {loading ? (
-              <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden">
-                {Array.from({ length: 100 }).map((_, i) => (
-                  <div key={i} className="bg-slate-800 animate-pulse h-14 rounded" />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden border border-slate-800">
-                {Array.from({ length: 100 }).map((_, i) => {
-                  const num = i.toString().padStart(2, '0');
-                  const pieces = numberSales[num] || 0;
-                  const w1 = c1 === num, w2 = c2 === num, w3 = c3 === num;
-                  return (
-                    <div key={num} className={`flex flex-col items-center justify-center py-2.5 px-1 ${cellColor(pieces, maxPieces, w1, w2, w3)}`}>
-                      <span className="text-xs font-bold font-mono leading-none">{num}</span>
-                      <span className={`text-[11px] leading-none mt-0.5 ${pieces === 0 ? 'opacity-0' : ''}`}>{pieces}</span>
-                      {(w1 || w2 || w3) && (
-                        <span className="text-[9px] leading-none mt-0.5 font-bold">{w1 ? '1°' : w2 ? '2°' : '3°'}</span>
-                      )}
+        {/* Top 3 chances */}
+        {!loading && topNumbers.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
+            <div className="space-y-2.5">
+              {topNumbers.map(([num, pieces], i) => {
+                const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
+                return (
+                  <div key={num}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
+                        <span className="text-base font-bold text-white font-mono">{num}</span>
+                      </div>
+                      <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
                     </div>
-                  );
-                })}
+                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxPieces) * 100)}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Grid 00-99 */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Cuadrícula 00 – 99</p>
+            {winningNumbers && (
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
               </div>
             )}
-            <div className="mt-3 flex items-center gap-1">
-              {[['bg-slate-900 border border-slate-800','Sin ventas'],['bg-blue-950',''],['bg-indigo-900',''],['bg-indigo-800',''],['bg-violet-700',''],['bg-violet-500','Máximo']].map(([cls, label], i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div className={`w-full h-4 rounded ${cls}`} />
-                  {label && <p className="text-[10px] text-slate-600">{label}</p>}
-                </div>
+          </div>
+          {loading ? (
+            <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden">
+              {Array.from({ length: 100 }).map((_, i) => (
+                <div key={i} className="bg-slate-800 animate-pulse h-14 rounded" />
               ))}
             </div>
+          ) : (
+            <div className="grid grid-cols-5 gap-0.5 rounded-2xl overflow-hidden border border-slate-800">
+              {Array.from({ length: 100 }).map((_, i) => {
+                const num = i.toString().padStart(2, '0');
+                const pieces = numberSales[num] || 0;
+                const w1 = c1 === num, w2 = c2 === num, w3 = c3 === num;
+                return (
+                  <div key={num} className={`flex flex-col items-center justify-center py-2.5 px-1 ${cellColor(pieces, maxPieces, w1, w2, w3)}`}>
+                    <span className="text-xs font-bold font-mono leading-none">{num}</span>
+                    <span className={`text-[11px] leading-none mt-0.5 ${pieces === 0 ? 'opacity-0' : ''}`}>{pieces}</span>
+                    {(w1 || w2 || w3) && (
+                      <span className="text-[9px] leading-none mt-0.5 font-bold">{w1 ? '1°' : w2 ? '2°' : '3°'}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="mt-3 flex items-center gap-1">
+            {[['bg-slate-900 border border-slate-800','Sin ventas'],['bg-blue-950',''],['bg-indigo-900',''],['bg-indigo-800',''],['bg-violet-700',''],['bg-violet-500','Máximo']].map(([cls, label], i) => (
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                <div className={`w-full h-4 rounded ${cls}`} />
+                {label && <p className="text-[10px] text-slate-600">{label}</p>}
+              </div>
+            ))}
           </div>
-        </>
-      )}
+        </div>
 
-      {/* ===================== TAB: BILLETES ===================== */}
-      {activeTab === 'billetes' && (
-        <>
-          {/* Stats */}
-          {!loading && (
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-                <p className="text-lg font-bold text-white">{sortedBilletes.length}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Números</p>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-                <p className="text-lg font-bold text-indigo-400">{totalBilletePieces}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
-              </div>
-              <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
-                <p className="text-lg font-bold text-violet-400">{topBilletes[0]?.[0] ?? '—'}</p>
-                <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
-              </div>
+        {/* Resumen financiero chances */}
+        {!loading && <FinancialCard fin={financials} />}
+      </div>
+
+      {/* ===================== SECCIÓN BILLETES ===================== */}
+      <div className="bg-slate-900/50 border border-purple-500/20 rounded-2xl p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-purple-400 uppercase tracking-wider">Billetes</span>
+          <span className="text-xs text-slate-500">4 cifras</span>
+        </div>
+
+        {/* Stats billetes */}
+        {!loading && (
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-white">{sortedBilletes.length}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Números</p>
             </div>
-          )}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-indigo-400">{totalBilletePieces}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Piezas</p>
+            </div>
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 text-center">
+              <p className="text-lg font-bold text-violet-400">{topBilletes[0]?.[0] ?? '—'}</p>
+              <p className="text-xs text-slate-500 mt-0.5">Más vendido</p>
+            </div>
+          </div>
+        )}
 
-          {/* Top 3 billetes */}
-          {!loading && topBilletes.length > 0 && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
-              <div className="space-y-2.5">
-                {topBilletes.map(([num, pieces], i) => {
-                  const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
-                  return (
-                    <div key={num}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
-                          <span className="text-base font-bold text-white font-mono">{num}</span>
-                        </div>
-                        <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
+        {/* Top 3 billetes */}
+        {!loading && topBilletes.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Top más vendidos</p>
+            <div className="space-y-2.5">
+              {topBilletes.map(([num, pieces], i) => {
+                const bars = ['bg-violet-500', 'bg-indigo-500', 'bg-blue-500'];
+                return (
+                  <div key={num}>
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-600 w-4 font-mono">{i + 1}</span>
+                        <span className="text-base font-bold text-white font-mono">{num}</span>
                       </div>
-                      <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                        <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxBilletePieces) * 100)}%` }} />
-                      </div>
+                      <span className="text-sm font-semibold text-slate-300">{pieces} piezas</span>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Lista de billetes vendidos */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Billetes vendidos</p>
-              {winningNumbers && (
-                <div className="flex items-center gap-2 text-xs text-slate-500">
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
-                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
-                </div>
-              )}
-            </div>
-
-            {loading ? (
-              <div className="space-y-1">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="bg-slate-800 animate-pulse h-12 rounded-xl" />
-                ))}
-              </div>
-            ) : sortedBilletes.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
-                <p className="text-slate-500 text-sm">No hay billetes vendidos con los filtros seleccionados</p>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                {sortedBilletes.map(([num, pieces]) => {
-                  const isW1 = b1 && num === b1;
-                  const isW2 = b2 && num === b2;
-                  const isW3 = b3 && num === b3;
-                  const isWinner = isW1 || isW2 || isW3;
-                  const prizeLabel = isW1 ? '1er Premio' : isW2 ? '2do Premio' : isW3 ? '3er Premio' : null;
-                  const winBg = isW1 ? 'bg-indigo-500/20 border-indigo-500/50' : isW2 ? 'bg-emerald-500/20 border-emerald-500/50' : isW3 ? 'bg-amber-500/20 border-amber-500/50' : 'bg-slate-900 border-slate-800';
-                  const numColor = isW1 ? 'text-indigo-300' : isW2 ? 'text-emerald-300' : isW3 ? 'text-amber-300' : 'text-white';
-                  return (
-                    <div key={num} className={`flex items-center justify-between px-4 py-3 rounded-xl border ${winBg}`}>
-                      <div className="flex items-center gap-3">
-                        <span className={`font-mono text-lg font-bold ${numColor}`}>{num}</span>
-                        {isWinner && (
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isW1 ? 'bg-indigo-500/30 text-indigo-300' : isW2 ? 'bg-emerald-500/30 text-emerald-300' : 'bg-amber-500/30 text-amber-300'}`}>
-                            {prizeLabel}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-sm font-semibold text-slate-300">{pieces} {pieces === 1 ? 'pieza' : 'piezas'}</span>
+                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                      <div className={`h-full ${bars[i]} rounded-full`} style={{ width: `${Math.round((pieces / maxBilletePieces) * 100)}%` }} />
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Lista de billetes */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Billetes vendidos</p>
+            {winningNumbers && (
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />1°</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-500 inline-block" />2°</span>
+                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />3°</span>
               </div>
             )}
           </div>
-        </>
+          {loading ? (
+            <div className="space-y-1">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="bg-slate-800 animate-pulse h-12 rounded-xl" />
+              ))}
+            </div>
+          ) : sortedBilletes.length === 0 ? (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
+              <p className="text-slate-500 text-sm">No hay billetes vendidos con los filtros seleccionados</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {sortedBilletes.map(([num, pieces]) => {
+                const isW1 = b1 && num === b1;
+                const isW2 = b2 && num === b2;
+                const isW3 = b3 && num === b3;
+                const isWinner = isW1 || isW2 || isW3;
+                const prizeLabel = isW1 ? '1er Premio' : isW2 ? '2do Premio' : isW3 ? '3er Premio' : null;
+                const winBg = isW1 ? 'bg-indigo-500/20 border-indigo-500/50' : isW2 ? 'bg-emerald-500/20 border-emerald-500/50' : isW3 ? 'bg-amber-500/20 border-amber-500/50' : 'bg-slate-900 border-slate-800';
+                const numColor = isW1 ? 'text-indigo-300' : isW2 ? 'text-emerald-300' : isW3 ? 'text-amber-300' : 'text-white';
+                return (
+                  <div key={num} className={`flex items-center justify-between px-4 py-3 rounded-xl border ${winBg}`}>
+                    <div className="flex items-center gap-3">
+                      <span className={`font-mono text-lg font-bold ${numColor}`}>{num}</span>
+                      {isWinner && (
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isW1 ? 'bg-indigo-500/30 text-indigo-300' : isW2 ? 'bg-emerald-500/30 text-emerald-300' : 'bg-amber-500/30 text-amber-300'}`}>
+                          {prizeLabel}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm font-semibold text-slate-300">{pieces} {pieces === 1 ? 'pieza' : 'piezas'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Resumen financiero billetes */}
+        {!loading && <FinancialCard fin={billeteFinancials} />}
+      </div>
+
+      {/* ===================== RESUMEN TOTAL COMBINADO ===================== */}
+      {!loading && showResumenCombinado && (
+        <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
+          <div className="px-4 py-3 bg-slate-700/50 border-b border-slate-600">
+            <p className="text-sm font-bold text-white">Resumen Total Combinado</p>
+            <p className="text-xs text-slate-400 mt-0.5">Chances + Billetes</p>
+          </div>
+          <div className="px-4 py-4 space-y-3">
+            <div className="flex justify-between items-center">
+              <div>
+                <span className="text-sm text-slate-300">Chances recaudado</span>
+              </div>
+              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(financials?.totalCobrado || 0, sym)}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-slate-300">Billetes recaudado</span>
+              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(billeteFinancials?.totalCobrado || 0, sym)}</span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-700">
+              <span className="text-sm font-bold text-white">Total recaudado</span>
+              <span className="text-base font-bold text-emerald-300">{fmtAmt(totalCombinado, sym)}</span>
+            </div>
+            {totalPagoCombinado !== null && (
+              <>
+                <div className="flex justify-between items-center pt-1 border-t border-slate-700">
+                  <span className="text-sm text-slate-300">Chances a pagar</span>
+                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(financials?.totalPago || 0, sym)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-300">Billetes a pagar</span>
+                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(billeteFinancials?.totalPago || 0, sym)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-slate-700">
+                  <span className="text-sm font-bold text-white">Total a pagar</span>
+                  <span className="text-base font-bold text-rose-300">{fmtAmt(totalPagoCombinado, sym)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-3 border-t-2 border-slate-500">
+                  <span className="text-base font-bold text-white">Resultado final</span>
+                  <span className={`text-lg font-extrabold ${resultadoCombinado >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                    {resultadoCombinado >= 0 ? 'GANANCIA ' : 'PÉRDIDA '}
+                    {fmtAmt(Math.abs(resultadoCombinado), sym)}
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
+
     </div>
   );
 }
