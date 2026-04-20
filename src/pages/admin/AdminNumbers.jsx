@@ -466,16 +466,16 @@ export default function AdminNumbers() {
           <button
             onClick={() => generateExcessCSV('chances')}
             disabled={!umbral}
-            className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-sm font-semibold px-3 py-2.5 rounded-xl transition whitespace-nowrap"
+            className="bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-xs font-semibold px-2.5 py-2 rounded-lg transition whitespace-nowrap"
           >
-            ↓ CSV Chances
+            ↓ Chances
           </button>
           <button
             onClick={() => generateExcessCSV('billetes')}
             disabled={!umbral}
-            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-sm font-semibold px-3 py-2.5 rounded-xl transition whitespace-nowrap"
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold px-2.5 py-2 rounded-lg transition whitespace-nowrap"
           >
-            ↓ CSV Billetes
+            ↓ Billetes
           </button>
         </div>
       </div>
