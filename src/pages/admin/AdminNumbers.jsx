@@ -250,17 +250,27 @@ export default function AdminNumbers() {
       const bm1 = getBilleteMultiplier(1, lottObj);
       const bm2 = getBilleteMultiplier(2, lottObj);
       const bm3 = getBilleteMultiplier(3, lottObj);
-      const p1 = wn.first_prize  || '';
-      const p2 = wn.second_prize || '';
-      const p3 = wn.third_prize  || '';
+      const wp1 = wn.first_prize  || '';
+      const wp2 = wn.second_prize || '';
+      const wp3 = wn.third_prize  || '';
+      const isBPale = lottObj?.lottery_type === 'pale';
+      const bpale1 = isBPale && wp1.length === 2 && wp2.length === 2 ? wp1 + wp2 : null;
+      const bpale2 = isBPale && wp1.length === 2 && wp3.length === 2 ? wp1 + wp3 : null;
+      const bpale3 = isBPale && wp2.length === 2 && wp3.length === 2 ? wp2 + wp3 : null;
       const winners = [];
       let totalBPago = 0;
       allNums.forEach(n => {
         if (n.number?.length !== 4) return;
         let prizeLabel = null, multiplier = 0;
-        if (p1 && n.number === p1) { prizeLabel = '1er Premio'; multiplier = bm1; }
-        else if (p2 && n.number === p2) { prizeLabel = '2do Premio'; multiplier = bm2; }
-        else if (p3 && n.number === p3) { prizeLabel = '3er Premio'; multiplier = bm3; }
+        if (isBPale) {
+          if (bpale1 && n.number === bpale1) { prizeLabel = '1er Palé'; multiplier = bm1; }
+          else if (bpale2 && n.number === bpale2) { prizeLabel = '2do Palé'; multiplier = bm2; }
+          else if (bpale3 && n.number === bpale3) { prizeLabel = '3er Palé'; multiplier = bm3; }
+        } else {
+          if (wp1 && n.number === wp1) { prizeLabel = '1er Premio'; multiplier = bm1; }
+          else if (wp2 && n.number === wp2) { prizeLabel = '2do Premio'; multiplier = bm2; }
+          else if (wp3 && n.number === wp3) { prizeLabel = '3er Premio'; multiplier = bm3; }
+        }
         if (prizeLabel) {
           const pago = parseInt(n.pieces, 10) * multiplier;
           totalBPago += pago;
@@ -328,6 +338,12 @@ export default function AdminNumbers() {
   const b1 = winningNumbers?.first_prize  || '';
   const b2 = winningNumbers?.second_prize || '';
   const b3 = winningNumbers?.third_prize  || '';
+
+  // Palé: 4-digit combinations from 2-digit prizes
+  const isPale = lotteries.find(l => l.id === lotteryId)?.lottery_type === 'pale';
+  const pale1 = isPale && b1.length === 2 && b2.length === 2 ? b1 + b2 : null;
+  const pale2 = isPale && b1.length === 2 && b3.length === 2 ? b1 + b3 : null;
+  const pale3 = isPale && b2.length === 2 && b3.length === 2 ? b2 + b3 : null;
 
   const activeFilterCount = [sellerId, lotteryId, drawTimeId, currency, date !== today ? 1 : null].filter(Boolean).length;
   const prizeColors = ['text-indigo-400', 'text-emerald-400', 'text-amber-400'];
@@ -723,11 +739,11 @@ export default function AdminNumbers() {
           ) : (
             <div className="space-y-1">
               {sortedBilletes.map(([num, pieces]) => {
-                const isW1 = b1 && num === b1;
-                const isW2 = b2 && num === b2;
-                const isW3 = b3 && num === b3;
+                const isW1 = isPale ? (pale1 && num === pale1) : (b1 && num === b1);
+                const isW2 = isPale ? (pale2 && num === pale2) : (b2 && num === b2);
+                const isW3 = isPale ? (pale3 && num === pale3) : (b3 && num === b3);
                 const isWinner = isW1 || isW2 || isW3;
-                const prizeLabel = isW1 ? '1er Premio' : isW2 ? '2do Premio' : isW3 ? '3er Premio' : null;
+                const prizeLabel = isW1 ? (isPale ? '1er Palé' : '1er Premio') : isW2 ? (isPale ? '2do Palé' : '2do Premio') : isW3 ? (isPale ? '3er Palé' : '3er Premio') : null;
                 const winBg = isW1 ? 'bg-indigo-500/20 border-indigo-500/50' : isW2 ? 'bg-emerald-500/20 border-emerald-500/50' : isW3 ? 'bg-amber-500/20 border-amber-500/50' : 'bg-slate-900 border-slate-800';
                 const numColor = isW1 ? 'text-indigo-300' : isW2 ? 'text-emerald-300' : isW3 ? 'text-amber-300' : 'text-white';
                 return (
