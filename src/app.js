@@ -1658,8 +1658,6 @@ function displaySalesSummary(type) {
         document.getElementById(piezasId).textContent  = totalDisplay;
         document.getElementById(colonesId).textContent = '$' + totals.totalColones.toFixed(2);
 
-        if (isChance) addPercentageBreakdown(summaryBox, totals.totalColones);
-
         updateCombinedSummary();
         if (isChance) showWinningNumbersSection();
     });
@@ -1674,12 +1672,19 @@ function updateCombinedSummary() {
     const billeteAmt = parseAmt('totalBilleteColones');
     const total = chanceAmt + billeteAmt;
 
+    const sellerAmt = (total * sellerPercentage) / 100;
+    const adminAmt  = total - sellerAmt;
+
     const box = document.getElementById('combinedSummaryBox');
     if (!box) return;
     box.style.display = 'block';
     document.getElementById('combinedChanceColones').textContent  = '$' + chanceAmt.toFixed(2);
     document.getElementById('combinedBilleteColones').textContent = '$' + billeteAmt.toFixed(2);
     document.getElementById('combinedTotal').textContent          = '$' + total.toFixed(2);
+    document.getElementById('combinedSellerAmt').textContent      = '$' + sellerAmt.toFixed(2);
+    document.getElementById('combinedSellerLabel').textContent    = `${sellerName} (${sellerPercentage}%)`;
+    document.getElementById('combinedAdminAmt').textContent       = '$' + adminAmt.toFixed(2);
+    document.getElementById('combinedAdminLabel').textContent     = `Admin (${100 - sellerPercentage}%)`;
 }
 
 function addPercentageBreakdown(summaryBox, totalAmount) {
