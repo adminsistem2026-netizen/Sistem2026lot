@@ -1173,6 +1173,8 @@ function hideAllPages() {
 
 function showLoginPage() {
     hideAllPages();
+    // Ocultar items sub-admin al volver al login (por si hubo una sesión anterior)
+    document.querySelectorAll('.sub-admin-only').forEach(el => el.style.display = 'none');
     document.getElementById('loginPage').style.display = 'flex';
 
     const passwordInput = document.getElementById('passwordInput');
