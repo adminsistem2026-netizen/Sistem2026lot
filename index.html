@@ -1759,6 +1759,23 @@
             <span class="menu-icon">💳</span>
             <span>Mis Cobros</span>
         </div>
+        <!-- Ítems exclusivos Sub-Admin (ocultos por defecto) -->
+        <div class="menu-item sub-admin-only" style="display:none;" onclick="showMisVendedoresPage()">
+            <span class="menu-icon">👥</span>
+            <span>Mis Vendedores</span>
+        </div>
+        <div class="menu-item sub-admin-only" style="display:none;" onclick="showVentasSubAdminPage()">
+            <span class="menu-icon">📈</span>
+            <span>Ventas mis vendedores</span>
+        </div>
+        <div class="menu-item sub-admin-only" style="display:none;" onclick="showCobrosSubAdminPage()">
+            <span class="menu-icon">💵</span>
+            <span>Cobros mis vendedores</span>
+        </div>
+        <div class="menu-item sub-admin-only" style="display:none;" onclick="showNumerosSubAdminPage()">
+            <span class="menu-icon">🔢</span>
+            <span>Números mis vendedores</span>
+        </div>
         <div class="menu-item" onclick="showPrinterConfig()">
             <span class="menu-icon">🖨️</span>
             <span>Configurar Impresora</span>
@@ -2106,6 +2123,118 @@
 
     <!-- Botón para guardar configuración y volver -->
     <button onclick="saveConfigAndReturn()" style="margin-top: 20px;">Guardar Config y Volver</button>
+</div>
+
+<!-- ========== PÁGINAS SUB-ADMIN ========== -->
+
+<!-- Mis Vendedores (sub_admin) -->
+<div id="misVendedoresPage" class="container" style="display: none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
+        <h2 style="margin:0;font-size:1.2em;flex:1;">Mis Vendedores</h2>
+        <button onclick="openCrearVendedorSubAdmin()" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);border:none;border-radius:10px;color:white;padding:8px 14px;font-size:0.8em;font-weight:600;cursor:pointer;white-space:nowrap;">+ Nuevo</button>
+    </div>
+    <div id="subAdminSellersLimit" style="display:none;background:#fef3c7;border:1px solid #fbbf24;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.82em;color:#92400e;"></div>
+    <div id="subAdminSellersList" style="display:flex;flex-direction:column;gap:8px;">
+        <p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>
+    </div>
+    <!-- Modal crear/editar vendedor -->
+    <div id="subAdminVendedorModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:5000;align-items:flex-end;justify-content:center;">
+        <div style="background:white;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:24px;max-height:90vh;overflow-y:auto;">
+            <h3 id="subAdminVendedorModalTitle" style="margin:0 0 16px;font-size:1.1em;color:#1e293b;">Nuevo Vendedor</h3>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label style="font-size:0.78em;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Nombre completo *</label>
+                    <input id="svNombre" type="text" placeholder="Nombre del vendedor" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;box-sizing:border-box;">
+                </div>
+                <div id="svEmailRow">
+                    <label style="font-size:0.78em;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Correo electrónico *</label>
+                    <input id="svEmail" type="email" placeholder="correo@ejemplo.com" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label id="svPasswordLabel" style="font-size:0.78em;font-weight:600;color:#475569;display:block;margin-bottom:4px;">Contraseña *</label>
+                    <input id="svPassword" type="password" placeholder="Mínimo 6 caracteres" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="font-size:0.78em;font-weight:600;color:#475569;display:block;margin-bottom:4px;">% Comisión *</label>
+                    <input id="svPorcentaje" type="number" min="0" max="100" step="0.5" placeholder="Ej: 13" style="width:100%;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;box-sizing:border-box;">
+                </div>
+            </div>
+            <p id="svError" style="color:#ef4444;font-size:0.82em;margin-top:10px;display:none;"></p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+                <button onclick="closeSubAdminVendedorModal()" style="background:#e2e8f0;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;color:#475569;cursor:pointer;">Cancelar</button>
+                <button onclick="guardarVendedorSubAdmin()" id="svGuardarBtn" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;color:white;cursor:pointer;">Crear Vendedor</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ventas de mis vendedores (sub_admin) -->
+<div id="ventasSubAdminPage" class="container" style="display: none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
+        <h2 style="margin:0;font-size:1.2em;flex:1;">Ventas mis vendedores</h2>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;">
+            <input type="date" id="ventasSAFecha" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
+            <button onclick="loadVentasSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:8px 12px;font-size:0.8em;font-weight:600;cursor:pointer;white-space:nowrap;">↺ Actualizar</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <select id="ventasSALoteria" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+                <option value="">Todas las loterías</option>
+            </select>
+            <select id="ventasSAVendedor" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+                <option value="">Todos mis vendedores</option>
+            </select>
+        </div>
+    </div>
+    <!-- Resumen -->
+    <div id="ventasSAResumen" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);border-radius:14px;padding:14px;color:white;margin-bottom:12px;display:none;">
+        <p style="margin:0 0 10px;font-size:0.72em;text-transform:uppercase;letter-spacing:1px;opacity:0.8;">Resumen</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;text-align:center;">
+                <p style="margin:0;font-size:0.7em;opacity:0.8;">Tickets</p>
+                <p id="ventasSATotalTickets" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;">0</p>
+            </div>
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;text-align:center;">
+                <p style="margin:0;font-size:0.7em;opacity:0.8;">Total ventas</p>
+                <p id="ventasSATotalMonto" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;">$0.00</p>
+            </div>
+        </div>
+    </div>
+    <div id="ventasSALista" style="display:flex;flex-direction:column;gap:6px;">
+        <p style="text-align:center;color:#888;padding:20px 0;">Selecciona una fecha para ver ventas</p>
+    </div>
+</div>
+
+<!-- Cobros mis vendedores (sub_admin) -->
+<div id="cobrosSubAdminPage" class="container" style="display: none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
+        <h2 style="margin:0;font-size:1.2em;flex:1;">Cobros mis vendedores</h2>
+        <button onclick="loadCobrosSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.8em;font-weight:600;cursor:pointer;">↺</button>
+    </div>
+    <div id="cobrosSubAdminLista" style="display:flex;flex-direction:column;gap:8px;">
+        <p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>
+    </div>
+</div>
+
+<!-- Números mis vendedores (sub_admin) -->
+<div id="numerosSubAdminPage" class="container" style="display: none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
+        <h2 style="margin:0;font-size:1.2em;flex:1;">Números mis vendedores</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        <input type="date" id="numerosSAFecha" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
+        <select id="numerosSALoteria" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+            <option value="">Todas las loterías</option>
+        </select>
+    </div>
+    <div id="numerosSAContenido">
+        <p style="text-align:center;color:#888;padding:20px 0;">Selecciona una fecha para ver números</p>
+    </div>
 </div>
 
 <!-- Página de Cobros -->

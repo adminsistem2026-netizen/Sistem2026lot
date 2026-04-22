@@ -741,6 +741,12 @@ async function initApp() {
 
     initKeyboardEvents();
 
+    // Activar menú sub_admin si aplica
+    if (isSubAdmin()) {
+        activateSubAdminMenu();
+        loadSubAdminSellers(); // precarga vendedores para filtros
+    }
+
     // Persistir hora de sorteo seleccionada en localStorage
     const drawTimeSelect = document.getElementById('drawTimeSelect');
     if (drawTimeSelect) {
@@ -759,9 +765,407 @@ function updateDateTime() {
     if (el) el.textContent = new Date().toLocaleString();
 }
 
+// ==================== Sub-Admin ====================
+let subAdminSellers = [];    // vendedores de este sub_admin
+let editingSubAdminSeller = null; // vendedor en edición
+
+function isSubAdmin() {
+    return currentProfile?.role === 'sub_admin';
+}
+
+function activateSubAdminMenu() {
+    document.querySelectorAll('.sub-admin-only').forEach(el => el.style.display = 'flex');
+}
+
+// ---- Mis Vendedores ----
+async function showMisVendedoresPage() {
+    closeMenu();
+    hideAllPages();
+    document.getElementById('misVendedoresPage').style.display = 'block';
+    await loadSubAdminSellers();
+}
+
+async function loadSubAdminSellers() {
+    const lista = document.getElementById('subAdminSellersList');
+    const limitEl = document.getElementById('subAdminSellersLimit');
+    lista.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>';
+
+    try {
+        const { data, error } = await db.rpc('get_subadmin_sellers', { p_sub_admin_id: currentProfile.id });
+        if (error) throw error;
+        subAdminSellers = data || [];
+
+        // Verificar límite del plan del admin
+        const adminId = currentProfile.parent_admin_id;
+        if (adminId) {
+            const { data: adminProfile } = await db.from('profiles').select('max_sellers, plan_expiry').eq('id', adminId);
+            const ap = adminProfile?.[0];
+            if (ap) {
+                const { data: totalSellers } = await db.from('profiles').select('id').eq('parent_admin_id', adminId).eq('role', 'seller');
+                const used = (totalSellers || []).length;
+                const max = ap.max_sellers ?? 5;
+                const expired = ap.plan_expiry && new Date(ap.plan_expiry) < new Date();
+                if (expired) {
+                    limitEl.style.display = 'block';
+                    limitEl.textContent = '⚠️ El plan del admin está vencido. No puedes crear nuevos vendedores hasta que se renueve.';
+                } else if (used >= max) {
+                    limitEl.style.display = 'block';
+                    limitEl.textContent = `⚠️ Límite alcanzado: ${used}/${max} vendedores usados. No se pueden crear más.`;
+                } else {
+                    limitEl.style.display = 'block';
+                    limitEl.style.background = '#ecfdf5';
+                    limitEl.style.borderColor = '#34d399';
+                    limitEl.style.color = '#065f46';
+                    limitEl.textContent = `Vendedores: ${used}/${max} usados`;
+                }
+            }
+        }
+
+        if (subAdminSellers.length === 0) {
+            lista.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">No tienes vendedores aún. Crea el primero.</p>';
+            return;
+        }
+
+        const sym = currentProfile?.currency_symbol || '$';
+        lista.innerHTML = subAdminSellers.map(s => `
+            <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                    <div style="flex:1;min-width:0;">
+                        <p style="margin:0;font-weight:700;color:#1e293b;font-size:0.95em;">${s.full_name}</p>
+                        <p style="margin:2px 0 0;font-size:0.78em;color:#64748b;">${s.email}</p>
+                        <span style="display:inline-block;margin-top:6px;font-size:0.72em;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:999px;">Comisión ${s.seller_percentage}%</span>
+                        <span style="display:inline-block;margin-top:6px;margin-left:4px;font-size:0.72em;padding:2px 8px;border-radius:999px;${s.is_active ? 'background:#dcfce7;color:#16a34a;' : 'background:#f1f5f9;color:#94a3b8;'}">${s.is_active ? 'Activo' : 'Inactivo'}</span>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
+                        <button onclick="openEditarVendedorSubAdmin('${s.id}')" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.75em;font-weight:600;cursor:pointer;">Editar</button>
+                        <button onclick="eliminarVendedorSubAdmin('${s.id}','${s.full_name.replace(/'/g,"\\'")}' )" style="background:#fee2e2;border:none;border-radius:8px;color:#dc2626;padding:6px 12px;font-size:0.75em;font-weight:600;cursor:pointer;">Eliminar</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        lista.innerHTML = `<p style="text-align:center;color:#dc2626;padding:20px 0;">Error: ${e.message}</p>`;
+    }
+}
+
+function openCrearVendedorSubAdmin() {
+    editingSubAdminSeller = null;
+    document.getElementById('subAdminVendedorModalTitle').textContent = 'Nuevo Vendedor';
+    document.getElementById('svGuardarBtn').textContent = 'Crear Vendedor';
+    document.getElementById('svNombre').value = '';
+    document.getElementById('svEmail').value = '';
+    document.getElementById('svPassword').value = '';
+    document.getElementById('svPorcentaje').value = String(currentProfile?.seller_percentage ?? 13);
+    document.getElementById('svPasswordLabel').textContent = 'Contraseña *';
+    document.getElementById('svEmailRow').style.display = 'block';
+    document.getElementById('svError').style.display = 'none';
+    document.getElementById('subAdminVendedorModal').style.display = 'flex';
+}
+
+function openEditarVendedorSubAdmin(sellerId) {
+    const s = subAdminSellers.find(x => x.id === sellerId);
+    if (!s) return;
+    editingSubAdminSeller = s;
+    document.getElementById('subAdminVendedorModalTitle').textContent = 'Editar Vendedor';
+    document.getElementById('svGuardarBtn').textContent = 'Guardar Cambios';
+    document.getElementById('svNombre').value = s.full_name;
+    document.getElementById('svEmail').value = s.email;
+    document.getElementById('svPassword').value = '';
+    document.getElementById('svPorcentaje').value = String(s.seller_percentage);
+    document.getElementById('svPasswordLabel').textContent = 'Nueva contraseña (dejar vacío para no cambiar)';
+    document.getElementById('svEmailRow').style.display = 'none';
+    document.getElementById('svError').style.display = 'none';
+    document.getElementById('subAdminVendedorModal').style.display = 'flex';
+}
+
+function closeSubAdminVendedorModal() {
+    document.getElementById('subAdminVendedorModal').style.display = 'none';
+    editingSubAdminSeller = null;
+}
+
+async function guardarVendedorSubAdmin() {
+    const nombre = document.getElementById('svNombre').value.trim();
+    const email  = document.getElementById('svEmail').value.trim();
+    const pass   = document.getElementById('svPassword').value.trim();
+    const pct    = parseFloat(document.getElementById('svPorcentaje').value);
+    const errEl  = document.getElementById('svError');
+    const btn    = document.getElementById('svGuardarBtn');
+
+    errEl.style.display = 'none';
+    if (!nombre) { errEl.textContent = 'El nombre es obligatorio'; errEl.style.display = 'block'; return; }
+    if (!editingSubAdminSeller && !email) { errEl.textContent = 'El correo es obligatorio'; errEl.style.display = 'block'; return; }
+    if (!editingSubAdminSeller && !pass) { errEl.textContent = 'La contraseña es obligatoria'; errEl.style.display = 'block'; return; }
+    if (isNaN(pct) || pct < 0 || pct > 100) { errEl.textContent = 'Porcentaje inválido (0-100)'; errEl.style.display = 'block'; return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Guardando...';
+    try {
+        if (editingSubAdminSeller) {
+            // Editar: actualizar nombre y %
+            await db.from('profiles').update({ full_name: nombre, seller_percentage: pct }).eq('id', editingSubAdminSeller.id);
+            // Cambiar contraseña si se ingresó
+            if (pass) {
+                const { error: pwErr } = await db.rpc('change_user_password', {
+                    p_user_id: editingSubAdminSeller.id,
+                    p_new_password: pass,
+                });
+                if (pwErr) throw pwErr;
+            }
+        } else {
+            // Crear: primero crear auth user con cliente temporal
+            const tempClient = createClient({
+                baseUrl: import.meta.env.VITE_INSFORGE_URL || 'https://e8cpb3g3.us-east.insforge.app',
+                anonKey: import.meta.env.VITE_INSFORGE_ANON_KEY || 'ik_1016f97bf745645904003df562a619b1',
+            });
+            const { data: signUpData, error: signUpErr } = await tempClient.auth.signUp({ email, password: pass, name: nombre });
+            if (signUpErr) throw new Error(signUpErr.message || 'Error al crear usuario');
+            if (!signUpData?.user?.id) throw new Error('No se recibió ID del usuario');
+
+            const adminId = currentProfile.parent_admin_id;
+            const { error: rpcErr } = await db.rpc('create_seller_for_subadmin', {
+                p_user_id:        signUpData.user.id,
+                p_full_name:      nombre,
+                p_email:          email,
+                p_seller_percentage: pct,
+                p_parent_admin_id:   adminId,
+                p_sub_admin_id:      currentProfile.id,
+                p_currency_code:     currentProfile.currency_code || 'USD',
+                p_currency_symbol:   currentProfile.currency_symbol || '$',
+            });
+            if (rpcErr) throw new Error(rpcErr.message || JSON.stringify(rpcErr));
+        }
+        closeSubAdminVendedorModal();
+        showNotification(editingSubAdminSeller ? 'Vendedor actualizado' : 'Vendedor creado correctamente', 'success');
+        await loadSubAdminSellers();
+    } catch (e) {
+        errEl.textContent = e.message || 'Error al guardar';
+        errEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = editingSubAdminSeller ? 'Guardar Cambios' : 'Crear Vendedor';
+    }
+}
+
+async function eliminarVendedorSubAdmin(sellerId, nombre) {
+    showConfirm(`¿Eliminar a ${nombre}? Se borrarán todos sus tickets y datos.`, 'Eliminar Vendedor', async () => {
+        showLoading();
+        try {
+            const { error } = await db.rpc('delete_seller_subadmin', {
+                p_seller_id:    sellerId,
+                p_sub_admin_id: currentProfile.id,
+            });
+            if (error) throw error;
+            showNotification('Vendedor eliminado', 'success');
+            await loadSubAdminSellers();
+        } catch (e) {
+            showNotification('Error al eliminar: ' + e.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    });
+}
+
+// ---- Ventas mis vendedores ----
+async function showVentasSubAdminPage() {
+    closeMenu();
+    hideAllPages();
+    document.getElementById('ventasSubAdminPage').style.display = 'block';
+    const fechaEl = document.getElementById('ventasSAFecha');
+    if (fechaEl && !fechaEl.value) fechaEl.value = getTodayStr();
+    // Poblar filtro de loterías
+    const lotSel = document.getElementById('ventasSALoteria');
+    if (lotSel) {
+        lotSel.innerHTML = '<option value="">Todas las loterías</option>';
+        lotteries.forEach(l => {
+            const o = document.createElement('option');
+            o.value = l.id; o.textContent = l.display_name;
+            lotSel.appendChild(o);
+        });
+    }
+    // Poblar filtro de vendedores
+    const vSel = document.getElementById('ventasSAVendedor');
+    if (vSel) {
+        vSel.innerHTML = '<option value="">Todos mis vendedores</option>';
+        subAdminSellers.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.id; o.textContent = s.full_name;
+            vSel.appendChild(o);
+        });
+    }
+    await loadVentasSubAdmin();
+}
+
+async function loadVentasSubAdmin() {
+    const lista  = document.getElementById('ventasSALista');
+    const resEl  = document.getElementById('ventasSAResumen');
+    const fecha  = document.getElementById('ventasSAFecha')?.value || getTodayStr();
+    const lotId  = document.getElementById('ventasSALoteria')?.value || null;
+    const vendId = document.getElementById('ventasSAVendedor')?.value || null;
+
+    lista.innerHTML = '<p style="text-align:center;color:#888;padding:16px 0;">Cargando...</p>';
+    resEl.style.display = 'none';
+
+    try {
+        const { data, error } = await db.rpc('get_subadmin_sales', {
+            p_sub_admin_id: currentProfile.id,
+            p_date:         fecha || null,
+            p_lottery_id:   lotId || null,
+            p_seller_id:    vendId || null,
+        });
+        if (error) throw error;
+
+        const rows = (data || []).filter(r => !r.is_cancelled);
+        if (rows.length === 0) {
+            lista.innerHTML = '<p style="text-align:center;color:#888;padding:16px 0;">No hay ventas para esta selección.</p>';
+            return;
+        }
+
+        const sym = currentProfile?.currency_symbol || '$';
+        const totalMonto = rows.reduce((a, r) => a + parseFloat(r.total || 0), 0);
+        document.getElementById('ventasSATotalTickets').textContent = rows.length;
+        document.getElementById('ventasSATotalMonto').textContent = `${sym}${totalMonto.toFixed(2)}`;
+        resEl.style.display = 'block';
+
+        lista.innerHTML = rows.map(r => `
+            <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <p style="margin:0;font-size:0.85em;font-weight:600;color:#1e293b;">${r.ticket_number || r.ticket_id?.slice(0,8)}</p>
+                        <p style="margin:2px 0 0;font-size:0.75em;color:#64748b;">${r.seller_name} · ${r.lottery_name}${r.draw_label ? ' · ' + r.draw_label : ''}</p>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#16a34a;font-size:0.9em;">${sym}${parseFloat(r.total||0).toFixed(2)}</p>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        lista.innerHTML = `<p style="text-align:center;color:#dc2626;padding:16px 0;">Error: ${e.message}</p>`;
+    }
+}
+
+// ---- Cobros mis vendedores ----
+async function showCobrosSubAdminPage() {
+    closeMenu();
+    hideAllPages();
+    document.getElementById('cobrosSubAdminPage').style.display = 'block';
+    await loadCobrosSubAdmin();
+}
+
+async function loadCobrosSubAdmin() {
+    const lista = document.getElementById('cobrosSubAdminLista');
+    lista.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>';
+    try {
+        const { data, error } = await db.rpc('get_subadmin_balances', { p_sub_admin_id: currentProfile.id });
+        if (error) throw error;
+        const rows = data || [];
+        if (rows.length === 0) {
+            lista.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Sin vendedores asignados.</p>';
+            return;
+        }
+        lista.innerHTML = rows.map(r => {
+            const pct = parseFloat(r.seller_percentage || 0);
+            const total = parseFloat(r.total_sales || 0);
+            const paid  = parseFloat(r.total_paid  || 0);
+            const commission = total * (pct / 100);
+            const owes  = total - commission - paid;
+            const sym   = r.currency_symbol || '$';
+            const color = owes > 0 ? '#dc2626' : '#16a34a';
+            return `
+                <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                        <p style="margin:0;font-weight:700;color:#1e293b;font-size:0.9em;">${r.seller_name}</p>
+                        <span style="font-size:0.75em;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:999px;">Comisión ${pct}%</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.78em;color:#475569;">
+                        <div>Total ventas:<br><strong style="color:#1e293b;">${sym}${total.toFixed(2)}</strong></div>
+                        <div>Su comisión:<br><strong style="color:#7c3aed;">${sym}${commission.toFixed(2)}</strong></div>
+                        <div>Total pagado:<br><strong style="color:#16a34a;">${sym}${paid.toFixed(2)}</strong></div>
+                        <div>Saldo pendiente:<br><strong style="color:${color};">${sym}${owes.toFixed(2)}</strong></div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        lista.innerHTML = `<p style="text-align:center;color:#dc2626;padding:20px 0;">Error: ${e.message}</p>`;
+    }
+}
+
+// ---- Números mis vendedores ----
+async function showNumerosSubAdminPage() {
+    closeMenu();
+    hideAllPages();
+    document.getElementById('numerosSubAdminPage').style.display = 'block';
+    const fechaEl = document.getElementById('numerosSAFecha');
+    if (fechaEl && !fechaEl.value) fechaEl.value = getTodayStr();
+    const lotSel = document.getElementById('numerosSALoteria');
+    if (lotSel) {
+        lotSel.innerHTML = '<option value="">Todas las loterías</option>';
+        lotteries.forEach(l => {
+            const o = document.createElement('option');
+            o.value = l.id; o.textContent = l.display_name;
+            lotSel.appendChild(o);
+        });
+    }
+    await loadNumerosSubAdmin();
+}
+
+async function loadNumerosSubAdmin() {
+    const contenido = document.getElementById('numerosSAContenido');
+    const fecha = document.getElementById('numerosSAFecha')?.value || null;
+    const lotId = document.getElementById('numerosSALoteria')?.value || null;
+
+    contenido.innerHTML = '<p style="text-align:center;color:#888;padding:16px 0;">Cargando...</p>';
+    try {
+        const { data, error } = await db.rpc('get_subadmin_numbers', {
+            p_sub_admin_id: currentProfile.id,
+            p_date:         fecha || null,
+            p_lottery_id:   lotId || null,
+        });
+        if (error) throw error;
+        const nums = data || [];
+        if (nums.length === 0) {
+            contenido.innerHTML = '<p style="text-align:center;color:#888;padding:16px 0;">No hay números vendidos para esta selección.</p>';
+            return;
+        }
+
+        const chances  = nums.filter(n => n.number?.length === 2).sort((a,b) => b.pieces - a.pieces);
+        const billetes = nums.filter(n => n.number?.length === 4).sort((a,b) => b.pieces - a.pieces);
+        const sym = currentProfile?.currency_symbol || '$';
+
+        let html = '';
+        if (chances.length > 0) {
+            const totalPzas = chances.reduce((a,n) => a + parseInt(n.pieces), 0);
+            html += `<div style="margin-bottom:6px;padding:6px 10px;background:#e8f0fe;border-left:4px solid #4a6cf7;border-radius:4px;">
+                <strong style="color:#4a6cf7;font-size:13px;">CHANCES — ${totalPzas} piezas</strong></div>`;
+            html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:16px;">';
+            chances.forEach(n => {
+                html += `<div style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 4px;text-align:center;">
+                    <div style="font-weight:700;font-size:14px;color:#1e293b;">${n.number}</div>
+                    <div style="font-size:11px;color:#6366f1;">${n.pieces}</div></div>`;
+            });
+            html += '</div>';
+        }
+        if (billetes.length > 0) {
+            const totalPzas = billetes.reduce((a,n) => a + parseInt(n.pieces), 0);
+            html += `<div style="margin-bottom:6px;padding:6px 10px;background:#f3e8ff;border-left:4px solid #9333ea;border-radius:4px;">
+                <strong style="color:#9333ea;font-size:13px;">BILLETES — ${totalPzas} piezas</strong></div>`;
+            html += '<div style="display:flex;flex-direction:column;gap:4px;">';
+            billetes.forEach(n => {
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;">
+                    <span style="font-weight:700;color:#1e293b;font-size:14px;">${n.number}</span>
+                    <span style="font-size:12px;color:#7c3aed;">${n.pieces} piezas</span></div>`;
+            });
+            html += '</div>';
+        }
+        contenido.innerHTML = html;
+    } catch (e) {
+        contenido.innerHTML = `<p style="text-align:center;color:#dc2626;padding:16px 0;">Error: ${e.message}</p>`;
+    }
+}
+
 // ==================== Page navigation ====================
 function hideAllPages() {
-    ['loginPage','mainPage','salesPage','numberSalesPage','verifyWinnersPage','configPage','cobrosPage'].forEach(id => {
+    ['loginPage','mainPage','salesPage','numberSalesPage','verifyWinnersPage','configPage','cobrosPage',
+     'misVendedoresPage','ventasSubAdminPage','cobrosSubAdminPage','numerosSubAdminPage'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
