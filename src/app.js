@@ -3439,3 +3439,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         hideLoading();
     }
 });
+
+// Exponer funciones sub_admin en scope global para onclick handlers del HTML
+window.showMisVendedoresPage    = showMisVendedoresPage;
+window.showVentasSubAdminPage   = showVentasSubAdminPage;
+window.showCobrosSubAdminPage   = showCobrosSubAdminPage;
+window.showNumerosSubAdminPage  = showNumerosSubAdminPage;
+window.openCrearVendedorSubAdmin   = openCrearVendedorSubAdmin;
+window.openEditarVendedorSubAdmin  = openEditarVendedorSubAdmin;
+window.closeSubAdminVendedorModal  = closeSubAdminVendedorModal;
+window.guardarVendedorSubAdmin     = guardarVendedorSubAdmin;
+window.eliminarVendedorSubAdmin    = eliminarVendedorSubAdmin;
+window.loadVentasSubAdmin          = loadVentasSubAdmin;
+window.loadCobrosSubAdmin          = loadCobrosSubAdmin;
+window.loadNumerosSubAdmin         = loadNumerosSubAdmin;
