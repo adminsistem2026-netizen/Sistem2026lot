@@ -838,7 +838,6 @@ async function loadSubAdminSellers() {
                     </div>
                     <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;">
                         <button onclick="openEditarVendedorSubAdmin('${s.id}')" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.75em;font-weight:600;cursor:pointer;">Editar</button>
-                        <button onclick="eliminarVendedorSubAdmin('${s.id}','${s.full_name.replace(/'/g,"\\'")}' )" style="background:#fee2e2;border:none;border-radius:8px;color:#dc2626;padding:6px 12px;font-size:0.75em;font-weight:600;cursor:pointer;">Eliminar</button>
                     </div>
                 </div>
             </div>
@@ -1057,6 +1056,24 @@ async function loadVentasSubAdmin() {
         document.getElementById('ventasSATotalTickets').textContent = rows.length;
         document.getElementById('ventasSATotalMonto').textContent = `${sym}${totalMonto.toFixed(2)}`;
         resEl.style.display = 'block';
+
+        const comisionRow = document.getElementById('ventasSAComisionRow');
+        if (comisionRow) {
+            if (vendId) {
+                const seller = subAdminSellers.find(s => s.id === vendId);
+                if (seller != null) {
+                    const pct = parseFloat(seller.seller_percentage) || 0;
+                    const ganancia = totalMonto * (pct / 100);
+                    document.getElementById('ventasSAComisionPct').textContent = `${pct}%`;
+                    document.getElementById('ventasSAGanancia').textContent = `${sym}${ganancia.toFixed(2)}`;
+                    comisionRow.style.display = 'grid';
+                } else {
+                    comisionRow.style.display = 'none';
+                }
+            } else {
+                comisionRow.style.display = 'none';
+            }
+        }
 
         lista.innerHTML = rows.map(r => `
             <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:12px;">
