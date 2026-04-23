@@ -1412,14 +1412,19 @@ async function loadNumerosSubAdmin() {
 
         // ---- Sección ganadores ----
         if (ganadoresEl) {
-            // Limpiar inputs y resultado al recargar
-            ['numerosSAPremio1','numerosSAPremio2','numerosSAPremio3'].forEach(id => {
-                const el = document.getElementById(id);
-                if (el) el.value = '';
-            });
-            const resultEl = document.getElementById('numerosSAGanadoresResult');
-            if (resultEl) resultEl.innerHTML = '';
             ganadoresEl.style.display = 'block';
+            if (lotId && fecha) {
+                await cargarGanadoresSA(lotId, drawId, fecha);
+            } else {
+                ['numerosSAPremio1','numerosSAPremio2','numerosSAPremio3'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = '';
+                });
+                const displayEl = document.getElementById('numerosSAWinnersDisplay');
+                if (displayEl) displayEl.innerHTML = '<p style="text-align:center;font-size:0.8em;color:#94a3b8;padding:4px 0;">Selecciona una lotería para cargar resultados automáticamente.</p>';
+                const resultEl = document.getElementById('numerosSAGanadoresResult');
+                if (resultEl) resultEl.innerHTML = '';
+            }
         }
 
         // ---- Grid de números ----
@@ -1449,6 +1454,58 @@ async function loadNumerosSubAdmin() {
         contenido.innerHTML = html;
     } catch (e) {
         contenido.innerHTML = `<p style="text-align:center;color:#dc2626;padding:16px 0;">Error: ${e.message}</p>`;
+    }
+}
+
+async function cargarGanadoresSA(lotId, drawId, fecha) {
+    const displayEl = document.getElementById('numerosSAWinnersDisplay');
+    const resultEl  = document.getElementById('numerosSAGanadoresResult');
+    ['numerosSAPremio1','numerosSAPremio2','numerosSAPremio3'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    if (displayEl) displayEl.innerHTML = '<p style="text-align:center;font-size:0.8em;color:#94a3b8;padding:4px 0;">Buscando resultados...</p>';
+    if (resultEl) resultEl.innerHTML = '';
+
+    try {
+        let q = db.from('winning_numbers').select('*')
+            .eq('lottery_id', lotId)
+            .eq('draw_date', fecha);
+        if (drawId) q = q.eq('draw_time_id', drawId);
+        else q = q.is('draw_time_id', null);
+        const { data } = await q.limit(1);
+
+        if (!data || data.length === 0) {
+            if (displayEl) displayEl.innerHTML = '<p style="text-align:center;font-size:0.8em;color:#94a3b8;padding:4px 0;">Sin resultados registrados. Puedes ingresarlos manualmente.</p>';
+            return;
+        }
+
+        const row = data[0];
+        const p1 = row.first_prize || '', p2 = row.second_prize || '', p3 = row.third_prize || '';
+        const c1 = p1.slice(-2), c2 = p2.slice(-2), c3 = p3.slice(-2);
+
+        if (displayEl) {
+            const cols = ['#6366f1', '#22c55e', '#f59e0b'];
+            displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+                ${[['1er', c1, p1, cols[0]], ['2do', c2, p2, cols[1]], ['3er', c3, p3, cols[2]]].map(([lbl, chance, full, col]) =>
+                    `<div style="text-align:center;">
+                        <div style="font-size:10px;color:#888;margin-bottom:3px;">${lbl} Premio</div>
+                        <div style="font-size:20px;font-weight:bold;color:${col};background:#f8f8f8;border:2px solid ${col};border-radius:8px;padding:4px 0;">${chance || '—'}</div>
+                        ${full && full !== chance ? `<div style="font-size:11px;color:#666;margin-top:2px;">${full}</div>` : ''}
+                    </div>`
+                ).join('')}
+            </div>`;
+        }
+
+        const e1 = document.getElementById('numerosSAPremio1');
+        const e2 = document.getElementById('numerosSAPremio2');
+        const e3 = document.getElementById('numerosSAPremio3');
+        if (e1) e1.value = c1;
+        if (e2) e2.value = c2;
+        if (e3) e3.value = c3;
+        verificarGanadoresSA();
+    } catch (e) {
+        if (displayEl) displayEl.innerHTML = `<p style="text-align:center;font-size:0.8em;color:#dc2626;padding:4px 0;">Error: ${e.message}</p>`;
     }
 }
 
