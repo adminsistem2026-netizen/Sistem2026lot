@@ -1667,8 +1667,24 @@ function showSalesPage() {
             o.value = lot.id; o.textContent = lot.display_name;
             lotSel.appendChild(o);
         });
+        // Restaurar selección guardada
+        const savedLot = localStorage.getItem('sales_filter_lottery');
+        if (savedLot && [...lotSel.options].some(o => o.value === savedLot)) {
+            lotSel.value = savedLot;
+        }
     }
-    document.getElementById('salesFilterDrawTime').innerHTML = '<option value="">Todos los sorteos</option>';
+    const dtSel = document.getElementById('salesFilterDrawTime');
+    dtSel.innerHTML = '<option value="">Todos los sorteos</option>';
+    const restoredLot = lotSel?.value;
+    if (restoredLot) {
+        (drawTimesMap[restoredLot] || []).forEach(dt => {
+            const o = document.createElement('option');
+            o.value = dt.id; o.textContent = dt.time_label;
+            dtSel.appendChild(o);
+        });
+        const savedDt = localStorage.getItem('sales_filter_draw_time');
+        if (savedDt && [...dtSel.options].some(o => o.value === savedDt)) dtSel.value = savedDt;
+    }
     showSalesByDate(document.getElementById('salesDate').value || getTodayStr());
 }
 
@@ -1680,8 +1696,18 @@ function showNumberSalesPage() {
     document.getElementById('verifyWinnersPage').style.display = 'none';
     const filterDateEl = document.getElementById('salesFilterDate');
     if (filterDateEl && !filterDateEl.value) filterDateEl.value = getTodayStr();
+    // Restaurar filtros guardados
+    const lotSel = document.getElementById('filterLotteryType');
+    const savedLot = localStorage.getItem('num_filter_lottery');
+    if (savedLot && lotSel && [...lotSel.options].some(o => o.value === savedLot)) {
+        lotSel.value = savedLot;
+        updateFilterDrawTimes(); // repoblar horarios sin guardar (lotería ya está guardada)
+        const dtSel = document.getElementById('filterDrawTimeSelect');
+        const savedDt = localStorage.getItem('num_filter_draw_time');
+        if (savedDt && dtSel && [...dtSel.options].some(o => o.value === savedDt)) dtSel.value = savedDt;
+    }
     displaySalesSummary(activeTab);
-    updateNumberSalesTable();
+    applyFilters();
 }
 
 function showVerifyWinnersPage() {
@@ -1693,7 +1719,16 @@ function showVerifyWinnersPage() {
     document.getElementById('winningTicketsResult').innerHTML = '';
 
     document.getElementById('filterLottery').onchange = updateWinnerDrawTimes;
-    updateWinnerDrawTimes();
+    // Restaurar filtros guardados
+    const lotSel = document.getElementById('filterLottery');
+    const savedLot = localStorage.getItem('winners_filter_lottery');
+    if (savedLot && [...lotSel.options].some(o => o.value === savedLot)) {
+        lotSel.value = savedLot;
+    }
+    updateWinnerDrawTimes(); // repobla horarios con la lotería restaurada
+    const dtSel = document.getElementById('filterDrawTime');
+    const savedDt = localStorage.getItem('winners_filter_draw_time');
+    if (savedDt && dtSel && [...dtSel.options].some(o => o.value === savedDt)) dtSel.value = savedDt;
 
     document.getElementById('firstPrize').value = '';
     document.getElementById('secondPrize').value = '';
@@ -1845,14 +1880,33 @@ function updateDrawTimes() {
 
 function updateFilterDrawTimes() {
     const lotteryCode = document.getElementById('filterLotteryType').value;
+    if (lotteryCode) localStorage.setItem('num_filter_lottery', lotteryCode);
+    else { localStorage.removeItem('num_filter_lottery'); localStorage.removeItem('num_filter_draw_time'); }
     const timeSelect = document.getElementById('filterDrawTimeSelect');
     populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas', false);
+    localStorage.removeItem('num_filter_draw_time'); // reset horario al cambiar lotería
+}
+
+function onNumDrawTimeFilter() {
+    const v = document.getElementById('filterDrawTimeSelect').value;
+    if (v) localStorage.setItem('num_filter_draw_time', v);
+    else localStorage.removeItem('num_filter_draw_time');
+    applyFilters();
 }
 
 function updateWinnerDrawTimes() {
     const lotteryCode = document.getElementById('filterLottery').value;
+    if (lotteryCode) localStorage.setItem('winners_filter_lottery', lotteryCode);
+    else { localStorage.removeItem('winners_filter_lottery'); localStorage.removeItem('winners_filter_draw_time'); }
     const timeSelect = document.getElementById('filterDrawTime');
     populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas', false);
+    localStorage.removeItem('winners_filter_draw_time'); // reset al cambiar lotería
+}
+
+function onWinnersDrawTimeFilter() {
+    const v = document.getElementById('filterDrawTime').value;
+    if (v) localStorage.setItem('winners_filter_draw_time', v);
+    else localStorage.removeItem('winners_filter_draw_time');
 }
 
 function updateLimitDrawTimes() {
@@ -2156,10 +2210,20 @@ function viewTicket(ticketId) {
 }
 
 // ==================== Sales page ====================
+function onSalesDrawTimeFilter() {
+    const v = document.getElementById('salesFilterDrawTime').value;
+    if (v) localStorage.setItem('sales_filter_draw_time', v);
+    else localStorage.removeItem('sales_filter_draw_time');
+    showSalesByDate(document.getElementById('salesDate').value || getTodayStr());
+}
+
 function onSalesLotteryFilter() {
     const lotteryId = document.getElementById('salesFilterLottery').value;
+    if (lotteryId) localStorage.setItem('sales_filter_lottery', lotteryId);
+    else { localStorage.removeItem('sales_filter_lottery'); localStorage.removeItem('sales_filter_draw_time'); }
     const dtSel = document.getElementById('salesFilterDrawTime');
     dtSel.innerHTML = '<option value="">Todos los sorteos</option>';
+    localStorage.removeItem('sales_filter_draw_time'); // reset draw time when lottery changes
     if (lotteryId) {
         (drawTimesMap[lotteryId] || []).forEach(dt => {
             const o = document.createElement('option');
@@ -3906,3 +3970,6 @@ window.openCobrarSubAdmin          = openCobrarSubAdmin;
 window.closeCobrarSubAdminModal    = closeCobrarSubAdminModal;
 window.guardarCobrarSubAdmin       = guardarCobrarSubAdmin;
 window.eliminarPagoSubAdmin        = eliminarPagoSubAdmin;
+window.onSalesDrawTimeFilter       = onSalesDrawTimeFilter;
+window.onNumDrawTimeFilter         = onNumDrawTimeFilter;
+window.onWinnersDrawTimeFilter     = onWinnersDrawTimeFilter;

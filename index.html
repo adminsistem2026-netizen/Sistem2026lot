@@ -1828,7 +1828,7 @@
             <select id="salesFilterLottery" onchange="onSalesLotteryFilter()" style="flex:1;padding:8px;border-radius:8px;border:1px solid #d1d5db;font-size:14px;">
                 <option value="">Todas las loterías</option>
             </select>
-            <select id="salesFilterDrawTime" onchange="showSalesByDate(document.getElementById('salesDate').value)" style="flex:1;padding:8px;border-radius:8px;border:1px solid #d1d5db;font-size:14px;">
+            <select id="salesFilterDrawTime" onchange="onSalesDrawTimeFilter()" style="flex:1;padding:8px;border-radius:8px;border:1px solid #d1d5db;font-size:14px;">
                 <option value="">Todos los sorteos</option>
             </select>
         </div>
@@ -1854,7 +1854,7 @@
             </select>
         </div>
         <div class="input-group">
-            <select id="filterDrawTimeSelect" disabled>
+            <select id="filterDrawTimeSelect" onchange="onNumDrawTimeFilter()" disabled>
                 <option value="">Todas las Horas</option>
             </select>
         </div>
@@ -1963,7 +1963,7 @@
                 </select>
             </div>
             <div class="input-group">
-                <select id="filterDrawTime" disabled>
+                <select id="filterDrawTime" onchange="onWinnersDrawTimeFilter()" disabled>
                     <option value="">Todas las Horas</option>
                 </select>
             </div>
