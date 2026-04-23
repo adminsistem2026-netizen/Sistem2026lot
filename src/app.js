@@ -1884,7 +1884,6 @@ function updateFilterDrawTimes() {
     else { localStorage.removeItem('num_filter_lottery'); localStorage.removeItem('num_filter_draw_time'); }
     const timeSelect = document.getElementById('filterDrawTimeSelect');
     populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas', false);
-    localStorage.removeItem('num_filter_draw_time'); // reset horario al cambiar lotería
 }
 
 function onNumDrawTimeFilter() {
@@ -1900,7 +1899,6 @@ function updateWinnerDrawTimes() {
     else { localStorage.removeItem('winners_filter_lottery'); localStorage.removeItem('winners_filter_draw_time'); }
     const timeSelect = document.getElementById('filterDrawTime');
     populateDrawTimeSelect(timeSelect, lotteryCode, 'Todas las Horas', false);
-    localStorage.removeItem('winners_filter_draw_time'); // reset al cambiar lotería
 }
 
 function onWinnersDrawTimeFilter() {
