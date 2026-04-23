@@ -2174,20 +2174,30 @@
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
         <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
         <h2 style="margin:0;font-size:1.2em;flex:1;">Ventas mis vendedores</h2>
+        <button onclick="loadVentasSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.8em;font-weight:600;cursor:pointer;">↺</button>
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
-        <div style="display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;">
-            <input type="date" id="ventasSAFecha" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
-            <button onclick="loadVentasSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:8px 12px;font-size:0.8em;font-weight:600;cursor:pointer;white-space:nowrap;">↺ Actualizar</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+                <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">Desde</label>
+                <input type="date" id="ventasSADesde" onchange="loadVentasSubAdmin()" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
+            </div>
+            <div>
+                <label style="font-size:11px;color:#64748b;display:block;margin-bottom:3px;">Hasta</label>
+                <input type="date" id="ventasSAHasta" onchange="loadVentasSubAdmin()" style="width:100%;padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
+            </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-            <select id="ventasSALoteria" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+            <select id="ventasSALoteria" onchange="onVentasSALotChange()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
                 <option value="">Todas las loterías</option>
             </select>
-            <select id="ventasSAVendedor" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
-                <option value="">Todos mis vendedores</option>
+            <select id="ventasSAHorario" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+                <option value="">Todos los horarios</option>
             </select>
         </div>
+        <select id="ventasSAVendedor" onchange="loadVentasSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+            <option value="">Todos mis vendedores</option>
+        </select>
     </div>
     <!-- Resumen -->
     <div id="ventasSAResumen" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);border-radius:14px;padding:14px;color:white;margin-bottom:12px;display:none;">
@@ -2204,19 +2214,48 @@
         </div>
     </div>
     <div id="ventasSALista" style="display:flex;flex-direction:column;gap:6px;">
-        <p style="text-align:center;color:#888;padding:20px 0;">Selecciona una fecha para ver ventas</p>
+        <p style="text-align:center;color:#888;padding:20px 0;">Selecciona un rango de fechas para ver ventas</p>
     </div>
 </div>
 
 <!-- Cobros mis vendedores (sub_admin) -->
 <div id="cobrosSubAdminPage" class="container" style="display: none;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-        <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
-        <h2 style="margin:0;font-size:1.2em;flex:1;">Cobros mis vendedores</h2>
+        <button onclick="cobrosSubAdminBack()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
+        <h2 id="cobrosSubAdminTitle" style="margin:0;font-size:1.2em;flex:1;">Cobros mis vendedores</h2>
         <button onclick="loadCobrosSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.8em;font-weight:600;cursor:pointer;">↺</button>
     </div>
-    <div id="cobrosSubAdminLista" style="display:flex;flex-direction:column;gap:8px;">
-        <p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>
+    <!-- Lista de vendedores -->
+    <div id="cobrosSubAdminLista" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <!-- Detalle vendedor -->
+    <div id="cobrosSubAdminDetalle" style="display:none;">
+        <div id="cobrosSubAdminBalanceCard" style="margin-bottom:12px;"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <p style="margin:0;font-size:0.85em;font-weight:600;color:#1e293b;">Historial de cobros</p>
+            <button onclick="openCobrarSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.8em;font-weight:600;cursor:pointer;">+ Registrar cobro</button>
+        </div>
+        <div id="cobrosSubAdminPagos" style="display:flex;flex-direction:column;gap:6px;"></div>
+    </div>
+    <!-- Modal registrar cobro -->
+    <div id="cobrarSubAdminModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:white;border-radius:16px;padding:20px;width:90%;max-width:360px;box-shadow:0 20px 40px rgba(0,0,0,0.2);">
+            <h3 id="cobrarSubAdminModalTitle" style="margin:0 0 16px;font-size:1em;color:#1e293b;">Registrar cobro</h3>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <div>
+                    <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Monto *</label>
+                    <input type="number" id="cobrarSubAdminMonto" step="0.01" min="0.01" placeholder="0.00" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Nota (opcional)</label>
+                    <input type="text" id="cobrarSubAdminNota" placeholder="Ej: Pago semana 1" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;">
+                </div>
+                <p id="cobrarSubAdminError" style="display:none;color:#dc2626;font-size:12px;margin:0;"></p>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
+                    <button onclick="closeCobrarSubAdminModal()" style="background:#e2e8f0;border:none;border-radius:8px;padding:10px;font-size:0.85em;color:#475569;cursor:pointer;font-weight:600;">Cancelar</button>
+                    <button id="cobrarSubAdminBtn" onclick="guardarCobrarSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;padding:10px;font-size:0.85em;color:white;cursor:pointer;font-weight:600;">Guardar</button>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -2226,10 +2265,15 @@
         <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
         <h2 style="margin:0;font-size:1.2em;flex:1;">Números mis vendedores</h2>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
-        <input type="date" id="numerosSAFecha" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
-        <select id="numerosSALoteria" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
-            <option value="">Todas las loterías</option>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <input type="date" id="numerosSAFecha" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;box-sizing:border-box;">
+            <select id="numerosSALoteria" onchange="onNumerosSALotChange()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+                <option value="">Todas las loterías</option>
+            </select>
+        </div>
+        <select id="numerosSAHorario" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+            <option value="">Todos los horarios</option>
         </select>
     </div>
     <div id="numerosSAContenido">
