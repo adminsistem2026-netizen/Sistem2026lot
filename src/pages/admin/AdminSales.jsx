@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { db } from '../../lib/insforge';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -152,6 +152,10 @@ export default function AdminSales() {
   const [loading, setLoading] = useState(false);
   const [pageSize, setPageSize] = useState(200);
   const [hasMore, setHasMore] = useState(false);
+  // sub_admin_id -> [sellerId, ...] para expandir filtros
+  const subAdminMapRef = useRef({});
+  // sellerId -> subAdminId para mostrar nombre correcto en bySeller
+  const reverseSubAdminMapRef = useRef({});
 
   // Cargar filtros primero, luego tickets con los seller IDs obtenidos
   useEffect(() => {
@@ -172,8 +176,18 @@ export default function AdminSales() {
   }, [dateFrom, dateTo, sellerId, lotteryId, drawTimeId]);
 
   async function loadFiltersData() {
-    const [{ data: s }, { data: l }, { data: dt }] = await Promise.all([
-      db.from('profiles').select('id, full_name, seller_percentage').in('role', ['seller', 'sub_admin']).eq('parent_admin_id', profile.id).eq('is_active', true).order('full_name'),
+    const [{ data: s }, { data: subSellers }, { data: l }, { data: dt }] = await Promise.all([
+      // Solo vendedores directos (sub_admin_id IS NULL) + sub-admins
+      db.from('profiles').select('id, full_name, seller_percentage, role')
+        .in('role', ['seller', 'sub_admin'])
+        .eq('parent_admin_id', profile.id)
+        .is('sub_admin_id', null)
+        .eq('is_active', true)
+        .order('full_name'),
+      // Vendedores del sub-admin (para expandir filtros)
+      db.from('profiles').select('id, sub_admin_id')
+        .eq('parent_admin_id', profile.id)
+        .not('sub_admin_id', 'is', null),
       db.from('lotteries').select('id, display_name').eq('admin_id', profile.id).order('display_name'),
       db.from('draw_times').select('id, time_label, lottery_id').order('time_value'),
     ]);
@@ -181,6 +195,16 @@ export default function AdminSales() {
     setSellers(s2);
     setLotteries(l || []);
     setAllDrawTimes(dt || []);
+    // Construir mapas para expansión de sub-admin
+    const fwd = {};
+    const rev = {};
+    (subSellers || []).forEach(ss => {
+      if (!fwd[ss.sub_admin_id]) fwd[ss.sub_admin_id] = [];
+      fwd[ss.sub_admin_id].push(ss.id);
+      rev[ss.id] = ss.sub_admin_id;
+    });
+    subAdminMapRef.current = fwd;
+    reverseSubAdminMapRef.current = rev;
     return s2.map(x => x.id);
   }
 
@@ -188,11 +212,19 @@ export default function AdminSales() {
     if (!profile?.id) { setTickets([]); setLoading(false); return; }
     setLoading(true);
     let q = db.from('tickets').select('*').eq('admin_id', profile.id);
-    if (dateFrom)    q = q.gte('sale_date', dateFrom);
-    if (dateTo)      q = q.lte('sale_date', dateTo);
-    if (sellerId)    q = q.eq('seller_id', sellerId);
-    if (lotteryId)   q = q.eq('lottery_id', lotteryId);
-    if (drawTimeId)  q = q.eq('draw_time_id', drawTimeId);
+    if (dateFrom)   q = q.gte('sale_date', dateFrom);
+    if (dateTo)     q = q.lte('sale_date', dateTo);
+    if (sellerId) {
+      const sel = sellers.find(s => s.id === sellerId);
+      if (sel?.role === 'sub_admin') {
+        const subIds = subAdminMapRef.current[sellerId] || [];
+        q = q.in('seller_id', [sellerId, ...subIds]);
+      } else {
+        q = q.eq('seller_id', sellerId);
+      }
+    }
+    if (lotteryId)  q = q.eq('lottery_id', lotteryId);
+    if (drawTimeId) q = q.eq('draw_time_id', drawTimeId);
     const { data } = await q.order('sale_date', { ascending: false }).limit(lim + 1);
     const rows = data || [];
     setHasMore(rows.length > lim);
@@ -207,7 +239,14 @@ export default function AdminSales() {
   const totalRevenue = active.reduce((s, t) => s + (t.total_amount || 0), 0);
   const avg = active.length ? totalRevenue / active.length : 0;
 
-  const sellerMap = useMemo(() => Object.fromEntries(sellers.map(s => [s.id, s.full_name])), [sellers]);
+  const sellerMap = useMemo(() => {
+    const map = Object.fromEntries(sellers.map(s => [s.id, s.full_name]));
+    // Mapear vendedores de sub-admins al nombre del sub-admin
+    Object.entries(reverseSubAdminMapRef.current).forEach(([sellerId, subAdminId]) => {
+      if (map[subAdminId]) map[sellerId] = map[subAdminId];
+    });
+    return map;
+  }, [sellers]);
   const lotteryMap = useMemo(() => Object.fromEntries(lotteries.map(l => [l.id, l.display_name])), [lotteries]);
   const drawTimeMap = useMemo(() => Object.fromEntries(allDrawTimes.map(dt => [dt.id, dt.time_label])), [allDrawTimes]);
 

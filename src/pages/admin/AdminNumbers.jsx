@@ -136,7 +136,7 @@ export default function AdminNumbers() {
 
   async function loadFiltersData() {
     const [{ data: s }, { data: l }, { data: dt }, { data: mData }] = await Promise.all([
-      db.from('profiles').select('*').in('role', ['seller', 'sub_admin']).eq('parent_admin_id', profile.id).order('full_name'),
+      db.from('profiles').select('*').in('role', ['seller', 'sub_admin']).eq('parent_admin_id', profile.id).is('sub_admin_id', null).order('full_name'),
       db.from('lotteries').select('*').eq('admin_id', profile.id).order('display_name'),
       db.from('draw_times').select('*').order('time_value'),
       db.rpc('get_lottery_billete_multipliers'),
