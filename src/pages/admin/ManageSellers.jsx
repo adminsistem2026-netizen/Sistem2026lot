@@ -272,19 +272,21 @@ export default function ManageSellers() {
                 {ownedSellers.length === 0 ? (
                   <p className="text-xs text-slate-500">Sin vendedores asignados aún</p>
                 ) : ownedSellers.map(sv => (
-                  <div key={sv.id} className="flex items-center justify-between gap-2 bg-slate-900/40 rounded-lg px-2.5 py-2">
-                    <div className="flex items-center gap-2 min-w-0">
+                  <div key={sv.id} className="bg-slate-900/40 rounded-lg px-2.5 py-2 space-y-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span className={`text-xs flex-shrink-0 ${sv.is_active ? 'text-emerald-400' : 'text-slate-500'}`}>●</span>
-                      <span className="text-xs text-slate-300 truncate">{sv.full_name}</span>
-                      <span className="text-xs text-slate-500 truncate hidden sm:block">{sv.email}</span>
+                      <span className="text-xs text-slate-200 font-medium truncate">{sv.full_name}</span>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <button onClick={() => toggleActive(sv)} className={`text-xs font-medium transition ${sv.is_active ? 'text-amber-400 hover:text-amber-300' : 'text-emerald-400 hover:text-emerald-300'}`}>
-                        {sv.is_active ? 'Desactivar' : 'Activar'}
-                      </button>
-                      <button onClick={() => setDeleteTarget(sv)} className="text-xs text-red-400 hover:text-red-300 font-medium transition">
-                        Eliminar
-                      </button>
+                    <div className="flex items-center justify-between gap-2 pl-3.5">
+                      <span className="text-xs text-slate-500 truncate min-w-0">{sv.email}</span>
+                      <div className="flex gap-2.5 flex-shrink-0">
+                        <button onClick={() => toggleActive(sv)} className={`text-xs font-medium transition ${sv.is_active ? 'text-amber-400 hover:text-amber-300' : 'text-emerald-400 hover:text-emerald-300'}`}>
+                          {sv.is_active ? 'Desactivar' : 'Activar'}
+                        </button>
+                        <button onClick={() => setDeleteTarget(sv)} className="text-xs text-red-400 hover:text-red-300 font-medium transition">
+                          Eliminar
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
