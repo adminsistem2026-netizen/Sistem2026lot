@@ -211,9 +211,9 @@ export default function ManageSellers() {
 
   const isCustomCurrency = (seller) => seller.currency_code && seller.currency_code !== profile?.currency_code;
 
-  // Separate sub_admins and regular sellers
+  // Separate sub_admins and direct sellers (exclude sellers owned by a sub_admin)
   const subAdmins = sellers.filter(s => s.role === 'sub_admin');
-  const regularSellers = sellers.filter(s => s.role !== 'sub_admin');
+  const regularSellers = sellers.filter(s => s.role === 'seller' && !s.sub_admin_id);
 
   function renderSellerCard(seller) {
     const isSubAdmin = seller.role === 'sub_admin';
