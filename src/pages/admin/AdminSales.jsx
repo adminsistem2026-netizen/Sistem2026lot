@@ -173,7 +173,7 @@ export default function AdminSales() {
 
   async function loadFiltersData() {
     const [{ data: s }, { data: l }, { data: dt }] = await Promise.all([
-      db.rpc('get_admin_sellers', { p_admin_id: profile.id }),
+      db.from('profiles').select('id, full_name, seller_percentage').in('role', ['seller', 'sub_admin']).eq('parent_admin_id', profile.id).eq('is_active', true).order('full_name'),
       db.from('lotteries').select('id, display_name').eq('admin_id', profile.id).order('display_name'),
       db.from('draw_times').select('id, time_label, lottery_id').order('time_value'),
     ]);
