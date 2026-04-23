@@ -1334,6 +1334,7 @@ async function showNumerosSubAdminPage() {
 }
 
 let _numerosSANums = [];
+let _numerosSAContext = { lotId: null, drawId: null, totalAmt: 0, adminAmt: 0, sym: '$', hasVendor: false };
 
 async function loadNumerosSubAdmin() {
     const contenido = document.getElementById('numerosSAContenido');
@@ -1380,6 +1381,17 @@ async function loadNumerosSubAdmin() {
         const chanceAmt  = chancePieces  * price2d;
         const billeteAmt = billetePieces * price4d;
         const totalAmt   = chanceAmt + billeteAmt;
+
+        // Store context for prize payout calculations in verificarGanadoresSA
+        {
+            const s = vendId ? subAdminSellers.find(sv => sv.id === vendId) : null;
+            const pct = s ? (parseFloat(s.seller_percentage) || 0) : 0;
+            _numerosSAContext = {
+                lotId, drawId, totalAmt, sym,
+                adminAmt: s ? totalAmt * ((100 - pct) / 100) : 0,
+                hasVendor: !!s,
+            };
+        }
 
         if (resumenEl) {
             document.getElementById('numerosSAChanceAmt').textContent  = `${sym}${chanceAmt.toFixed(2)}`;
@@ -1529,25 +1541,67 @@ function verificarGanadoresSA() {
 
     const ganadores = _numerosSANums.filter(n => n.number?.length === 2 && prizes.includes(n.number));
 
+    const { lotId, drawId, totalAmt, adminAmt, sym, hasVendor } = _numerosSAContext;
+    const lotteryObj  = lotId ? lotteries.find(l => l.id === lotId) : null;
+    const drawTimeObj = (drawId && lotId) ? (drawTimesMap[lotId] || []).find(dt => dt.id === drawId) || null : null;
+    const mults = {
+        [p1]: p1 ? getPrizeMultiplier(1, lotteryObj, drawTimeObj, false) : 0,
+        [p2]: p2 ? getPrizeMultiplier(2, lotteryObj, drawTimeObj, false) : 0,
+        [p3]: p3 ? getPrizeMultiplier(3, lotteryObj, drawTimeObj, false) : 0,
+    };
+    const labels = { [p1]: '1er Premio', [p2]: '2do Premio', [p3]: '3er Premio' };
+    const colors  = { [p1]: '#6366f1',   [p2]: '#22c55e',   [p3]: '#f59e0b' };
+
     if (ganadores.length === 0) {
-        resultEl.innerHTML = '<p style="text-align:center;color:#16a34a;font-size:13px;padding:6px 0;">✓ Sin coincidencias</p>';
+        let html = '<p style="text-align:center;color:#16a34a;font-size:13px;padding:6px 0;">✓ Sin coincidencias</p>';
+        if (lotteryObj) {
+            html += `<div style="margin-top:6px;padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:13px;">
+                ${hasVendor ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Total cobrado (admin):</span><strong>${sym}${adminAmt.toFixed(2)}</strong></div>` : ''}
+                <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Total a pagar:</span><strong style="color:#16a34a;">${sym}0.00</strong></div>
+                ${hasVendor ? `<div style="display:flex;justify-content:space-between;border-top:1px solid #bbf7d0;padding-top:6px;"><span>Resultado:</span><strong style="color:#16a34a;">GANANCIA ${sym}${adminAmt.toFixed(2)}</strong></div>` : ''}
+            </div>`;
+        }
+        resultEl.innerHTML = html;
         return;
     }
 
-    const labels = { [p1]: '1er Premio', [p2]: '2do Premio', [p3]: '3er Premio' };
-    const colors  = { [p1]: '#6366f1',   [p2]: '#22c55e',   [p3]: '#f59e0b' };
+    let totalPago = 0;
+    const ganadoresConPago = ganadores.map(n => {
+        const mult = mults[n.number] || 0;
+        const pago = n.pieces * mult;
+        totalPago += pago;
+        return { ...n, mult, pago };
+    });
+
+    const resultado = adminAmt - totalPago;
+    const resultColor = resultado >= 0 ? '#16a34a' : '#dc2626';
+
+    const rows = ganadoresConPago.map(n => `
+        <div style="display:flex;justify-content:space-between;align-items:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-weight:800;color:${colors[n.number] || '#dc2626'};font-size:1.2em;">${n.number}</span>
+                <span style="font-size:0.72em;color:#ef4444;font-weight:600;">${labels[n.number] || ''}</span>
+            </div>
+            <div style="text-align:right;">
+                <div style="font-size:0.75em;color:#7f1d1d;">${n.pieces} pz × ${n.mult}x</div>
+                <div style="font-weight:700;color:#dc2626;">${sym}${n.pago.toFixed(2)}</div>
+            </div>
+        </div>`).join('');
+
+    let summaryHtml = `<div style="margin-top:10px;padding:10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;">`;
+    if (hasVendor) {
+        summaryHtml += `<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span>Total cobrado (admin):</span><strong>${sym}${adminAmt.toFixed(2)}</strong></div>`;
+    }
+    summaryHtml += `<div style="display:flex;justify-content:space-between;margin-bottom:${hasVendor ? '4' : '0'}px;"><span>Total a pagar:</span><strong style="color:#dc2626;">${sym}${totalPago.toFixed(2)}</strong></div>`;
+    if (hasVendor) {
+        summaryHtml += `<div style="display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding-top:6px;"><span>Resultado:</span><strong style="color:${resultColor};">${resultado >= 0 ? 'GANANCIA' : 'PÉRDIDA'} ${sym}${Math.abs(resultado).toFixed(2)}</strong></div>`;
+    }
+    summaryHtml += `</div>`;
+
     resultEl.innerHTML = `
         <p style="margin:0 0 8px;font-size:0.8em;font-weight:700;color:#dc2626;">⚠ Coincidencias:</p>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-            ${ganadores.map(n => `
-                <div style="display:flex;justify-content:space-between;align-items:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;">
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="font-weight:800;color:${colors[n.number] || '#dc2626'};font-size:1.2em;">${n.number}</span>
-                        <span style="font-size:0.72em;color:#ef4444;font-weight:600;">${labels[n.number] || ''}</span>
-                    </div>
-                    <span style="font-size:0.85em;color:#7f1d1d;font-weight:700;">${n.pieces} piezas</span>
-                </div>`).join('')}
-        </div>`;
+        <div style="display:flex;flex-direction:column;gap:4px;">${rows}</div>
+        ${summaryHtml}`;
 }
 
 // ==================== Page navigation ====================
