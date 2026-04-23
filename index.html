@@ -2291,6 +2291,46 @@
             </select>
         </div>
     </div>
+    <!-- Resumen Total Combinado SA -->
+    <div id="numerosSAResumenCombinado" style="display:none;margin-bottom:12px;background:linear-gradient(135deg,#6c63ff,#4f46e5);color:white;border-radius:16px;padding:16px;box-shadow:0 4px 20px rgba(79,70,229,0.35);">
+        <p style="margin:0 0 12px;font-size:0.75em;text-transform:uppercase;letter-spacing:1px;opacity:0.85;text-align:center;">Resumen Total Combinado</p>
+        <p style="margin:0 0 8px;font-size:0.68em;opacity:0.7;text-align:center;">Chances + Billetes</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;text-align:center;">
+                <p style="margin:0;font-size:0.7em;opacity:0.85;">Chances recaudado</p>
+                <p id="numerosSAChanceAmt" style="margin:4px 0 0;font-size:1.1em;font-weight:bold;">$0.00</p>
+            </div>
+            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;text-align:center;">
+                <p style="margin:0;font-size:0.7em;opacity:0.85;">Billetes recaudado</p>
+                <p id="numerosSABilleteAmt" style="margin:4px 0 0;font-size:1.1em;font-weight:bold;">$0.00</p>
+            </div>
+        </div>
+        <div style="background:rgba(255,255,255,0.2);border-radius:10px;padding:10px;text-align:center;">
+            <p style="margin:0;font-size:0.7em;opacity:0.85;">Total recaudado</p>
+            <p id="numerosSATotalAmt" style="margin:4px 0 0;font-size:1.5em;font-weight:bold;color:#86efac;">$0.00</p>
+        </div>
+    </div>
+
+    <!-- Números Ganadores SA -->
+    <div id="numerosSAGanadoresSection" style="display:none;background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:12px;">
+        <p style="margin:0 0 10px;font-weight:700;font-size:0.9em;color:#1e293b;">Números Ganadores</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div>
+                <p style="margin:0 0 4px;font-size:0.72em;color:#64748b;text-align:center;">1er Premio</p>
+                <input type="text" id="numerosSAPremio1" inputmode="numeric" maxlength="2" placeholder="00" oninput="verificarGanadoresSA()" style="width:100%;padding:8px;border:2px solid #e2e8f0;border-radius:8px;font-size:1.2em;font-weight:bold;text-align:center;box-sizing:border-box;color:#6366f1;">
+            </div>
+            <div>
+                <p style="margin:0 0 4px;font-size:0.72em;color:#64748b;text-align:center;">2do Premio</p>
+                <input type="text" id="numerosSAPremio2" inputmode="numeric" maxlength="2" placeholder="00" oninput="verificarGanadoresSA()" style="width:100%;padding:8px;border:2px solid #e2e8f0;border-radius:8px;font-size:1.2em;font-weight:bold;text-align:center;box-sizing:border-box;color:#22c55e;">
+            </div>
+            <div>
+                <p style="margin:0 0 4px;font-size:0.72em;color:#64748b;text-align:center;">3er Premio</p>
+                <input type="text" id="numerosSAPremio3" inputmode="numeric" maxlength="2" placeholder="00" oninput="verificarGanadoresSA()" style="width:100%;padding:8px;border:2px solid #e2e8f0;border-radius:8px;font-size:1.2em;font-weight:bold;text-align:center;box-sizing:border-box;color:#f59e0b;">
+            </div>
+        </div>
+        <div id="numerosSAGanadoresResult"></div>
+    </div>
+
     <div id="numerosSAContenido">
         <p style="text-align:center;color:#888;padding:20px 0;">Selecciona una fecha para ver números</p>
     </div>

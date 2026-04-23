@@ -1333,6 +1333,8 @@ async function showNumerosSubAdminPage() {
     await loadNumerosSubAdmin();
 }
 
+let _numerosSANums = [];
+
 async function loadNumerosSubAdmin() {
     const contenido = document.getElementById('numerosSAContenido');
     const fecha  = document.getElementById('numerosSAFecha')?.value || null;
@@ -1341,6 +1343,13 @@ async function loadNumerosSubAdmin() {
     const vendId = document.getElementById('numerosSAVendedor')?.value || null;
 
     contenido.innerHTML = '<p style="text-align:center;color:#888;padding:16px 0;">Cargando...</p>';
+
+    // Ocultar resumen y ganadores mientras carga
+    const resumenEl = document.getElementById('numerosSAResumenCombinado');
+    const ganadoresEl = document.getElementById('numerosSAGanadoresSection');
+    if (resumenEl) resumenEl.style.display = 'none';
+    if (ganadoresEl) ganadoresEl.style.display = 'none';
+
     try {
         const { data, error } = await db.rpc('get_subadmin_numbers', {
             p_sub_admin_id: currentProfile.id,
@@ -1351,6 +1360,8 @@ async function loadNumerosSubAdmin() {
         });
         if (error) throw error;
         const nums = data || [];
+        _numerosSANums = nums;
+
         if (nums.length === 0) {
             contenido.innerHTML = '<p style="text-align:center;color:#888;padding:16px 0;">No hay números vendidos para esta selección.</p>';
             return;
@@ -1360,11 +1371,40 @@ async function loadNumerosSubAdmin() {
         const billetes = nums.filter(n => n.number?.length === 4).sort((a,b) => b.pieces - a.pieces);
         const sym = currentProfile?.currency_symbol || '$';
 
+        // ---- Resumen Total Combinado ----
+        const lotObj   = lotId ? lotteries.find(l => l.id === lotId) : null;
+        const price2d  = lotObj?.price_2_digits ?? 0;
+        const price4d  = lotObj?.price_4_digits ?? 0;
+        const chancePieces  = chances.reduce((a, n) => a + parseInt(n.pieces), 0);
+        const billetePieces = billetes.reduce((a, n) => a + parseInt(n.pieces), 0);
+        const chanceAmt  = chancePieces  * price2d;
+        const billeteAmt = billetePieces * price4d;
+        const totalAmt   = chanceAmt + billeteAmt;
+
+        if (resumenEl) {
+            document.getElementById('numerosSAChanceAmt').textContent  = `${sym}${chanceAmt.toFixed(2)}`;
+            document.getElementById('numerosSABilleteAmt').textContent = `${sym}${billeteAmt.toFixed(2)}`;
+            document.getElementById('numerosSATotalAmt').textContent   = `${sym}${totalAmt.toFixed(2)}`;
+            resumenEl.style.display = 'block';
+        }
+
+        // ---- Sección ganadores ----
+        if (ganadoresEl) {
+            // Limpiar inputs y resultado al recargar
+            ['numerosSAPremio1','numerosSAPremio2','numerosSAPremio3'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const resultEl = document.getElementById('numerosSAGanadoresResult');
+            if (resultEl) resultEl.innerHTML = '';
+            ganadoresEl.style.display = 'block';
+        }
+
+        // ---- Grid de números ----
         let html = '';
         if (chances.length > 0) {
-            const totalPzas = chances.reduce((a,n) => a + parseInt(n.pieces), 0);
             html += `<div style="margin-bottom:6px;padding:6px 10px;background:#e8f0fe;border-left:4px solid #4a6cf7;border-radius:4px;">
-                <strong style="color:#4a6cf7;font-size:13px;">CHANCES — ${totalPzas} piezas</strong></div>`;
+                <strong style="color:#4a6cf7;font-size:13px;">CHANCES — ${chancePieces} piezas</strong></div>`;
             html += '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:16px;">';
             chances.forEach(n => {
                 html += `<div style="background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 4px;text-align:center;">
@@ -1374,9 +1414,8 @@ async function loadNumerosSubAdmin() {
             html += '</div>';
         }
         if (billetes.length > 0) {
-            const totalPzas = billetes.reduce((a,n) => a + parseInt(n.pieces), 0);
             html += `<div style="margin-bottom:6px;padding:6px 10px;background:#f3e8ff;border-left:4px solid #9333ea;border-radius:4px;">
-                <strong style="color:#9333ea;font-size:13px;">BILLETES — ${totalPzas} piezas</strong></div>`;
+                <strong style="color:#9333ea;font-size:13px;">BILLETES — ${billetePieces} piezas</strong></div>`;
             html += '<div style="display:flex;flex-direction:column;gap:4px;">';
             billetes.forEach(n => {
                 html += `<div style="display:flex;justify-content:space-between;align-items:center;background:white;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;">
@@ -1389,6 +1428,39 @@ async function loadNumerosSubAdmin() {
     } catch (e) {
         contenido.innerHTML = `<p style="text-align:center;color:#dc2626;padding:16px 0;">Error: ${e.message}</p>`;
     }
+}
+
+function verificarGanadoresSA() {
+    const p1 = (document.getElementById('numerosSAPremio1')?.value || '').replace(/\D/g,'').slice(0,2);
+    const p2 = (document.getElementById('numerosSAPremio2')?.value || '').replace(/\D/g,'').slice(0,2);
+    const p3 = (document.getElementById('numerosSAPremio3')?.value || '').replace(/\D/g,'').slice(0,2);
+    const resultEl = document.getElementById('numerosSAGanadoresResult');
+    if (!resultEl) return;
+
+    const prizes = [p1, p2, p3].filter(p => p.length > 0);
+    if (prizes.length === 0) { resultEl.innerHTML = ''; return; }
+
+    const ganadores = _numerosSANums.filter(n => n.number?.length === 2 && prizes.includes(n.number));
+
+    if (ganadores.length === 0) {
+        resultEl.innerHTML = '<p style="text-align:center;color:#16a34a;font-size:13px;padding:6px 0;">✓ Sin coincidencias</p>';
+        return;
+    }
+
+    const labels = { [p1]: '1er Premio', [p2]: '2do Premio', [p3]: '3er Premio' };
+    const colors  = { [p1]: '#6366f1',   [p2]: '#22c55e',   [p3]: '#f59e0b' };
+    resultEl.innerHTML = `
+        <p style="margin:0 0 8px;font-size:0.8em;font-weight:700;color:#dc2626;">⚠ Coincidencias:</p>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            ${ganadores.map(n => `
+                <div style="display:flex;justify-content:space-between;align-items:center;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:8px 12px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-weight:800;color:${colors[n.number] || '#dc2626'};font-size:1.2em;">${n.number}</span>
+                        <span style="font-size:0.72em;color:#ef4444;font-weight:600;">${labels[n.number] || ''}</span>
+                    </div>
+                    <span style="font-size:0.85em;color:#7f1d1d;font-weight:700;">${n.pieces} piezas</span>
+                </div>`).join('')}
+        </div>`;
 }
 
 // ==================== Page navigation ====================
@@ -3686,6 +3758,7 @@ window.onVentasSALotChange         = onVentasSALotChange;
 window.onNumerosSALotChange        = onNumerosSALotChange;
 window.loadCobrosSubAdmin          = loadCobrosSubAdmin;
 window.loadNumerosSubAdmin         = loadNumerosSubAdmin;
+window.verificarGanadoresSA        = verificarGanadoresSA;
 window.verDetalleCobroSubAdmin     = verDetalleCobroSubAdmin;
 window.cobrosSubAdminBack          = cobrosSubAdminBack;
 window.openCobrarSubAdmin          = openCobrarSubAdmin;
