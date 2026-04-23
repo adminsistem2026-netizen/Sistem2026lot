@@ -1432,8 +1432,6 @@ async function loadNumerosSubAdmin() {
                     const el = document.getElementById(id);
                     if (el) el.value = '';
                 });
-                const inputsRow = document.getElementById('numerosSAInputsRow');
-                if (inputsRow) inputsRow.style.display = 'grid';
                 const displayEl = document.getElementById('numerosSAWinnersDisplay');
                 if (displayEl) displayEl.innerHTML = '<p style="text-align:center;font-size:0.8em;color:#94a3b8;padding:4px 0;">Selecciona una lotería para cargar resultados automáticamente.</p>';
                 const resultEl = document.getElementById('numerosSAGanadoresResult');
@@ -1490,9 +1488,8 @@ async function cargarGanadoresSA(lotId, drawId, fecha) {
         const { data } = await q.limit(1);
 
         if (!data || data.length === 0) {
-            if (displayEl) displayEl.innerHTML = '<p style="text-align:center;font-size:0.8em;color:#94a3b8;padding:4px 0;">Sin resultados registrados. Puedes ingresarlos manualmente.</p>';
-            const inputsRow = document.getElementById('numerosSAInputsRow');
-            if (inputsRow) inputsRow.style.display = 'grid';
+            if (displayEl) displayEl.innerHTML = '<p style="text-align:center;font-size:0.8em;color:#94a3b8;padding:8px 0;">El admin aún no ha registrado resultados para este sorteo.</p>';
+            if (resultEl) resultEl.innerHTML = '';
             return;
         }
 

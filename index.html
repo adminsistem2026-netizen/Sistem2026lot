@@ -2325,19 +2325,10 @@
     <div id="numerosSAGanadoresSection" style="display:none;background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;margin-bottom:12px;">
         <p style="margin:0 0 10px;font-weight:700;font-size:0.9em;color:#1e293b;">Números Ganadores</p>
         <div id="numerosSAWinnersDisplay" style="margin-bottom:10px;"></div>
-        <div id="numerosSAInputsRow" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
-            <div>
-                <p style="margin:0 0 4px;font-size:0.72em;color:#64748b;text-align:center;">1er Premio</p>
-                <input type="text" id="numerosSAPremio1" inputmode="numeric" maxlength="2" placeholder="00" oninput="verificarGanadoresSA()" style="width:100%;padding:8px;border:2px solid #e2e8f0;border-radius:8px;font-size:1.2em;font-weight:bold;text-align:center;box-sizing:border-box;color:#6366f1;">
-            </div>
-            <div>
-                <p style="margin:0 0 4px;font-size:0.72em;color:#64748b;text-align:center;">2do Premio</p>
-                <input type="text" id="numerosSAPremio2" inputmode="numeric" maxlength="2" placeholder="00" oninput="verificarGanadoresSA()" style="width:100%;padding:8px;border:2px solid #e2e8f0;border-radius:8px;font-size:1.2em;font-weight:bold;text-align:center;box-sizing:border-box;color:#22c55e;">
-            </div>
-            <div>
-                <p style="margin:0 0 4px;font-size:0.72em;color:#64748b;text-align:center;">3er Premio</p>
-                <input type="text" id="numerosSAPremio3" inputmode="numeric" maxlength="2" placeholder="00" oninput="verificarGanadoresSA()" style="width:100%;padding:8px;border:2px solid #e2e8f0;border-radius:8px;font-size:1.2em;font-weight:bold;text-align:center;box-sizing:border-box;color:#f59e0b;">
-            </div>
+        <div id="numerosSAInputsRow" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+            <input type="text" id="numerosSAPremio1" readonly style="display:none;">
+            <input type="text" id="numerosSAPremio2" readonly style="display:none;">
+            <input type="text" id="numerosSAPremio3" readonly style="display:none;">
         </div>
         <div id="numerosSAGanadoresResult"></div>
     </div>
