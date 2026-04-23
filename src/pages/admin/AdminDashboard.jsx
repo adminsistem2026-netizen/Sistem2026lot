@@ -41,7 +41,7 @@ export default function AdminDashboard() {
           .eq('sale_date', today()),
         db.from('profiles')
           .select('id')
-          .eq('role', 'seller')
+          .in('role', ['seller', 'sub_admin'])
           .eq('parent_admin_id', profile.id)
           .eq('is_active', true),
       ]);

@@ -2272,9 +2272,14 @@
                 <option value="">Todas las loterías</option>
             </select>
         </div>
-        <select id="numerosSAHorario" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
-            <option value="">Todos los horarios</option>
-        </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <select id="numerosSAHorario" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+                <option value="">Todos los horarios</option>
+            </select>
+            <select id="numerosSAVendedor" onchange="loadNumerosSubAdmin()" style="padding:8px 10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;">
+                <option value="">Todos mis vendedores</option>
+            </select>
+        </div>
     </div>
     <div id="numerosSAContenido">
         <p style="text-align:center;color:#888;padding:20px 0;">Selecciona una fecha para ver números</p>

@@ -1304,6 +1304,15 @@ async function showNumerosSubAdminPage() {
             lotSel.appendChild(o);
         });
     }
+    const vSel = document.getElementById('numerosSAVendedor');
+    if (vSel) {
+        vSel.innerHTML = '<option value="">Todos mis vendedores</option>';
+        subAdminSellers.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.id; o.textContent = s.full_name;
+            vSel.appendChild(o);
+        });
+    }
     await loadNumerosSubAdmin();
 }
 
@@ -1312,6 +1321,7 @@ async function loadNumerosSubAdmin() {
     const fecha  = document.getElementById('numerosSAFecha')?.value || null;
     const lotId  = document.getElementById('numerosSALoteria')?.value || null;
     const drawId = document.getElementById('numerosSAHorario')?.value || null;
+    const vendId = document.getElementById('numerosSAVendedor')?.value || null;
 
     contenido.innerHTML = '<p style="text-align:center;color:#888;padding:16px 0;">Cargando...</p>';
     try {
@@ -1320,6 +1330,7 @@ async function loadNumerosSubAdmin() {
             p_date:         fecha || null,
             p_lottery_id:   lotId || null,
             p_draw_time_id: drawId || null,
+            p_seller_id:    vendId || null,
         });
         if (error) throw error;
         const nums = data || [];
