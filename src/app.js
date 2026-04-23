@@ -1385,6 +1385,28 @@ async function loadNumerosSubAdmin() {
             document.getElementById('numerosSAChanceAmt').textContent  = `${sym}${chanceAmt.toFixed(2)}`;
             document.getElementById('numerosSABilleteAmt').textContent = `${sym}${billeteAmt.toFixed(2)}`;
             document.getElementById('numerosSATotalAmt').textContent   = `${sym}${totalAmt.toFixed(2)}`;
+
+            const comisionRow = document.getElementById('numerosSAComisionRow');
+            if (comisionRow) {
+                if (vendId) {
+                    const seller = subAdminSellers.find(s => s.id === vendId);
+                    if (seller != null) {
+                        const pct        = parseFloat(seller.seller_percentage) || 0;
+                        const vendedorAmt = totalAmt * (pct / 100);
+                        const adminAmt    = totalAmt - vendedorAmt;
+                        document.getElementById('numerosSAVendedorLabel').textContent = `Vendedor (${pct}%)`;
+                        document.getElementById('numerosSAVendedorAmt').textContent   = `${sym}${vendedorAmt.toFixed(2)}`;
+                        document.getElementById('numerosSAAdminLabel').textContent    = `Admin (${100 - pct}%)`;
+                        document.getElementById('numerosSAAdminAmt').textContent      = `${sym}${adminAmt.toFixed(2)}`;
+                        comisionRow.style.display = 'grid';
+                    } else {
+                        comisionRow.style.display = 'none';
+                    }
+                } else {
+                    comisionRow.style.display = 'none';
+                }
+            }
+
             resumenEl.style.display = 'block';
         }
 
