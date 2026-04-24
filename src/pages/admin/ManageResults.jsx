@@ -38,7 +38,7 @@ export default function ManageResults() {
   }, [selectedLottery, selectedDrawTime, selectedDate]);
 
   async function loadLotteries() {
-    const { data: lots } = await db.from('lotteries').select('id, display_name, lottery_type, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').eq('admin_id', profile.id).order('display_name');
+    const { data: lots } = await db.from('lotteries').select('id, display_name, lottery_type, lottery_modality, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').eq('admin_id', profile.id).order('display_name');
     const { data: dts } = await db.from('draw_times').select('id, lottery_id, time_label, custom_prize_1st_multiplier, custom_prize_2nd_multiplier, custom_prize_3rd_multiplier').order('time_value');
     const withDt = (lots || []).map(l => ({ ...l, draw_times: (dts || []).filter(d => d.lottery_id === l.id) }));
     setLotteries(withDt);
@@ -95,7 +95,8 @@ export default function ManageResults() {
   const lot = lotteries.find(l => l.id === selectedLottery);
   const dt = drawTimes.find(d => d.id === selectedDrawTime);
   const isPale = lot?.lottery_type === 'pale';
-  const isDominical = lot?.lottery_type === 'dominical';
+  const isNacional = lot?.lottery_type === 'nacional';
+  const isGordito = isNacional && lot?.lottery_modality === 'gordito';
   const mult1 = dt?.custom_prize_1st_multiplier ?? lot?.prize_1st_multiplier ?? 11;
   const mult2 = dt?.custom_prize_2nd_multiplier ?? lot?.prize_2nd_multiplier ?? 3;
   const mult3 = dt?.custom_prize_3rd_multiplier ?? lot?.prize_3rd_multiplier ?? 2;
@@ -148,7 +149,7 @@ export default function ManageResults() {
             <h2 className="text-white font-semibold text-sm">
               Números Ganadores{' '}
               <span className="text-slate-500 font-normal">
-                {isPale ? 'Palé — 2 cifras por premio' : isDominical ? '1er: 4 cifras · 2do/3er: 2 cifras' : '4 cifras'}
+                {isPale ? 'Palé — 2 cifras por premio' : isGordito ? '1er: 4 cifras · 2do/3er: 2 cifras' : '4 cifras'}
               </span>
             </h2>
             {loading && <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
@@ -156,7 +157,7 @@ export default function ManageResults() {
 
           <div className="grid grid-cols-3 gap-3">
             {[['1er Premio', 'first', '#6366f1'], ['2do Premio', 'second', '#22c55e'], ['3er Premio', 'third', '#f59e0b']].map(([label, key, color]) => {
-              const maxLen = isPale ? 2 : isDominical ? (key === 'first' ? 4 : 2) : 4;
+              const maxLen = isPale ? 2 : isGordito ? (key === 'first' ? 4 : 2) : 4;
               return (
               <div key={key} className="text-center">
                 <label className="block text-xs font-medium text-slate-400 mb-1.5">{label}</label>
@@ -168,14 +169,9 @@ export default function ManageResults() {
                   className={inputCls}
                   style={{ borderColor: form[key].length === maxLen ? color : undefined }}
                 />
-                {!isPale && !isDominical && form[key].length >= 2 && (
+                {!isPale && !isGordito && form[key].length >= 2 && (
                   <p className="text-xs text-slate-500 mt-1">
-                    Chance: <span className="text-white font-bold">{form[key].slice(-2)}</span>
-                  </p>
-                )}
-                {isDominical && key === 'first' && form[key].length >= 2 && (
-                  <p className="text-xs text-slate-500 mt-1">
-                    Últ. 2: <span className="text-cyan-400 font-bold">{form[key].slice(-2)}</span>
+                    {isNacional ? 'Chance (2ult):' : 'Chance:'} <span className="text-white font-bold">{form[key].slice(-2)}</span>
                   </p>
                 )}
               </div>

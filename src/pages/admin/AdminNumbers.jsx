@@ -121,8 +121,8 @@ export default function AdminNumbers() {
   const [totalBilletePieces, setTotalBilletePieces] = useState(0);
   const [billeteFinancials, setBilleteFinancials]   = useState(null);
 
-  // Dominical (all lengths 1-4)
-  const [domFinancials, setDomFinancials]   = useState(null);
+  // Nacional (chances 2 cifras + billetes 4 cifras con coincidencias parciales)
+  const [nacFinancials, setNacFinancials]   = useState(null);
 
   const [winningNumbers, setWinningNumbers] = useState(null);
   const [loading, setLoading]               = useState(false);
@@ -287,103 +287,125 @@ export default function AdminNumbers() {
       setBilleteFinancials(Object.keys(bSales).length > 0 ? { totalCobrado: totalBCobrado, totalPago: null, resultado: null, sym, winners: [] } : null);
     }
 
-    // Dominical: all lengths (1-4) processed together
-    const isDominical = lottObj?.lottery_type === 'dominical';
-    if (isDominical) {
-      const domPrizes = [
+    // Nacional: chances (2 cifras) + billetes (4 cifras) con coincidencias parciales
+    const isNacional = lottObj?.lottery_type === 'nacional';
+    if (isNacional) {
+      const nacPrizes = [
         { value: wn?.first_prize  || '', position: 1 },
         { value: wn?.second_prize || '', position: 2 },
         { value: wn?.third_prize  || '', position: 3 },
       ];
-      let totalDomCobrado = 0, totalDomPago = 0;
-      const domMap = {};
+      let totalNacCobrado = 0, totalNacPago = 0;
+      const nacMap = {};
       allNums.forEach(n => {
-        totalDomCobrado += parseFloat(n.subtotal || 0);
+        totalNacCobrado += parseFloat(n.subtotal || 0);
         if (!n.number || !wn) return;
         const pNum = n.number;
         const pcs  = parseInt(n.pieces, 10);
         const len  = pNum.length;
-        domPrizes.forEach(({ value: prize, position }) => {
+        nacPrizes.forEach(({ value: prize, position }) => {
           if (!prize) return;
           const posLabel = ['','1er','2do','3er'][position];
-          if (prize.length === 4) {
-            if (len === 4 && pNum === prize) {
-              const mult = lottObj?.dom_mult_exact ?? 2000;
-              const pago = pcs * mult;
-              totalDomPago += pago;
-              const k = `${pNum}|${position}|ex4`;
-              if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (Exacto 4 cifras)`, pieces: 0, pago: 0 };
-              domMap[k].pieces += pcs; domMap[k].pago += pago;
+          if (len === 4 && prize.length === 4) {
+            const bm = parseFloat([0,
+              lottObj?.billete_prize_1st_multiplier??2000,
+              lottObj?.billete_prize_2nd_multiplier??600,
+              lottObj?.billete_prize_3rd_multiplier??300][position]) || 0;
+            if (pNum === prize) {
+              if (bm > 0) {
+                const pago = pcs * bm;
+                totalNacPago += pago;
+                const k = `${pNum}|${position}|ex4`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (4 cifras exactas)`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+              }
+              return;
             }
-            if (len === 3) {
-              const mults = [0, lottObj?.dom_mult_3d_1??50, lottObj?.dom_mult_3d_2??20, lottObj?.dom_mult_3d_3??10];
-              const mult = mults[position] ?? 0;
-              if (mult > 0) {
-                if (pNum === prize.slice(-3)) {
-                  const pago = pcs * mult;
-                  totalDomPago += pago;
-                  const k = `${pNum}|${position}|3ult`;
-                  if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (3 últimas)`, pieces: 0, pago: 0 };
-                  domMap[k].pieces += pcs; domMap[k].pago += pago;
-                }
-                if (pNum === prize.slice(0, 3)) {
-                  const pago = pcs * mult;
-                  totalDomPago += pago;
-                  const k = `${pNum}|${position}|3prim`;
-                  if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (3 primeras)`, pieces: 0, pago: 0 };
-                  domMap[k].pieces += pcs; domMap[k].pago += pago;
-                }
+            const m3 = parseFloat([0,
+              lottObj?.nat_mult_3match_1??50,
+              lottObj?.nat_mult_3match_2??20,
+              lottObj?.nat_mult_3match_3??10][position]) || 0;
+            if (m3 > 0) {
+              if (pNum.substring(0,3) === prize.substring(0,3)) {
+                const pago = pcs * m3;
+                totalNacPago += pago;
+                const k = `${pNum}|${position}|3prim`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (3 primeras)`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+              }
+              if (pNum.substring(1) === prize.substring(1)) {
+                const pago = pcs * m3;
+                totalNacPago += pago;
+                const k = `${pNum}|${position}|3ult`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (3 últimas)`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
               }
             }
-            if (len === 2) {
-              const mults2l = [0, lottObj?.dom_mult_2l_1??3, lottObj?.dom_mult_2l_2??2, lottObj?.dom_mult_2l_3??1];
-              const mult2l = mults2l[position] ?? 0;
-              if (mult2l > 0 && pNum === prize.slice(-2)) {
-                const pago = pcs * mult2l;
-                totalDomPago += pago;
-                const k = `${pNum}|${position}|2ult`;
-                if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (2 últimas)`, pieces: 0, pago: 0 };
-                domMap[k].pieces += pcs; domMap[k].pago += pago;
-              }
-              if (position === 1) {
-                const mult2f = lottObj?.dom_mult_2f_1 ?? 3;
-                if (mult2f > 0 && pNum === prize.slice(0, 2)) {
-                  const pago = pcs * mult2f;
-                  totalDomPago += pago;
-                  const k = `${pNum}|${position}|2prim`;
-                  if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (2 primeras)`, pieces: 0, pago: 0 };
-                  domMap[k].pieces += pcs; domMap[k].pago += pago;
-                }
+            if (position === 1) {
+              const m2f = parseFloat(lottObj?.nat_mult_2first_1??3) || 0;
+              if (m2f > 0 && pNum.substring(0,2) === prize.substring(0,2)) {
+                const pago = pcs * m2f;
+                totalNacPago += pago;
+                const k = `${pNum}|${position}|2prim`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (2 primeras)`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
               }
             }
-            if (len === 1 && position === 1 && pNum === prize.slice(-1)) {
-              const mult1l = lottObj?.dom_mult_1l_1 ?? 1;
-              if (mult1l > 0) {
-                const pago = pcs * mult1l;
-                totalDomPago += pago;
-                const k = `${pNum}|1|1ult`;
-                if (!domMap[k]) domMap[k] = { number: pNum, prize: `1er (Última cifra)`, pieces: 0, pago: 0 };
-                domMap[k].pieces += pcs; domMap[k].pago += pago;
+            const m2l = parseFloat([0,
+              lottObj?.nat_mult_2last_1??3,
+              lottObj?.nat_mult_2last_2??2,
+              lottObj?.nat_mult_2last_3??1][position]) || 0;
+            if (m2l > 0 && pNum.substring(2) === prize.substring(2)) {
+              const pago = pcs * m2l;
+              totalNacPago += pago;
+              const k = `${pNum}|${position}|2ult`;
+              if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (2 últimas)`, pieces: 0, pago: 0 };
+              nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+            }
+            if (position === 1) {
+              const m1l = parseFloat(lottObj?.nat_mult_1last_1??1) || 0;
+              if (m1l > 0 && pNum.substring(3) === prize.substring(3)) {
+                const pago = pcs * m1l;
+                totalNacPago += pago;
+                const k = `${pNum}|${position}|1ult`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (Última cifra)`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
               }
             }
-          } else if (prize.length === 2) {
-            if (len === 2 && pNum === prize) {
-              const mult = position === 2 ? (lottObj?.dom_mult_2nd_exact ?? 3) : (lottObj?.dom_mult_3rd_exact ?? 2);
-              const pago = pcs * mult;
-              totalDomPago += pago;
-              const k = `${pNum}|${position}|ex2`;
-              if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (Exacto 2 cifras)`, pieces: 0, pago: 0 };
-              domMap[k].pieces += pcs; domMap[k].pago += pago;
+          } else if (len === 2) {
+            if (prize.length === 4) {
+              const cm = parseFloat([0,
+                lottObj?.prize_1st_multiplier??3,
+                lottObj?.prize_2nd_multiplier??2,
+                lottObj?.prize_3rd_multiplier??1][position]) || 0;
+              if (cm > 0 && pNum === prize.substring(2)) {
+                const pago = pcs * cm;
+                totalNacPago += pago;
+                const k = `${pNum}|${position}|ch2ult`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} Chance`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+              }
+            } else if (prize.length === 2) {
+              const cm = parseFloat([0, 0,
+                lottObj?.prize_2nd_multiplier??4,
+                lottObj?.prize_3rd_multiplier??1][position]) || 0;
+              if (cm > 0 && pNum === prize) {
+                const pago = pcs * cm;
+                totalNacPago += pago;
+                const k = `${pNum}|${position}|chex2`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} Chance`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+              }
             }
           }
         });
       });
-      const domWinners = Object.values(domMap);
-      setDomFinancials(hasData
-        ? { totalCobrado: totalDomCobrado, totalPago: wn ? totalDomPago : null, resultado: wn ? totalDomCobrado - totalDomPago : null, sym, winners: domWinners }
+      const nacWinners = Object.values(nacMap);
+      setNacFinancials(hasData
+        ? { totalCobrado: totalNacCobrado, totalPago: wn ? totalNacPago : null, resultado: wn ? totalNacCobrado - totalNacPago : null, sym, winners: nacWinners }
         : null);
     } else {
-      setDomFinancials(null);
+      setNacFinancials(null);
     }
 
     setLoading(false);
@@ -444,7 +466,7 @@ export default function AdminNumbers() {
   // Palé: 4-digit combinations from 2-digit prizes
   const selectedLottObj = lotteries.find(l => l.id === lotteryId);
   const isPale = selectedLottObj?.lottery_type === 'pale';
-  const isDominicalView = selectedLottObj?.lottery_type === 'dominical';
+  const isNacionalView = selectedLottObj?.lottery_type === 'nacional';
   const pale1 = isPale && b1.length === 2 && b2.length === 2 ? b1 + b2 : null;
   const pale2 = isPale && b1.length === 2 && b3.length === 2 ? b1 + b3 : null;
   const pale3 = isPale && b2.length === 2 && b3.length === 2 ? b2 + b3 : null;
@@ -455,16 +477,16 @@ export default function AdminNumbers() {
 
   // Totales combinados
   const sym = profile?.currency_symbol || '$';
-  const totalCombinado = isDominicalView
-    ? (domFinancials?.totalCobrado || 0)
+  const totalCombinado = isNacionalView
+    ? (nacFinancials?.totalCobrado || 0)
     : (financials?.totalCobrado || 0) + (billeteFinancials?.totalCobrado || 0);
-  const totalPagoCombinado = isDominicalView
-    ? (domFinancials?.totalPago ?? null)
+  const totalPagoCombinado = isNacionalView
+    ? (nacFinancials?.totalPago ?? null)
     : ((financials?.totalPago ?? null) !== null || (billeteFinancials?.totalPago ?? null) !== null
       ? (financials?.totalPago || 0) + (billeteFinancials?.totalPago || 0)
       : null);
   const resultadoCombinado = totalPagoCombinado !== null ? totalCombinado - totalPagoCombinado : null;
-  const showResumenCombinado = isDominicalView ? domFinancials !== null : (financials !== null || billeteFinancials !== null);
+  const showResumenCombinado = isNacionalView ? nacFinancials !== null : (financials !== null || billeteFinancials !== null);
 
   // % vendedor: usa el del vendedor seleccionado, si no el del perfil admin
   const selectedSeller = sellerId ? sellers.find(s => s.id === sellerId) : null;
@@ -559,16 +581,16 @@ export default function AdminNumbers() {
       {!loading && showResumenCombinado && (
         <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 bg-slate-700/50 border-b border-slate-600">
-            <p className="text-sm font-bold text-white">Resumen Total{isDominicalView ? ' — Dominical' : ' Combinado'}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{isDominicalView ? 'Todas las coincidencias' : 'Chances + Billetes'}</p>
+            <p className="text-sm font-bold text-white">Resumen Total{isNacionalView ? ' — Nacional' : ' Combinado'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{isNacionalView ? 'Todas las coincidencias' : 'Chances + Billetes'}</p>
           </div>
           <div className="px-4 py-4 space-y-3">
-            {isDominicalView ? (
+            {isNacionalView ? (
               <>
-                {domFinancials?.winners?.length > 0 && (
+                {nacFinancials?.winners?.length > 0 && (
                   <div className="space-y-1.5 pb-2 border-b border-slate-700">
                     <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Premios a pagar</p>
-                    {domFinancials.winners.map((w, i) => (
+                    {nacFinancials.winners.map((w, i) => (
                       <div key={i} className="flex items-center justify-between bg-slate-900/60 rounded-lg px-3 py-2">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-base font-bold text-white">{w.number}</span>
@@ -599,7 +621,7 @@ export default function AdminNumbers() {
             </div>
             {totalPagoCombinado !== null && (
               <>
-                {!isDominicalView && (
+                {!isNacionalView && (
                   <>
                     <div className="flex justify-between items-center pt-1 border-t border-slate-700">
                       <span className="text-sm text-slate-300">Chances a pagar</span>
@@ -794,7 +816,7 @@ export default function AdminNumbers() {
         </div>
 
         {/* Resumen financiero chances */}
-        {!loading && !isDominicalView && <FinancialCard fin={financials} />}
+        {!loading && !isNacionalView && <FinancialCard fin={financials} />}
       </div>
 
       {/* ===================== SECCIÓN BILLETES ===================== */}
@@ -899,7 +921,7 @@ export default function AdminNumbers() {
         </div>
 
         {/* Resumen financiero billetes */}
-        {!loading && !isDominicalView && <FinancialCard fin={billeteFinancials} />}
+        {!loading && !isNacionalView && <FinancialCard fin={billeteFinancials} />}
       </div>
 
 

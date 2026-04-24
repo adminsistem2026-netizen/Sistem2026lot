@@ -1919,11 +1919,7 @@ function updateLimitBilleteDrawTimes() {
 // ==================== Ticket UI ====================
 function validateNumber(number) {
     const numStr = number.toString();
-    const len = numStr.length;
-    if (getSelectedLotteryObj()?.lottery_type === 'dominical') {
-        return len >= 1 && len <= 4;
-    }
-    return len === 2 || len === 4;
+    return numStr.length === 2 || numStr.length === 4;
 }
 
 // Helper: get selected lottery/drawtime objects from current form values
@@ -1946,12 +1942,6 @@ function getSelectedDrawTimeLabel() {
 function calculatePrice(number, pieces) {
     const numLength = number.toString().length;
     const lotObj = getSelectedLotteryObj();
-    if (lotObj?.lottery_type === 'dominical') {
-        if (numLength === 1) return pieces * (lotObj.dom_price_1digit ?? 0.10);
-        if (numLength === 2) return pieces * (currentProfile?.price_2_digits_override ?? lotObj.price_2_digits ?? 0.20);
-        if (numLength === 3) return pieces * (lotObj.dom_price_3digit ?? 0.25);
-        return pieces * (currentProfile?.price_4_digits_override ?? lotObj.price_4_digits ?? 1.00);
-    }
     if (numLength === 4) {
         const price = currentProfile?.price_4_digits_override ?? lotObj?.price_4_digits ?? 1.00;
         return pieces * price;
@@ -2670,36 +2660,72 @@ function hideWinningNumbersSection() {
     if (winningSection) winningSection.style.display = 'none';
 }
 
-function getDominicalMatches(purchasedNum, prizes, lotteryObj) {
-    // prizes = [{value: '2021', position: 1}, {value: '35', position: 2}, {value: '18', position: 3}]
-    // Returns [{position, matchType, multiplier}] — one entry per independent match
+function getNacionalMatches(purchasedNum, prizes, lotteryObj) {
+    // prizes = [{value:'2021',position:1},{value:'3456',position:2},{value:'7890',position:3}]
+    // Billete (4 dígitos): compara contra premios de 4 cifras. Chance (2 dígitos): 2 últimas o exacto.
+    // Regla: si gana 4 exactas, NO se suman parciales del mismo premio.
     const matches = [];
     const len = purchasedNum.length;
     prizes.forEach(({ value: prize, position }) => {
         if (!prize) return;
-        if (prize.length === 4) {
-            // 1er premio (4 digits): exact + partial matches
-            if (len === 4 && purchasedNum === prize) {
-                matches.push({ position, matchType: 'Exacto 4 cifras', multiplier: lotteryObj?.dom_mult_exact ?? 2000 });
+        if (len === 4 && prize.length === 4) {
+            // Billete vs premio de 4 cifras
+            const bm = [0,
+                parseFloat(lotteryObj?.billete_prize_1st_multiplier) || 2000,
+                parseFloat(lotteryObj?.billete_prize_2nd_multiplier) || 600,
+                parseFloat(lotteryObj?.billete_prize_3rd_multiplier) || 300,
+            ][position] || 0;
+            if (purchasedNum === prize) {
+                if (bm > 0) matches.push({ position, matchType: '4 cifras exactas', multiplier: bm });
+                return; // no parciales si ganó exacto
             }
-            if (len === 3) {
-                const mults = [0, lotteryObj?.dom_mult_3d_1 ?? 50, lotteryObj?.dom_mult_3d_2 ?? 20, lotteryObj?.dom_mult_3d_3 ?? 10];
-                if (purchasedNum === prize.slice(-3))  matches.push({ position, matchType: '3 últimas cifras', multiplier: mults[position] ?? 0 });
-                if (purchasedNum === prize.slice(0, 3)) matches.push({ position, matchType: '3 primeras cifras', multiplier: mults[position] ?? 0 });
+            const m3 = parseFloat([0,
+                lotteryObj?.nat_mult_3match_1 ?? 50,
+                lotteryObj?.nat_mult_3match_2 ?? 20,
+                lotteryObj?.nat_mult_3match_3 ?? 10,
+            ][position]) || 0;
+            if (m3 > 0) {
+                if (purchasedNum.substring(0, 3) === prize.substring(0, 3))
+                    matches.push({ position, matchType: '3 primeras', multiplier: m3 });
+                if (purchasedNum.substring(1) === prize.substring(1))
+                    matches.push({ position, matchType: '3 últimas', multiplier: m3 });
             }
-            if (len === 2) {
-                const mults2l = [0, lotteryObj?.dom_mult_2l_1 ?? 3, lotteryObj?.dom_mult_2l_2 ?? 2, lotteryObj?.dom_mult_2l_3 ?? 1];
-                if (purchasedNum === prize.slice(-2))   matches.push({ position, matchType: '2 últimas cifras', multiplier: mults2l[position] ?? 0 });
-                if (position === 1 && purchasedNum === prize.slice(0, 2)) matches.push({ position, matchType: '2 primeras cifras', multiplier: lotteryObj?.dom_mult_2f_1 ?? 3 });
+            if (position === 1) {
+                const m2f = parseFloat(lotteryObj?.nat_mult_2first_1 ?? 3) || 0;
+                if (m2f > 0 && purchasedNum.substring(0, 2) === prize.substring(0, 2))
+                    matches.push({ position, matchType: '2 primeras', multiplier: m2f });
             }
-            if (len === 1 && position === 1 && purchasedNum === prize.slice(-1)) {
-                matches.push({ position, matchType: 'Última cifra', multiplier: lotteryObj?.dom_mult_1l_1 ?? 1 });
+            const m2l = parseFloat([0,
+                lotteryObj?.nat_mult_2last_1 ?? 3,
+                lotteryObj?.nat_mult_2last_2 ?? 2,
+                lotteryObj?.nat_mult_2last_3 ?? 1,
+            ][position]) || 0;
+            if (m2l > 0 && purchasedNum.substring(2) === prize.substring(2))
+                matches.push({ position, matchType: '2 últimas', multiplier: m2l });
+            if (position === 1) {
+                const m1l = parseFloat(lotteryObj?.nat_mult_1last_1 ?? 1) || 0;
+                if (m1l > 0 && purchasedNum.substring(3) === prize.substring(3))
+                    matches.push({ position, matchType: 'Última cifra', multiplier: m1l });
             }
-        } else if (prize.length === 2) {
-            // 2do/3er premio (2 digits): exact match only
-            if (len === 2 && purchasedNum === prize) {
-                const mult = position === 2 ? (lotteryObj?.dom_mult_2nd_exact ?? 3) : (lotteryObj?.dom_mult_3rd_exact ?? 2);
-                matches.push({ position, matchType: 'Exacto 2 cifras', multiplier: mult });
+        } else if (len === 2) {
+            // Chance vs cualquier premio
+            if (prize.length === 4) {
+                // 2 últimas del premio de 4 cifras
+                const cm = parseFloat([0,
+                    lotteryObj?.prize_1st_multiplier ?? 3,
+                    lotteryObj?.prize_2nd_multiplier ?? 2,
+                    lotteryObj?.prize_3rd_multiplier ?? 1,
+                ][position]) || 0;
+                if (cm > 0 && purchasedNum === prize.substring(2))
+                    matches.push({ position, matchType: '2 últimas', multiplier: cm });
+            } else if (prize.length === 2) {
+                // Gordito 2do/3er: exacto 2 cifras
+                const cm = parseFloat([0, 0,
+                    lotteryObj?.prize_2nd_multiplier ?? 4,
+                    lotteryObj?.prize_3rd_multiplier ?? 1,
+                ][position]) || 0;
+                if (cm > 0 && purchasedNum === prize)
+                    matches.push({ position, matchType: 'Exacto', multiplier: cm });
             }
         }
     });
@@ -2737,13 +2763,13 @@ async function loadAndDisplayWinningNumbers() {
 
         const lotteryObj = lotteries.find(l => l.id === filterLottery) || null;
         const isPale = lotteryObj?.lottery_type === 'pale';
-        const isDominical = lotteryObj?.lottery_type === 'dominical';
+        const isNacional = lotteryObj?.lottery_type === 'nacional';
         const pale1 = isPale && p1.length === 2 && p2.length === 2 ? p1 + p2 : null;
         const pale2 = isPale && p1.length === 2 && p3.length === 2 ? p1 + p3 : null;
         const pale3 = isPale && p2.length === 2 && p3.length === 2 ? p2 + p3 : null;
 
         const colors = ['#6366f1','#22c55e','#f59e0b'];
-        if (isDominical) {
+        if (isNacional) {
             displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
                 <div style="text-align:center;">
                     <div style="font-size:10px;color:#888;margin-bottom:3px;">1er Premio</div>
@@ -2753,10 +2779,12 @@ async function loadAndDisplayWinningNumbers() {
                 <div style="text-align:center;">
                     <div style="font-size:10px;color:#888;margin-bottom:3px;">2do Premio</div>
                     <div style="font-size:22px;font-weight:bold;color:${colors[1]};background:#f8f8f8;border:2px solid ${colors[1]};border-radius:8px;padding:4px 0;">${p2 || '—'}</div>
+                    ${p2.length === 4 ? `<div style="font-size:11px;color:#666;margin-top:2px;">Últ.2: ${p2.slice(-2)}</div>` : ''}
                 </div>
                 <div style="text-align:center;">
                     <div style="font-size:10px;color:#888;margin-bottom:3px;">3er Premio</div>
                     <div style="font-size:22px;font-weight:bold;color:${colors[2]};background:#f8f8f8;border:2px solid ${colors[2]};border-radius:8px;padding:4px 0;">${p3 || '—'}</div>
+                    ${p3.length === 4 ? `<div style="font-size:11px;color:#666;margin-top:2px;">Últ.2: ${p3.slice(-2)}</div>` : ''}
                 </div>
             </div>`;
         } else {
@@ -2795,9 +2823,9 @@ async function loadAndDisplayWinningNumbers() {
                 const isChance = num.number.length === 2;
                 totalCobrado += num.subTotal || 0;
 
-                if (isDominical) {
-                    const domPrizes = [{ value: p1, position: 1 }, { value: p2, position: 2 }, { value: p3, position: 3 }];
-                    getDominicalMatches(num.number, domPrizes, lotteryObj).forEach(m => {
+                if (isNacional) {
+                    const nacPrizes = [{ value: p1, position: 1 }, { value: p2, position: 2 }, { value: p3, position: 3 }];
+                    getNacionalMatches(num.number, nacPrizes, lotteryObj).forEach(m => {
                         const pago = num.pieces * m.multiplier;
                         totalPago += pago;
                         winners.push({ number: num.number, prizeLabel: `${['','1er','2do','3er'][m.position]} (${m.matchType})`, pieces: num.pieces, pago });
@@ -3024,16 +3052,16 @@ function checkWinningTickets() {
         }
 
         const lotteryObj = lotteries.find(l => l.id === filterLottery) || null;
-        const isDominical = lotteryObj?.lottery_type === 'dominical';
+        const isNacional = lotteryObj?.lottery_type === 'nacional';
         const winningTickets = [];
         filtered.forEach(ticket => {
             ticket.numbers.forEach(num => {
                 const ticketNumber = num.number;
                 const ticketDate = new Date(ticket.datetime);
                 const dateStr = `${ticketDate.getDate()}/${ticketDate.getMonth()+1}/${ticketDate.getFullYear()}`;
-                if (isDominical) {
-                    const domPrizes = [{ value: firstPrize, position: 1 }, { value: secondPrize, position: 2 }, { value: thirdPrize, position: 3 }];
-                    getDominicalMatches(ticketNumber, domPrizes, lotteryObj).forEach(m => {
+                if (isNacional) {
+                    const nacPrizes = [{ value: firstPrize, position: 1 }, { value: secondPrize, position: 2 }, { value: thirdPrize, position: 3 }];
+                    getNacionalMatches(ticketNumber, nacPrizes, lotteryObj).forEach(m => {
                         winningTickets.push({
                             id: ticket.id, lottery: ticket.lottery, drawTime: ticket.drawTime, date: dateStr,
                             number: ticketNumber, pieces: num.pieces,
