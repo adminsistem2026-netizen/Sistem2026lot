@@ -97,6 +97,23 @@ export default function ManageResults() {
   const isPale = lot?.lottery_type === 'pale';
   const isNacional = lot?.lottery_type === 'nacional';
   const isGordito = isNacional && lot?.lottery_modality === 'gordito';
+
+  // Combinaciones nacionales: extrae los sub-números parciales de cada premio
+  function nacCombos(prize4) {
+    if (!prize4 || prize4.length !== 4) return null;
+    return {
+      ex4:   prize4,
+      p3:    prize4.substring(0, 3),   // 3 primeras
+      u3:    prize4.substring(1),       // 3 últimas
+      p2:    prize4.substring(0, 2),   // 2 primeras (solo 1er)
+      u2:    prize4.substring(2),       // 2 últimas
+      u1:    prize4.substring(3),       // última (solo 1er)
+      chance: prize4.slice(-2),         // chance
+    };
+  }
+  const nacC1 = isNacional && !isGordito ? nacCombos(form.first)  : isGordito ? nacCombos(form.first) : null;
+  const nacC2 = isNacional && !isGordito ? nacCombos(form.second) : null;
+  const nacC3 = isNacional && !isGordito ? nacCombos(form.third)  : null;
   const mult1 = dt?.custom_prize_1st_multiplier ?? lot?.prize_1st_multiplier ?? 11;
   const mult2 = dt?.custom_prize_2nd_multiplier ?? lot?.prize_2nd_multiplier ?? 3;
   const mult3 = dt?.custom_prize_3rd_multiplier ?? lot?.prize_3rd_multiplier ?? 2;
@@ -191,6 +208,29 @@ export default function ManageResults() {
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Coincidencias nacionales */}
+          {isNacional && (nacC1 || nacC2 || nacC3) && (
+            <div className="bg-slate-900/60 border border-sky-500/20 rounded-xl p-3 space-y-3">
+              <p className="text-[10px] text-sky-400 font-semibold uppercase tracking-wide">
+                Coincidencias — {isGordito ? 'Gordito' : lot?.lottery_modality === 'miercolito' ? 'Miercolito' : 'Dominical'}
+              </p>
+              {[['1er', nacC1, '#6366f1'], ['2do', nacC2, '#22c55e'], ['3er', nacC3, '#f59e0b']].map(([lbl, c, col]) => c ? (
+                <div key={lbl} className="space-y-1">
+                  <p className="text-[10px] font-semibold" style={{ color: col }}>{lbl} Premio — {c.ex4}</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs">
+                    <div className="flex justify-between"><span className="text-slate-500">4 exactas (billete):</span><span className="font-bold text-white">{c.ex4}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">Chance (2 últimas):</span><span className="font-bold text-white">{c.chance}</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">3 primeras:</span><span className="font-bold text-white">{c.p3}X</span></div>
+                    <div className="flex justify-between"><span className="text-slate-500">3 últimas:</span><span className="font-bold text-white">X{c.u3}</span></div>
+                    {lbl === '1er' && <div className="flex justify-between"><span className="text-slate-500">2 primeras:</span><span className="font-bold text-white">{c.p2}XX</span></div>}
+                    <div className="flex justify-between"><span className="text-slate-500">2 últimas:</span><span className="font-bold text-white">XX{c.u2}</span></div>
+                    {lbl === '1er' && <div className="flex justify-between"><span className="text-slate-500">Última cifra:</span><span className="font-bold text-white">XXX{c.u1}</span></div>}
+                  </div>
+                </div>
+              ) : null)}
             </div>
           )}
 

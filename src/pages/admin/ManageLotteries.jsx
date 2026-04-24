@@ -425,7 +425,7 @@ export default function ManageLotteries() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-white text-sm">{lot.display_name}</p>
                     <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700 text-slate-400">
-                      {lot.lottery_type === 'pale' ? 'Palé' : lot.lottery_type === 'reventado' ? 'Reventado' : 'Regular'}
+                      {lot.lottery_type === 'pale' ? 'Palé' : lot.lottery_type === 'reventado' ? 'Reventado' : lot.lottery_type === 'nacional' ? 'Nacional' : 'Regular'}
                     </span>
                     <span className="text-xs text-slate-500">{lot.currency_symbol}</span>
                   </div>
