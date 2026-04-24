@@ -1919,7 +1919,11 @@ function updateLimitBilleteDrawTimes() {
 // ==================== Ticket UI ====================
 function validateNumber(number) {
     const numStr = number.toString();
-    return numStr.length === 2 || numStr.length === 4;
+    const len = numStr.length;
+    if (getSelectedLotteryObj()?.lottery_type === 'dominical') {
+        return len >= 1 && len <= 4;
+    }
+    return len === 2 || len === 4;
 }
 
 // Helper: get selected lottery/drawtime objects from current form values
@@ -1941,12 +1945,18 @@ function getSelectedDrawTimeLabel() {
 
 function calculatePrice(number, pieces) {
     const numLength = number.toString().length;
-    // Seller-level price override takes priority over lottery prices
+    const lotObj = getSelectedLotteryObj();
+    if (lotObj?.lottery_type === 'dominical') {
+        if (numLength === 1) return pieces * (lotObj.dom_price_1digit ?? 0.10);
+        if (numLength === 2) return pieces * (currentProfile?.price_2_digits_override ?? lotObj.price_2_digits ?? 0.20);
+        if (numLength === 3) return pieces * (lotObj.dom_price_3digit ?? 0.25);
+        return pieces * (currentProfile?.price_4_digits_override ?? lotObj.price_4_digits ?? 1.00);
+    }
     if (numLength === 4) {
-        const price = currentProfile?.price_4_digits_override ?? getSelectedLotteryObj()?.price_4_digits ?? 1.00;
+        const price = currentProfile?.price_4_digits_override ?? lotObj?.price_4_digits ?? 1.00;
         return pieces * price;
     } else {
-        const price = currentProfile?.price_2_digits_override ?? getSelectedLotteryObj()?.price_2_digits ?? 0.20;
+        const price = currentProfile?.price_2_digits_override ?? lotObj?.price_2_digits ?? 0.20;
         return pieces * price;
     }
 }
@@ -2660,6 +2670,42 @@ function hideWinningNumbersSection() {
     if (winningSection) winningSection.style.display = 'none';
 }
 
+function getDominicalMatches(purchasedNum, prizes, lotteryObj) {
+    // prizes = [{value: '2021', position: 1}, {value: '35', position: 2}, {value: '18', position: 3}]
+    // Returns [{position, matchType, multiplier}] — one entry per independent match
+    const matches = [];
+    const len = purchasedNum.length;
+    prizes.forEach(({ value: prize, position }) => {
+        if (!prize) return;
+        if (prize.length === 4) {
+            // 1er premio (4 digits): exact + partial matches
+            if (len === 4 && purchasedNum === prize) {
+                matches.push({ position, matchType: 'Exacto 4 cifras', multiplier: lotteryObj?.dom_mult_exact ?? 2000 });
+            }
+            if (len === 3) {
+                const mults = [0, lotteryObj?.dom_mult_3d_1 ?? 50, lotteryObj?.dom_mult_3d_2 ?? 20, lotteryObj?.dom_mult_3d_3 ?? 10];
+                if (purchasedNum === prize.slice(-3))  matches.push({ position, matchType: '3 últimas cifras', multiplier: mults[position] ?? 0 });
+                if (purchasedNum === prize.slice(0, 3)) matches.push({ position, matchType: '3 primeras cifras', multiplier: mults[position] ?? 0 });
+            }
+            if (len === 2) {
+                const mults2l = [0, lotteryObj?.dom_mult_2l_1 ?? 3, lotteryObj?.dom_mult_2l_2 ?? 2, lotteryObj?.dom_mult_2l_3 ?? 1];
+                if (purchasedNum === prize.slice(-2))   matches.push({ position, matchType: '2 últimas cifras', multiplier: mults2l[position] ?? 0 });
+                if (position === 1 && purchasedNum === prize.slice(0, 2)) matches.push({ position, matchType: '2 primeras cifras', multiplier: lotteryObj?.dom_mult_2f_1 ?? 3 });
+            }
+            if (len === 1 && position === 1 && purchasedNum === prize.slice(-1)) {
+                matches.push({ position, matchType: 'Última cifra', multiplier: lotteryObj?.dom_mult_1l_1 ?? 1 });
+            }
+        } else if (prize.length === 2) {
+            // 2do/3er premio (2 digits): exact match only
+            if (len === 2 && purchasedNum === prize) {
+                const mult = position === 2 ? (lotteryObj?.dom_mult_2nd_exact ?? 3) : (lotteryObj?.dom_mult_3rd_exact ?? 2);
+                matches.push({ position, matchType: 'Exacto 2 cifras', multiplier: mult });
+            }
+        }
+    });
+    return matches.filter(m => m.multiplier > 0);
+}
+
 async function loadAndDisplayWinningNumbers() {
     const filterLottery = document.getElementById('filterLotteryType').value;
     const filterTime = document.getElementById('filterDrawTimeSelect').value;
@@ -2691,21 +2737,39 @@ async function loadAndDisplayWinningNumbers() {
 
         const lotteryObj = lotteries.find(l => l.id === filterLottery) || null;
         const isPale = lotteryObj?.lottery_type === 'pale';
+        const isDominical = lotteryObj?.lottery_type === 'dominical';
         const pale1 = isPale && p1.length === 2 && p2.length === 2 ? p1 + p2 : null;
         const pale2 = isPale && p1.length === 2 && p3.length === 2 ? p1 + p3 : null;
         const pale3 = isPale && p2.length === 2 && p3.length === 2 ? p2 + p3 : null;
 
         const colors = ['#6366f1','#22c55e','#f59e0b'];
-        // Mostrar siempre ambos formatos: chance (2 cifras) + completo
-        displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
-            ${[['1er', c1, p1, colors[0]], ['2do', c2, p2, colors[1]], ['3er', c3, p3, colors[2]]].map(([lbl, chance, full, col]) =>
-                `<div style="text-align:center;">
-                    <div style="font-size:10px;color:#888;margin-bottom:3px;">${lbl} Premio</div>
-                    <div style="font-size:22px;font-weight:bold;color:${col};background:#f8f8f8;border:2px solid ${col};border-radius:8px;padding:4px 0;">${chance || '—'}</div>
-                    ${full && full !== chance ? `<div style="font-size:11px;color:#666;margin-top:2px;">${full}</div>` : ''}
-                </div>`
-            ).join('')}
-        </div>`;
+        if (isDominical) {
+            displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
+                <div style="text-align:center;">
+                    <div style="font-size:10px;color:#888;margin-bottom:3px;">1er Premio</div>
+                    <div style="font-size:20px;font-weight:bold;color:${colors[0]};background:#f8f8f8;border:2px solid ${colors[0]};border-radius:8px;padding:4px 0;">${p1 || '—'}</div>
+                    ${p1.length === 4 ? `<div style="font-size:11px;color:#666;margin-top:2px;">Últ.2: ${p1.slice(-2)}</div>` : ''}
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:10px;color:#888;margin-bottom:3px;">2do Premio</div>
+                    <div style="font-size:22px;font-weight:bold;color:${colors[1]};background:#f8f8f8;border:2px solid ${colors[1]};border-radius:8px;padding:4px 0;">${p2 || '—'}</div>
+                </div>
+                <div style="text-align:center;">
+                    <div style="font-size:10px;color:#888;margin-bottom:3px;">3er Premio</div>
+                    <div style="font-size:22px;font-weight:bold;color:${colors[2]};background:#f8f8f8;border:2px solid ${colors[2]};border-radius:8px;padding:4px 0;">${p3 || '—'}</div>
+                </div>
+            </div>`;
+        } else {
+            displayEl.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px;">
+                ${[['1er', c1, p1, colors[0]], ['2do', c2, p2, colors[1]], ['3er', c3, p3, colors[2]]].map(([lbl, chance, full, col]) =>
+                    `<div style="text-align:center;">
+                        <div style="font-size:10px;color:#888;margin-bottom:3px;">${lbl} Premio</div>
+                        <div style="font-size:22px;font-weight:bold;color:${col};background:#f8f8f8;border:2px solid ${col};border-radius:8px;padding:4px 0;">${chance || '—'}</div>
+                        ${full && full !== chance ? `<div style="font-size:11px;color:#666;margin-top:2px;">${full}</div>` : ''}
+                    </div>`
+                ).join('')}
+            </div>`;
+        }
 
         const drawTimeObj = filterTime ? (drawTimesMap[filterLottery] || []).find(dt => dt.id === filterTime) || null : null;
         const cm1 = getPrizeMultiplier(1, lotteryObj, drawTimeObj, false);
@@ -2730,6 +2794,16 @@ async function loadAndDisplayWinningNumbers() {
             ticket.numbers.forEach(num => {
                 const isChance = num.number.length === 2;
                 totalCobrado += num.subTotal || 0;
+
+                if (isDominical) {
+                    const domPrizes = [{ value: p1, position: 1 }, { value: p2, position: 2 }, { value: p3, position: 3 }];
+                    getDominicalMatches(num.number, domPrizes, lotteryObj).forEach(m => {
+                        const pago = num.pieces * m.multiplier;
+                        totalPago += pago;
+                        winners.push({ number: num.number, prizeLabel: `${['','1er','2do','3er'][m.position]} (${m.matchType})`, pieces: num.pieces, pago });
+                    });
+                    return;
+                }
 
                 let prizeLabel = null, multiplier = 0;
                 if (isChance) {
@@ -2949,25 +3023,33 @@ function checkWinningTickets() {
             return;
         }
 
+        const lotteryObj = lotteries.find(l => l.id === filterLottery) || null;
+        const isDominical = lotteryObj?.lottery_type === 'dominical';
         const winningTickets = [];
         filtered.forEach(ticket => {
             ticket.numbers.forEach(num => {
                 const ticketNumber = num.number;
+                const ticketDate = new Date(ticket.datetime);
+                const dateStr = `${ticketDate.getDate()}/${ticketDate.getMonth()+1}/${ticketDate.getFullYear()}`;
+                if (isDominical) {
+                    const domPrizes = [{ value: firstPrize, position: 1 }, { value: secondPrize, position: 2 }, { value: thirdPrize, position: 3 }];
+                    getDominicalMatches(ticketNumber, domPrizes, lotteryObj).forEach(m => {
+                        winningTickets.push({
+                            id: ticket.id, lottery: ticket.lottery, drawTime: ticket.drawTime, date: dateStr,
+                            number: ticketNumber, pieces: num.pieces,
+                            prize: `${['','1er','2do','3er'][m.position]} (${m.matchType})`,
+                        });
+                    });
+                    return;
+                }
                 let prizeType = '';
                 if (ticketNumber === firstPrize) prizeType = '1er Premio';
                 else if (ticketNumber === secondPrize) prizeType = '2do Premio';
                 else if (ticketNumber === thirdPrize) prizeType = '3er Premio';
-
                 if (prizeType) {
-                    const ticketDate = new Date(ticket.datetime);
                     winningTickets.push({
-                        id: ticket.id,
-                        lottery: ticket.lottery,
-                        drawTime: ticket.drawTime,
-                        date: `${ticketDate.getDate()}/${ticketDate.getMonth()+1}/${ticketDate.getFullYear()}`,
-                        number: ticketNumber,
-                        pieces: num.pieces,
-                        prize: prizeType,
+                        id: ticket.id, lottery: ticket.lottery, drawTime: ticket.drawTime, date: dateStr,
+                        number: ticketNumber, pieces: num.pieces, prize: prizeType,
                     });
                 }
             });

@@ -121,6 +121,9 @@ export default function AdminNumbers() {
   const [totalBilletePieces, setTotalBilletePieces] = useState(0);
   const [billeteFinancials, setBilleteFinancials]   = useState(null);
 
+  // Dominical (all lengths 1-4)
+  const [domFinancials, setDomFinancials]   = useState(null);
+
   const [winningNumbers, setWinningNumbers] = useState(null);
   const [loading, setLoading]               = useState(false);
 
@@ -284,6 +287,105 @@ export default function AdminNumbers() {
       setBilleteFinancials(Object.keys(bSales).length > 0 ? { totalCobrado: totalBCobrado, totalPago: null, resultado: null, sym, winners: [] } : null);
     }
 
+    // Dominical: all lengths (1-4) processed together
+    const isDominical = lottObj?.lottery_type === 'dominical';
+    if (isDominical) {
+      const domPrizes = [
+        { value: wn?.first_prize  || '', position: 1 },
+        { value: wn?.second_prize || '', position: 2 },
+        { value: wn?.third_prize  || '', position: 3 },
+      ];
+      let totalDomCobrado = 0, totalDomPago = 0;
+      const domMap = {};
+      allNums.forEach(n => {
+        totalDomCobrado += parseFloat(n.subtotal || 0);
+        if (!n.number || !wn) return;
+        const pNum = n.number;
+        const pcs  = parseInt(n.pieces, 10);
+        const len  = pNum.length;
+        domPrizes.forEach(({ value: prize, position }) => {
+          if (!prize) return;
+          const posLabel = ['','1er','2do','3er'][position];
+          if (prize.length === 4) {
+            if (len === 4 && pNum === prize) {
+              const mult = lottObj?.dom_mult_exact ?? 2000;
+              const pago = pcs * mult;
+              totalDomPago += pago;
+              const k = `${pNum}|${position}|ex4`;
+              if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (Exacto 4 cifras)`, pieces: 0, pago: 0 };
+              domMap[k].pieces += pcs; domMap[k].pago += pago;
+            }
+            if (len === 3) {
+              const mults = [0, lottObj?.dom_mult_3d_1??50, lottObj?.dom_mult_3d_2??20, lottObj?.dom_mult_3d_3??10];
+              const mult = mults[position] ?? 0;
+              if (mult > 0) {
+                if (pNum === prize.slice(-3)) {
+                  const pago = pcs * mult;
+                  totalDomPago += pago;
+                  const k = `${pNum}|${position}|3ult`;
+                  if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (3 últimas)`, pieces: 0, pago: 0 };
+                  domMap[k].pieces += pcs; domMap[k].pago += pago;
+                }
+                if (pNum === prize.slice(0, 3)) {
+                  const pago = pcs * mult;
+                  totalDomPago += pago;
+                  const k = `${pNum}|${position}|3prim`;
+                  if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (3 primeras)`, pieces: 0, pago: 0 };
+                  domMap[k].pieces += pcs; domMap[k].pago += pago;
+                }
+              }
+            }
+            if (len === 2) {
+              const mults2l = [0, lottObj?.dom_mult_2l_1??3, lottObj?.dom_mult_2l_2??2, lottObj?.dom_mult_2l_3??1];
+              const mult2l = mults2l[position] ?? 0;
+              if (mult2l > 0 && pNum === prize.slice(-2)) {
+                const pago = pcs * mult2l;
+                totalDomPago += pago;
+                const k = `${pNum}|${position}|2ult`;
+                if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (2 últimas)`, pieces: 0, pago: 0 };
+                domMap[k].pieces += pcs; domMap[k].pago += pago;
+              }
+              if (position === 1) {
+                const mult2f = lottObj?.dom_mult_2f_1 ?? 3;
+                if (mult2f > 0 && pNum === prize.slice(0, 2)) {
+                  const pago = pcs * mult2f;
+                  totalDomPago += pago;
+                  const k = `${pNum}|${position}|2prim`;
+                  if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (2 primeras)`, pieces: 0, pago: 0 };
+                  domMap[k].pieces += pcs; domMap[k].pago += pago;
+                }
+              }
+            }
+            if (len === 1 && position === 1 && pNum === prize.slice(-1)) {
+              const mult1l = lottObj?.dom_mult_1l_1 ?? 1;
+              if (mult1l > 0) {
+                const pago = pcs * mult1l;
+                totalDomPago += pago;
+                const k = `${pNum}|1|1ult`;
+                if (!domMap[k]) domMap[k] = { number: pNum, prize: `1er (Última cifra)`, pieces: 0, pago: 0 };
+                domMap[k].pieces += pcs; domMap[k].pago += pago;
+              }
+            }
+          } else if (prize.length === 2) {
+            if (len === 2 && pNum === prize) {
+              const mult = position === 2 ? (lottObj?.dom_mult_2nd_exact ?? 3) : (lottObj?.dom_mult_3rd_exact ?? 2);
+              const pago = pcs * mult;
+              totalDomPago += pago;
+              const k = `${pNum}|${position}|ex2`;
+              if (!domMap[k]) domMap[k] = { number: pNum, prize: `${posLabel} (Exacto 2 cifras)`, pieces: 0, pago: 0 };
+              domMap[k].pieces += pcs; domMap[k].pago += pago;
+            }
+          }
+        });
+      });
+      const domWinners = Object.values(domMap);
+      setDomFinancials(hasData
+        ? { totalCobrado: totalDomCobrado, totalPago: wn ? totalDomPago : null, resultado: wn ? totalDomCobrado - totalDomPago : null, sym, winners: domWinners }
+        : null);
+    } else {
+      setDomFinancials(null);
+    }
+
     setLoading(false);
   }
 
@@ -340,7 +442,9 @@ export default function AdminNumbers() {
   const b3 = winningNumbers?.third_prize  || '';
 
   // Palé: 4-digit combinations from 2-digit prizes
-  const isPale = lotteries.find(l => l.id === lotteryId)?.lottery_type === 'pale';
+  const selectedLottObj = lotteries.find(l => l.id === lotteryId);
+  const isPale = selectedLottObj?.lottery_type === 'pale';
+  const isDominicalView = selectedLottObj?.lottery_type === 'dominical';
   const pale1 = isPale && b1.length === 2 && b2.length === 2 ? b1 + b2 : null;
   const pale2 = isPale && b1.length === 2 && b3.length === 2 ? b1 + b3 : null;
   const pale3 = isPale && b2.length === 2 && b3.length === 2 ? b2 + b3 : null;
@@ -351,12 +455,16 @@ export default function AdminNumbers() {
 
   // Totales combinados
   const sym = profile?.currency_symbol || '$';
-  const totalCombinado = (financials?.totalCobrado || 0) + (billeteFinancials?.totalCobrado || 0);
-  const totalPagoCombinado = (financials?.totalPago ?? null) !== null || (billeteFinancials?.totalPago ?? null) !== null
-    ? (financials?.totalPago || 0) + (billeteFinancials?.totalPago || 0)
-    : null;
+  const totalCombinado = isDominicalView
+    ? (domFinancials?.totalCobrado || 0)
+    : (financials?.totalCobrado || 0) + (billeteFinancials?.totalCobrado || 0);
+  const totalPagoCombinado = isDominicalView
+    ? (domFinancials?.totalPago ?? null)
+    : ((financials?.totalPago ?? null) !== null || (billeteFinancials?.totalPago ?? null) !== null
+      ? (financials?.totalPago || 0) + (billeteFinancials?.totalPago || 0)
+      : null);
   const resultadoCombinado = totalPagoCombinado !== null ? totalCombinado - totalPagoCombinado : null;
-  const showResumenCombinado = financials !== null || billeteFinancials !== null;
+  const showResumenCombinado = isDominicalView ? domFinancials !== null : (financials !== null || billeteFinancials !== null);
 
   // % vendedor: usa el del vendedor seleccionado, si no el del perfil admin
   const selectedSeller = sellerId ? sellers.find(s => s.id === sellerId) : null;
@@ -451,32 +559,58 @@ export default function AdminNumbers() {
       {!loading && showResumenCombinado && (
         <div className="bg-slate-800 border border-slate-600 rounded-2xl overflow-hidden">
           <div className="px-4 py-3 bg-slate-700/50 border-b border-slate-600">
-            <p className="text-sm font-bold text-white">Resumen Total Combinado</p>
-            <p className="text-xs text-slate-400 mt-0.5">Chances + Billetes</p>
+            <p className="text-sm font-bold text-white">Resumen Total{isDominicalView ? ' — Dominical' : ' Combinado'}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{isDominicalView ? 'Todas las coincidencias' : 'Chances + Billetes'}</p>
           </div>
           <div className="px-4 py-4 space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-300">Chances recaudado</span>
-              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(financials?.totalCobrado || 0, sym)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-slate-300">Billetes recaudado</span>
-              <span className="text-sm font-semibold text-emerald-400">{fmtAmt(billeteFinancials?.totalCobrado || 0, sym)}</span>
-            </div>
+            {isDominicalView ? (
+              <>
+                {domFinancials?.winners?.length > 0 && (
+                  <div className="space-y-1.5 pb-2 border-b border-slate-700">
+                    <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Premios a pagar</p>
+                    {domFinancials.winners.map((w, i) => (
+                      <div key={i} className="flex items-center justify-between bg-slate-900/60 rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-base font-bold text-white">{w.number}</span>
+                          <span className="text-xs text-slate-400">{w.prize}</span>
+                          <span className="text-xs text-slate-600">×{w.pieces}</span>
+                        </div>
+                        <span className="text-sm font-bold text-rose-400">{fmtAmt(w.pago, sym)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-300">Chances recaudado</span>
+                  <span className="text-sm font-semibold text-emerald-400">{fmtAmt(financials?.totalCobrado || 0, sym)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-slate-300">Billetes recaudado</span>
+                  <span className="text-sm font-semibold text-emerald-400">{fmtAmt(billeteFinancials?.totalCobrado || 0, sym)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between items-center pt-2 border-t border-slate-700">
               <span className="text-sm font-bold text-white">Total recaudado</span>
               <span className="text-base font-bold text-emerald-300">{fmtAmt(totalCombinado, sym)}</span>
             </div>
             {totalPagoCombinado !== null && (
               <>
-                <div className="flex justify-between items-center pt-1 border-t border-slate-700">
-                  <span className="text-sm text-slate-300">Chances a pagar</span>
-                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(financials?.totalPago || 0, sym)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-300">Billetes a pagar</span>
-                  <span className="text-sm font-semibold text-rose-400">{fmtAmt(billeteFinancials?.totalPago || 0, sym)}</span>
-                </div>
+                {!isDominicalView && (
+                  <>
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-700">
+                      <span className="text-sm text-slate-300">Chances a pagar</span>
+                      <span className="text-sm font-semibold text-rose-400">{fmtAmt(financials?.totalPago || 0, sym)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-slate-300">Billetes a pagar</span>
+                      <span className="text-sm font-semibold text-rose-400">{fmtAmt(billeteFinancials?.totalPago || 0, sym)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between items-center pt-2 border-t border-slate-700">
                   <span className="text-sm font-bold text-white">Total a pagar</span>
                   <span className="text-base font-bold text-rose-300">{fmtAmt(totalPagoCombinado, sym)}</span>
@@ -660,7 +794,7 @@ export default function AdminNumbers() {
         </div>
 
         {/* Resumen financiero chances */}
-        {!loading && <FinancialCard fin={financials} />}
+        {!loading && !isDominicalView && <FinancialCard fin={financials} />}
       </div>
 
       {/* ===================== SECCIÓN BILLETES ===================== */}
@@ -765,7 +899,7 @@ export default function AdminNumbers() {
         </div>
 
         {/* Resumen financiero billetes */}
-        {!loading && <FinancialCard fin={billeteFinancials} />}
+        {!loading && !isDominicalView && <FinancialCard fin={billeteFinancials} />}
       </div>
 
 

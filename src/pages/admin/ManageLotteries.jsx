@@ -9,6 +9,12 @@ const EMPTY_LOTTERY = {
   billete_prize_1st_multiplier: '2000', billete_prize_2nd_multiplier: '600', billete_prize_3rd_multiplier: '300',
   reventado_price_2_digits: '0.20', reventado_price_4_digits: '1.00',
   reventado_payout_per_block: '90', reventado_block_size: '5',
+  dom_price_1digit: '0.10', dom_price_3digit: '0.25',
+  dom_mult_exact: '2000',
+  dom_mult_3d_1: '50', dom_mult_3d_2: '20', dom_mult_3d_3: '10',
+  dom_mult_2l_1: '3', dom_mult_2l_2: '2', dom_mult_2l_3: '1',
+  dom_mult_2f_1: '3', dom_mult_1l_1: '1',
+  dom_mult_2nd_exact: '3', dom_mult_3rd_exact: '2',
 };
 
 const EMPTY_DRAW_TIME = {
@@ -113,6 +119,13 @@ export default function ManageLotteries() {
       reventado_price_4_digits: String(lot.reventado_price_4_digits || '1.00'),
       reventado_payout_per_block: String(lot.reventado_payout_per_block || '90'),
       reventado_block_size: String(lot.reventado_block_size || '5'),
+      dom_price_1digit: String(lot.dom_price_1digit ?? '0.10'),
+      dom_price_3digit: String(lot.dom_price_3digit ?? '0.25'),
+      dom_mult_exact: String(lot.dom_mult_exact ?? '2000'),
+      dom_mult_3d_1: String(lot.dom_mult_3d_1 ?? '50'), dom_mult_3d_2: String(lot.dom_mult_3d_2 ?? '20'), dom_mult_3d_3: String(lot.dom_mult_3d_3 ?? '10'),
+      dom_mult_2l_1: String(lot.dom_mult_2l_1 ?? '3'), dom_mult_2l_2: String(lot.dom_mult_2l_2 ?? '2'), dom_mult_2l_3: String(lot.dom_mult_2l_3 ?? '1'),
+      dom_mult_2f_1: String(lot.dom_mult_2f_1 ?? '3'), dom_mult_1l_1: String(lot.dom_mult_1l_1 ?? '1'),
+      dom_mult_2nd_exact: String(lot.dom_mult_2nd_exact ?? '3'), dom_mult_3rd_exact: String(lot.dom_mult_3rd_exact ?? '2'),
     });
     setError(''); setShowLotteryModal(true);
   }
@@ -161,9 +174,47 @@ export default function ManageLotteries() {
           p_price_4: parseFloat(lotteryForm.price_4_digits),
         });
         if (pErr) throw new Error('Error al actualizar precios: ' + pErr.message);
+        if (lotteryForm.lottery_type === 'dominical') {
+          const { error: dErr } = await db.rpc('update_dominical_config', {
+            p_lottery_id: editLottery.id,
+            p_price_1digit: parseFloat(lotteryForm.dom_price_1digit),
+            p_price_3digit: parseFloat(lotteryForm.dom_price_3digit),
+            p_mult_exact: parseFloat(lotteryForm.dom_mult_exact),
+            p_mult_3d_1: parseFloat(lotteryForm.dom_mult_3d_1),
+            p_mult_3d_2: parseFloat(lotteryForm.dom_mult_3d_2),
+            p_mult_3d_3: parseFloat(lotteryForm.dom_mult_3d_3),
+            p_mult_2l_1: parseFloat(lotteryForm.dom_mult_2l_1),
+            p_mult_2l_2: parseFloat(lotteryForm.dom_mult_2l_2),
+            p_mult_2l_3: parseFloat(lotteryForm.dom_mult_2l_3),
+            p_mult_2f_1: parseFloat(lotteryForm.dom_mult_2f_1),
+            p_mult_1l_1: parseFloat(lotteryForm.dom_mult_1l_1),
+            p_mult_2nd_exact: parseFloat(lotteryForm.dom_mult_2nd_exact),
+            p_mult_3rd_exact: parseFloat(lotteryForm.dom_mult_3rd_exact),
+          });
+          if (dErr) throw new Error('Error al actualizar config dominical: ' + dErr.message);
+        }
       } else {
-        const { error: err } = await db.from('lotteries').insert({ ...payload, admin_id: profile.id, created_by: profile.id });
+        const { data: newLot, error: err } = await db.from('lotteries').insert({ ...payload, admin_id: profile.id, created_by: profile.id }).select('id').single();
         if (err) throw err;
+        if (lotteryForm.lottery_type === 'dominical' && newLot?.id) {
+          const { error: dErr } = await db.rpc('update_dominical_config', {
+            p_lottery_id: newLot.id,
+            p_price_1digit: parseFloat(lotteryForm.dom_price_1digit),
+            p_price_3digit: parseFloat(lotteryForm.dom_price_3digit),
+            p_mult_exact: parseFloat(lotteryForm.dom_mult_exact),
+            p_mult_3d_1: parseFloat(lotteryForm.dom_mult_3d_1),
+            p_mult_3d_2: parseFloat(lotteryForm.dom_mult_3d_2),
+            p_mult_3d_3: parseFloat(lotteryForm.dom_mult_3d_3),
+            p_mult_2l_1: parseFloat(lotteryForm.dom_mult_2l_1),
+            p_mult_2l_2: parseFloat(lotteryForm.dom_mult_2l_2),
+            p_mult_2l_3: parseFloat(lotteryForm.dom_mult_2l_3),
+            p_mult_2f_1: parseFloat(lotteryForm.dom_mult_2f_1),
+            p_mult_1l_1: parseFloat(lotteryForm.dom_mult_1l_1),
+            p_mult_2nd_exact: parseFloat(lotteryForm.dom_mult_2nd_exact),
+            p_mult_3rd_exact: parseFloat(lotteryForm.dom_mult_3rd_exact),
+          });
+          if (dErr) throw new Error('Error al actualizar config dominical: ' + dErr.message);
+        }
       }
       setShowLotteryModal(false); loadLotteries();
     } catch (err) { setError(err.message); }
@@ -331,6 +382,7 @@ export default function ManageLotteries() {
   const f = lotteryForm;
   const isRev = f.lottery_type === 'reventado';
   const isPale = f.lottery_type === 'pale';
+  const isDom = f.lottery_type === 'dominical';
 
   return (
     <div className="space-y-4 mt-2">
@@ -487,6 +539,7 @@ export default function ManageLotteries() {
                   <option value="regular">Regular (2 y 4 cifras)</option>
                   <option value="pale">Palé (chance + palé)</option>
                   <option value="reventado">Reventado</option>
+                  <option value="dominical">Dominical / Miercolito</option>
                 </select>
               </div>
               <div>
@@ -496,18 +549,39 @@ export default function ManageLotteries() {
                 </select>
               </div>
               <p className="text-xs font-semibold text-slate-400 pt-1">Precios</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">Chance (2 cifras)</label>
-                  <input type="number" step="0.01" value={isRev ? f.reventado_price_2_digits : f.price_2_digits}
-                    onChange={e => setLotteryForm(p => isRev ? ({ ...p, reventado_price_2_digits: e.target.value }) : ({ ...p, price_2_digits: e.target.value }))} className={inputCls} />
+              {isDom ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">1 cifra</label>
+                    <input type="number" step="0.01" value={f.dom_price_1digit} onChange={e => setLotteryForm(p => ({ ...p, dom_price_1digit: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">2 cifras (chance)</label>
+                    <input type="number" step="0.01" value={f.price_2_digits} onChange={e => setLotteryForm(p => ({ ...p, price_2_digits: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">3 cifras</label>
+                    <input type="number" step="0.01" value={f.dom_price_3digit} onChange={e => setLotteryForm(p => ({ ...p, dom_price_3digit: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">4 cifras (exacto)</label>
+                    <input type="number" step="0.01" value={f.price_4_digits} onChange={e => setLotteryForm(p => ({ ...p, price_4_digits: e.target.value }))} className={inputCls} />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-500 mb-1">{isPale ? 'Palé (4 cifras)' : 'Billete (4 cifras)'}</label>
-                  <input type="number" step="0.01" value={isRev ? f.reventado_price_4_digits : f.price_4_digits}
-                    onChange={e => setLotteryForm(p => isRev ? ({ ...p, reventado_price_4_digits: e.target.value }) : ({ ...p, price_4_digits: e.target.value }))} className={inputCls} />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Chance (2 cifras)</label>
+                    <input type="number" step="0.01" value={isRev ? f.reventado_price_2_digits : f.price_2_digits}
+                      onChange={e => setLotteryForm(p => isRev ? ({ ...p, reventado_price_2_digits: e.target.value }) : ({ ...p, price_2_digits: e.target.value }))} className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">{isPale ? 'Palé (4 cifras)' : 'Billete (4 cifras)'}</label>
+                    <input type="number" step="0.01" value={isRev ? f.reventado_price_4_digits : f.price_4_digits}
+                      onChange={e => setLotteryForm(p => isRev ? ({ ...p, reventado_price_4_digits: e.target.value }) : ({ ...p, price_4_digits: e.target.value }))} className={inputCls} />
+                  </div>
                 </div>
-              </div>
+              )}
               {isRev ? (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -519,6 +593,58 @@ export default function ManageLotteries() {
                     <input type="number" value={f.reventado_block_size} onChange={e => setLotteryForm(p => ({ ...p, reventado_block_size: e.target.value }))} className={inputCls} />
                   </div>
                 </div>
+              ) : isDom ? (
+                <>
+                  <p className="text-xs text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-2">
+                    1er=4 cifras · 2do=2 cifras exactas · 3er=2 cifras exactas. Las coincidencias parciales aplican solo al 1er premio.
+                  </p>
+                  <p className="text-xs font-semibold text-slate-400 pt-1">Multiplicadores — 1er Premio (4 cifras)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Exacto 4 cifras ×</label>
+                      <input type="number" step="1" value={f.dom_mult_exact} onChange={e => setLotteryForm(p => ({ ...p, dom_mult_exact: e.target.value }))} className={inputCls} />
+                    </div>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-400 pt-1">Coincidencias 3 cifras (1er premio)</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[['1er ×', 'dom_mult_3d_1'], ['2do ×', 'dom_mult_3d_2'], ['3er ×', 'dom_mult_3d_3']].map(([label, key]) => (
+                      <div key={key}>
+                        <label className="block text-xs text-slate-500 mb-1">{label}</label>
+                        <input type="number" step="1" value={f[key]} onChange={e => setLotteryForm(p => ({ ...p, [key]: e.target.value }))} className={inputCls} />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs font-semibold text-slate-400 pt-1">Coincidencias 2 últimas cifras (1er premio)</p>
+                  <div className="grid grid-cols-3 gap-3">
+                    {[['1er ×', 'dom_mult_2l_1'], ['2do ×', 'dom_mult_2l_2'], ['3er ×', 'dom_mult_2l_3']].map(([label, key]) => (
+                      <div key={key}>
+                        <label className="block text-xs text-slate-500 mb-1">{label}</label>
+                        <input type="number" step="0.1" value={f[key]} onChange={e => setLotteryForm(p => ({ ...p, [key]: e.target.value }))} className={inputCls} />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">2 primeras (solo 1er) ×</label>
+                      <input type="number" step="0.1" value={f.dom_mult_2f_1} onChange={e => setLotteryForm(p => ({ ...p, dom_mult_2f_1: e.target.value }))} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Última cifra (solo 1er) ×</label>
+                      <input type="number" step="0.1" value={f.dom_mult_1l_1} onChange={e => setLotteryForm(p => ({ ...p, dom_mult_1l_1: e.target.value }))} className={inputCls} />
+                    </div>
+                  </div>
+                  <p className="text-xs font-semibold text-slate-400 pt-1">2do y 3er Premio (2 cifras exactas)</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">2do premio ×</label>
+                      <input type="number" step="0.1" value={f.dom_mult_2nd_exact} onChange={e => setLotteryForm(p => ({ ...p, dom_mult_2nd_exact: e.target.value }))} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">3er premio ×</label>
+                      <input type="number" step="0.1" value={f.dom_mult_3rd_exact} onChange={e => setLotteryForm(p => ({ ...p, dom_mult_3rd_exact: e.target.value }))} className={inputCls} />
+                    </div>
+                  </div>
+                </>
               ) : (
                 <>
                   <p className="text-xs font-semibold text-slate-400 pt-1">Multiplicadores — Chance (2 cifras)</p>

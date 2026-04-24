@@ -95,6 +95,7 @@ export default function ManageResults() {
   const lot = lotteries.find(l => l.id === selectedLottery);
   const dt = drawTimes.find(d => d.id === selectedDrawTime);
   const isPale = lot?.lottery_type === 'pale';
+  const isDominical = lot?.lottery_type === 'dominical';
   const mult1 = dt?.custom_prize_1st_multiplier ?? lot?.prize_1st_multiplier ?? 11;
   const mult2 = dt?.custom_prize_2nd_multiplier ?? lot?.prize_2nd_multiplier ?? 3;
   const mult3 = dt?.custom_prize_3rd_multiplier ?? lot?.prize_3rd_multiplier ?? 2;
@@ -146,30 +147,40 @@ export default function ManageResults() {
           <div className="flex items-center justify-between">
             <h2 className="text-white font-semibold text-sm">
               Números Ganadores{' '}
-              <span className="text-slate-500 font-normal">({isPale ? 'Palé — 2 cifras por premio' : '4 cifras'})</span>
+              <span className="text-slate-500 font-normal">
+                {isPale ? 'Palé — 2 cifras por premio' : isDominical ? '1er: 4 cifras · 2do/3er: 2 cifras' : '4 cifras'}
+              </span>
             </h2>
             {loading && <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />}
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            {[['1er Premio', 'first', '#6366f1'], ['2do Premio', 'second', '#22c55e'], ['3er Premio', 'third', '#f59e0b']].map(([label, key, color]) => (
+            {[['1er Premio', 'first', '#6366f1'], ['2do Premio', 'second', '#22c55e'], ['3er Premio', 'third', '#f59e0b']].map(([label, key, color]) => {
+              const maxLen = isPale ? 2 : isDominical ? (key === 'first' ? 4 : 2) : 4;
+              return (
               <div key={key} className="text-center">
                 <label className="block text-xs font-medium text-slate-400 mb-1.5">{label}</label>
                 <input
-                  type="text" inputMode="numeric" maxLength={isPale ? 2 : 4}
+                  type="text" inputMode="numeric" maxLength={maxLen}
                   value={form[key]}
-                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value.replace(/\D/g,'').slice(0, isPale ? 2 : 4) }))}
-                  placeholder={isPale ? '00' : '0000'}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value.replace(/\D/g,'').slice(0, maxLen) }))}
+                  placeholder={'0'.repeat(maxLen)}
                   className={inputCls}
-                  style={{ borderColor: form[key].length === (isPale ? 2 : 4) ? color : undefined }}
+                  style={{ borderColor: form[key].length === maxLen ? color : undefined }}
                 />
-                {!isPale && form[key].length >= 2 && (
+                {!isPale && !isDominical && form[key].length >= 2 && (
                   <p className="text-xs text-slate-500 mt-1">
                     Chance: <span className="text-white font-bold">{form[key].slice(-2)}</span>
                   </p>
                 )}
+                {isDominical && key === 'first' && form[key].length >= 2 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Últ. 2: <span className="text-cyan-400 font-bold">{form[key].slice(-2)}</span>
+                  </p>
+                )}
               </div>
-            ))}
+            );})}
+
           </div>
 
           {/* Combinaciones palé */}
