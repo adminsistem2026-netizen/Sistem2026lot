@@ -3263,7 +3263,7 @@ function renderPremiosFiltered() {
 
         const statusTag = isPaid
             ? `<div style="margin-top:6px;font-size:11px;color:#15803d;text-align:center;font-weight:600;">✓ Pagado</div>`
-            : `<div style="margin-top:6px;font-size:11px;color:#b45309;text-align:center;">Pendiente — marcar como pagado en Ventas</div>`;
+            : `<button onclick="paySellerTicket('${row.ticket_id}', this)" style="margin-top:8px;width:100%;padding:9px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0.3px;">💰 Cobrar premio</button>`;
 
         html += `
         <div style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
@@ -3344,6 +3344,25 @@ async function loadSellerWinningTickets() {
     } catch (e) {
         console.error('loadSellerWinningTickets error:', e);
         sectionEl.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:12px;">Error: ${e.message || 'No se pudieron cargar los premios.'}</div>`;
+    }
+}
+
+async function paySellerTicket(ticketId, btn) {
+    if (!confirm('¿Confirmar cobro de este premio?')) return;
+    const origText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Procesando...';
+    try {
+        const { error } = await db.from('tickets').update({ is_paid: true }).eq('id', ticketId);
+        if (error) throw error;
+        _premiosAllRows = _premiosAllRows.map(r =>
+            r.ticket_id === ticketId ? { ...r, is_paid: true } : r
+        );
+        renderPremiosFiltered();
+    } catch (e) {
+        alert('Error al cobrar: ' + (e.message || 'Intenta de nuevo'));
+        btn.disabled = false;
+        btn.innerHTML = origText;
     }
 }
 
@@ -4304,3 +4323,4 @@ window.onNumDrawTimeFilter         = onNumDrawTimeFilter;
 window.onWinnersDrawTimeFilter     = onWinnersDrawTimeFilter;
 window.onPremiosLotteryChange      = onPremiosLotteryChange;
 window.renderPremiosFiltered       = renderPremiosFiltered;
+window.paySellerTicket             = paySellerTicket;
