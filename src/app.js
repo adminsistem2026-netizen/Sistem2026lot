@@ -3302,9 +3302,8 @@ async function payWinningTicket(winningTicketId) {
                 paid_by:  currentProfile.id,
             })
             .eq('id', winningTicketId)
-            .eq('seller_id', currentProfile.id)
-            .eq('is_paid', false);
-        console.log('[payWinningTicket] id:', winningTicketId, '| seller_id:', currentProfile.id, '| data:', updateData, '| error:', error);
+            .select();
+        alert('DEBUG pago:\nid: ' + winningTicketId + '\nrows actualizadas: ' + (updateData ? updateData.length : 'null') + '\nerror: ' + JSON.stringify(error) + '\ndata: ' + JSON.stringify(updateData));
         if (error) throw error;
 
         // Actualizar el card en el DOM inmediatamente sin esperar el reload
