@@ -1952,7 +1952,10 @@
 
 <!-- Página de verificar ganadores -->
 <div id="verifyWinnersPage" class="container" style="display: none;">
-    <h2>Mis Premios</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <h2 style="margin:0;">Mis Premios</h2>
+        <button onclick="showMainPage()" style="padding:4px 12px;font-size:12px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:8px;cursor:pointer;">← Volver</button>
+    </div>
 
     <!-- ── SECCIÓN NUEVA: Premios desde la BD ── -->
     <div style="margin-bottom:20px;">
@@ -2012,8 +2015,6 @@
     <select id="filterDrawTime" style="display:none;" disabled></select>
     <div id="winningTicketsResult" style="display:none;"></div>
 
-    <!-- Botón para volver a la página principal -->
-    <button onclick="showMainPage()" style="margin-top: 10px;">Volver a Ventas</button>
 </div>
 
 <!-- Página de configuración de límites -->
