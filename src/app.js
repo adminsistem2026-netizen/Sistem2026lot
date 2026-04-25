@@ -3153,6 +3153,7 @@ const MATCH_LABELS_APP = {
     nac_1_ultima:     'Última cifra',
 };
 const PRIZE_POS_LABELS = { '1st': '1er', '2nd': '2do', '3rd': '3er' };
+let _justPaidWinningId = null;
 
 async function loadSellerWinningTickets() {
     const sectionEl = document.getElementById('dbPremiosSection');
@@ -3183,10 +3184,15 @@ async function loadSellerWinningTickets() {
                 p_status:     filterStatus || null,
             }));
         }
-        console.log('[loadSellerWinningTickets] filterDate:', filterDate, '| filterStatus:', filterStatus, '| rows:', data, '| error:', error);
         if (error) throw error;
 
-        const rows = data || [];
+        let rows = data || [];
+        // Si acabamos de pagar un ticket, forzar is_paid=true localmente
+        // por si el servidor devuelve dato cacheado todavía
+        if (_justPaidWinningId) {
+            rows = rows.map(r => r.id === _justPaidWinningId ? { ...r, is_paid: true, paid_at: new Date().toISOString() } : r);
+            _justPaidWinningId = null;
+        }
         const sym  = currentProfile.currency_symbol || '$';
 
         if (rows.length === 0) {
@@ -3295,42 +3301,22 @@ async function payWinningTicket(winningTicketId) {
     if (!confirm('¿Confirmas que pagaste este premio al cliente?')) return;
     showLoading();
     try {
-        const { data: updateData, error } = await db.from('winning_tickets')
+        const { error } = await db.from('winning_tickets')
             .update({
                 is_paid:  true,
                 paid_at:  new Date().toISOString(),
                 paid_by:  currentProfile.id,
             })
-            .eq('id', winningTicketId)
-            .select();
-        alert('DEBUG pago:\nid: ' + winningTicketId + '\nrows actualizadas: ' + (updateData ? updateData.length : 'null') + '\nerror: ' + JSON.stringify(error) + '\ndata: ' + JSON.stringify(updateData));
+            .eq('id', winningTicketId);
         if (error) throw error;
 
-        // Actualizar el card en el DOM inmediatamente sin esperar el reload
-        const card = document.getElementById('wt-card-' + winningTicketId);
-        if (card) {
-            card.style.borderColor = '#86efac';
-            card.style.opacity = '0.75';
-            const btn = card.querySelector('button');
-            if (btn) {
-                btn.outerHTML = `<div style="margin-top:8px;text-align:center;font-size:12px;color:#15803d;font-weight:600;">
-                    ✓ Pagado · ${new Date().toLocaleDateString('es')}
-                </div>`;
-            }
-            // Cambiar badge PENDIENTE → PAGADO
-            card.innerHTML = card.innerHTML
-                .replace(/>PENDIENTE</g, '>PAGADO<')
-                .replace(/background:#fef3c7/g, 'background:#dcfce7')
-                .replace(/color:#92400e/g, 'color:#166534')
-                .replace(/border:1px solid #fde68a/g, 'border:1px solid #86efac');
-        }
+        showNotification('✅ Premio marcado como pagado', 'success');
 
-        showNotification('Premio marcado como pagado', 'success');
-
-        // Recargar la lista completa mostrando todos los estados
+        // Marcar el ID para que el re-render lo muestre como pagado incluso si el servidor devuelve caché
+        _justPaidWinningId = winningTicketId;
         const statusEl = document.getElementById('premiosFilterStatus');
         if (statusEl) statusEl.value = '';
-        loadSellerWinningTickets();
+        await loadSellerWinningTickets();
     } catch (e) {
         showNotification('Error: ' + (e.message || 'No se pudo registrar el pago'), 'error', 5000);
     } finally {
