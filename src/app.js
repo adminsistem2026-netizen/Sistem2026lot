@@ -3294,10 +3294,15 @@ async function payWinningTicket(winningTicketId) {
     if (!confirm('¿Confirmas que pagaste este premio al cliente?')) return;
     showLoading();
     try {
-        const { error } = await db.rpc('pay_winning_ticket', {
-            p_winning_ticket_id: winningTicketId,
-            p_seller_id:         currentProfile.id,
-        });
+        const { error } = await db.from('winning_tickets')
+            .update({
+                is_paid:  true,
+                paid_at:  new Date().toISOString(),
+                paid_by:  currentProfile.id,
+            })
+            .eq('id', winningTicketId)
+            .eq('seller_id', currentProfile.id)
+            .eq('is_paid', false);
         if (error) throw error;
 
         // Actualizar el card en el DOM inmediatamente sin esperar el reload
