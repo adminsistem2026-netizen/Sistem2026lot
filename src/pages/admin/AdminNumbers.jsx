@@ -321,52 +321,49 @@ export default function AdminNumbers() {
               }
               return;
             }
+            // Parciales: jerarquía estricta — el primer match bloquea los de menor nivel
             const m3 = parseFloat([0,
               lottObj?.nat_mult_3match_1??50,
               lottObj?.nat_mult_3match_2??20,
               lottObj?.nat_mult_3match_3??10][position]) || 0;
-            if (m3 > 0) {
-              if (pNum.substring(0,3) === prize.substring(0,3)) {
-                const pago = pcs * m3;
-                totalNacPago += pago;
-                const k = `${pNum}|${position}|3prim`;
-                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (3 primeras)`, pieces: 0, pago: 0 };
-                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
-              }
-              if (pNum.substring(1) === prize.substring(1)) {
-                const pago = pcs * m3;
-                totalNacPago += pago;
-                const k = `${pNum}|${position}|3ult`;
-                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (3 últimas)`, pieces: 0, pago: 0 };
-                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
-              }
+            let partialFound = false;
+            if (m3 > 0 && pNum.substring(0,3) === prize.substring(0,3)) {
+              const pago = pcs * m3; totalNacPago += pago; partialFound = true;
+              const k = `${pNum}|${position}|3prim`;
+              if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (3 primeras)`, pieces: 0, pago: 0 };
+              nacMap[k].pieces += pcs; nacMap[k].pago += pago;
             }
-            if (position === 1) {
+            if (!partialFound && m3 > 0 && pNum.substring(1) === prize.substring(1)) {
+              const pago = pcs * m3; totalNacPago += pago; partialFound = true;
+              const k = `${pNum}|${position}|3ult`;
+              if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (3 últimas)`, pieces: 0, pago: 0 };
+              nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+            }
+            if (!partialFound && position === 1) {
               const m2f = parseFloat(lottObj?.nat_mult_2first_1??3) || 0;
               if (m2f > 0 && pNum.substring(0,2) === prize.substring(0,2)) {
-                const pago = pcs * m2f;
-                totalNacPago += pago;
+                const pago = pcs * m2f; totalNacPago += pago; partialFound = true;
                 const k = `${pNum}|${position}|2prim`;
                 if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (2 primeras)`, pieces: 0, pago: 0 };
                 nacMap[k].pieces += pcs; nacMap[k].pago += pago;
               }
             }
-            const m2l = parseFloat([0,
-              lottObj?.nat_mult_2last_1??3,
-              lottObj?.nat_mult_2last_2??2,
-              lottObj?.nat_mult_2last_3??1][position]) || 0;
-            if (m2l > 0 && pNum.substring(2) === prize.substring(2)) {
-              const pago = pcs * m2l;
-              totalNacPago += pago;
-              const k = `${pNum}|${position}|2ult`;
-              if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (2 últimas)`, pieces: 0, pago: 0 };
-              nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+            if (!partialFound) {
+              const m2l = parseFloat([0,
+                lottObj?.nat_mult_2last_1??3,
+                lottObj?.nat_mult_2last_2??2,
+                lottObj?.nat_mult_2last_3??1][position]) || 0;
+              if (m2l > 0 && pNum.substring(2) === prize.substring(2)) {
+                const pago = pcs * m2l; totalNacPago += pago; partialFound = true;
+                const k = `${pNum}|${position}|2ult`;
+                if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (2 últimas)`, pieces: 0, pago: 0 };
+                nacMap[k].pieces += pcs; nacMap[k].pago += pago;
+              }
             }
-            if (position === 1) {
+            if (!partialFound && position === 1) {
               const m1l = parseFloat(lottObj?.nat_mult_1last_1??1) || 0;
               if (m1l > 0 && pNum.substring(3) === prize.substring(3)) {
-                const pago = pcs * m1l;
-                totalNacPago += pago;
+                const pago = pcs * m1l; totalNacPago += pago;
                 const k = `${pNum}|${position}|1ult`;
                 if (!nacMap[k]) nacMap[k] = { number: pNum, prize: `${posLabel} (Última cifra)`, pieces: 0, pago: 0 };
                 nacMap[k].pieces += pcs; nacMap[k].pago += pago;

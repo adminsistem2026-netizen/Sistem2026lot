@@ -2679,30 +2679,40 @@ function getNacionalMatches(purchasedNum, prizes, lotteryObj) {
                 if (bm > 0) matches.push({ position, matchType: '4 cifras exactas', multiplier: bm });
                 return; // no parciales si ganó exacto
             }
+            // Parciales: jerarquía estricta — el primer match encontrado bloquea los de menor nivel
             const m3 = parseFloat([0,
                 lotteryObj?.nat_mult_3match_1 ?? 50,
                 lotteryObj?.nat_mult_3match_2 ?? 20,
                 lotteryObj?.nat_mult_3match_3 ?? 10,
             ][position]) || 0;
-            if (m3 > 0) {
-                if (purchasedNum.substring(0, 3) === prize.substring(0, 3))
-                    matches.push({ position, matchType: '3 primeras', multiplier: m3 });
-                if (purchasedNum.substring(1) === prize.substring(1))
-                    matches.push({ position, matchType: '3 últimas', multiplier: m3 });
+            let partialFound = false;
+            if (m3 > 0 && purchasedNum.substring(0, 3) === prize.substring(0, 3)) {
+                matches.push({ position, matchType: '3 primeras', multiplier: m3 });
+                partialFound = true;
             }
-            if (position === 1) {
+            if (!partialFound && m3 > 0 && purchasedNum.substring(1) === prize.substring(1)) {
+                matches.push({ position, matchType: '3 últimas', multiplier: m3 });
+                partialFound = true;
+            }
+            if (!partialFound && position === 1) {
                 const m2f = parseFloat(lotteryObj?.nat_mult_2first_1 ?? 3) || 0;
-                if (m2f > 0 && purchasedNum.substring(0, 2) === prize.substring(0, 2))
+                if (m2f > 0 && purchasedNum.substring(0, 2) === prize.substring(0, 2)) {
                     matches.push({ position, matchType: '2 primeras', multiplier: m2f });
+                    partialFound = true;
+                }
             }
-            const m2l = parseFloat([0,
-                lotteryObj?.nat_mult_2last_1 ?? 3,
-                lotteryObj?.nat_mult_2last_2 ?? 2,
-                lotteryObj?.nat_mult_2last_3 ?? 1,
-            ][position]) || 0;
-            if (m2l > 0 && purchasedNum.substring(2) === prize.substring(2))
-                matches.push({ position, matchType: '2 últimas', multiplier: m2l });
-            if (position === 1) {
+            if (!partialFound) {
+                const m2l = parseFloat([0,
+                    lotteryObj?.nat_mult_2last_1 ?? 3,
+                    lotteryObj?.nat_mult_2last_2 ?? 2,
+                    lotteryObj?.nat_mult_2last_3 ?? 1,
+                ][position]) || 0;
+                if (m2l > 0 && purchasedNum.substring(2) === prize.substring(2)) {
+                    matches.push({ position, matchType: '2 últimas', multiplier: m2l });
+                    partialFound = true;
+                }
+            }
+            if (!partialFound && position === 1) {
                 const m1l = parseFloat(lotteryObj?.nat_mult_1last_1 ?? 1) || 0;
                 if (m1l > 0 && purchasedNum.substring(3) === prize.substring(3))
                     matches.push({ position, matchType: 'Última cifra', multiplier: m1l });
