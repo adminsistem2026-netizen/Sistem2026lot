@@ -3256,7 +3256,7 @@ async function loadSellerWinningTickets() {
                        </div>`;
 
             html += `
-            <div style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
+            <div id="wt-card-${row.id}" style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                     <div>
                         <div style="display:flex;align-items:center;gap:8px;">
@@ -3294,16 +3294,39 @@ async function payWinningTicket(winningTicketId) {
     if (!confirm('¿Confirmas que pagaste este premio al cliente?')) return;
     showLoading();
     try {
-        const { data, error } = await db.rpc('pay_winning_ticket', {
+        const { error } = await db.rpc('pay_winning_ticket', {
             p_winning_ticket_id: winningTicketId,
             p_seller_id:         currentProfile.id,
         });
         if (error) throw error;
-        if (!data) throw new Error('No se pudo registrar el pago. Verifica que el ticket sea tuyo y esté pendiente.');
+
+        // Actualizar el card en el DOM inmediatamente sin esperar el reload
+        const card = document.getElementById('wt-card-' + winningTicketId);
+        if (card) {
+            card.style.borderColor = '#86efac';
+            card.style.opacity = '0.75';
+            const btn = card.querySelector('button');
+            if (btn) {
+                btn.outerHTML = `<div style="margin-top:8px;text-align:center;font-size:12px;color:#15803d;font-weight:600;">
+                    ✓ Pagado · ${new Date().toLocaleDateString('es')}
+                </div>`;
+            }
+            // Cambiar badge PENDIENTE → PAGADO
+            card.innerHTML = card.innerHTML
+                .replace(/>PENDIENTE</g, '>PAGADO<')
+                .replace(/background:#fef3c7/g, 'background:#dcfce7')
+                .replace(/color:#92400e/g, 'color:#166534')
+                .replace(/border:1px solid #fde68a/g, 'border:1px solid #86efac');
+        }
+
         showNotification('Premio marcado como pagado', 'success');
+
+        // Recargar la lista completa mostrando todos los estados
+        const statusEl = document.getElementById('premiosFilterStatus');
+        if (statusEl) statusEl.value = '';
         loadSellerWinningTickets();
     } catch (e) {
-        showNotification('Error: ' + (e.message || 'No se pudo registrar'), 'error', 5000);
+        showNotification('Error: ' + (e.message || 'No se pudo registrar el pago'), 'error', 5000);
     } finally {
         hideLoading();
     }
