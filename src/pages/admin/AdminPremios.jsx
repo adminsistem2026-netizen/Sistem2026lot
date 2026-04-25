@@ -113,6 +113,9 @@ export default function AdminPremios() {
           p_draw_time_id: drawTimeId || null,
         }),
       ]);
+      console.log('[AdminPremios] params:', params);
+      console.log('[AdminPremios] wt rows:', wt, '| e1:', e1);
+      console.log('[AdminPremios] summary:', sm, '| e2:', e2);
       if (e1) throw e1;
       if (e2) throw e2;
       setRows(wt || []);
