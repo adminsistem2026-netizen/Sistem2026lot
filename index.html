@@ -1948,50 +1948,90 @@
 
 <!-- Página de verificar ganadores -->
 <div id="verifyWinnersPage" class="container" style="display: none;">
-    <h2>Verificar Tickets Ganadores</h2>
+    <h2>Mis Premios</h2>
 
-    <!-- Filtros -->
-    <div style="margin-bottom: 15px;">
-        <h3>Filtrar Tickets</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-            <div class="input-group">
-                <input type="date" id="winnersFilterDate">
+    <!-- ── SECCIÓN NUEVA: Premios desde la BD ── -->
+    <div style="margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <h3 style="margin:0;font-size:15px;">Tickets Ganadores</h3>
+            <button onclick="loadSellerWinningTickets()"
+                style="padding:5px 12px;font-size:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;cursor:pointer;">
+                ↺ Actualizar
+            </button>
+        </div>
+        <!-- Filtros de premios -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div>
+                <label style="font-size:11px;color:#666;display:block;margin-bottom:3px;">Fecha</label>
+                <input type="date" id="premiosFilterDate"
+                    onchange="loadSellerWinningTickets()"
+                    style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px;font-size:13px;box-sizing:border-box;">
             </div>
-            <div class="input-group">
-                <select id="filterLottery">
-                    <option value="">Todas las Loterías</option>
-                </select>
-            </div>
-            <div class="input-group">
-                <select id="filterDrawTime" onchange="onWinnersDrawTimeFilter()" disabled>
-                    <option value="">Todas las Horas</option>
+            <div>
+                <label style="font-size:11px;color:#666;display:block;margin-bottom:3px;">Estado</label>
+                <select id="premiosFilterStatus" onchange="loadSellerWinningTickets()"
+                    style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">
+                    <option value="">Todos</option>
+                    <option value="pending">Pendientes</option>
+                    <option value="paid">Pagados</option>
                 </select>
             </div>
         </div>
-    </div>
-
-    <!-- Campos para ingresar los números ganadores -->
-    <div style="margin-bottom: 15px;">
-        <h3>Números Ganadores</h3>
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-            <div class="input-group">
-                <input type="number" id="firstPrize" placeholder="1er Premio" inputmode="numeric" pattern="[0-9]*">
-            </div>
-            <div class="input-group">
-                <input type="number" id="secondPrize" placeholder="2do Premio" inputmode="numeric" pattern="[0-9]*">
-            </div>
-            <div class="input-group">
-                <input type="number" id="thirdPrize" placeholder="3er Premio" inputmode="numeric" pattern="[0-9]*">
-            </div>
+        <!-- Contenedor de resultados desde BD -->
+        <div id="dbPremiosSection">
+            <div style="text-align:center;padding:16px;color:#aaa;font-size:13px;">Cargando...</div>
         </div>
-        <button onclick="checkWinningTickets()" style="margin-top: 15px;">Verificar Ganadores</button>
     </div>
 
-    <!-- Resultados de los tickets ganadores -->
-    <div id="winningTicketsResult" style="margin-top: 20px;"></div>
+    <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
+
+    <!-- ── SECCIÓN EXISTENTE: Verificación manual ── -->
+    <details style="margin-bottom:15px;">
+        <summary style="cursor:pointer;font-size:14px;font-weight:600;color:#555;padding:8px 0;">
+            Verificación manual de premios
+        </summary>
+        <div style="margin-top:12px;">
+            <!-- Filtros manuales -->
+            <div style="margin-bottom: 15px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <div class="input-group">
+                        <input type="date" id="winnersFilterDate">
+                    </div>
+                    <div class="input-group">
+                        <select id="filterLottery">
+                            <option value="">Todas las Loterías</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <select id="filterDrawTime" onchange="onWinnersDrawTimeFilter()" disabled>
+                            <option value="">Todas las Horas</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <!-- Números ganadores manuales -->
+            <div style="margin-bottom: 15px;">
+                <h4 style="font-size:13px;color:#555;margin-bottom:8px;">Ingresar números ganadores manualmente</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <div class="input-group">
+                        <input type="number" id="firstPrize" placeholder="1er Premio" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="secondPrize" placeholder="2do Premio" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+                    <div class="input-group">
+                        <input type="number" id="thirdPrize" placeholder="3er Premio" inputmode="numeric" pattern="[0-9]*">
+                    </div>
+                </div>
+                <button onclick="checkWinningTickets()" style="margin-top: 15px;">Verificar Ganadores</button>
+            </div>
+            <!-- Resultados manuales -->
+            <div id="winningTicketsResult" style="margin-top: 20px;"></div>
+        </div>
+    </details>
 
     <!-- Botón para volver a la página principal -->
-    <button onclick="showMainPage()" style="margin-top: 20px;">Volver a Ventas</button>
+    <button onclick="showMainPage()" style="margin-top: 10px;">Volver a Ventas</button>
 </div>
 
 <!-- Página de configuración de límites -->

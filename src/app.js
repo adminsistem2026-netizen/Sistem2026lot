@@ -1731,11 +1731,15 @@ function showVerifyWinnersPage() {
     document.getElementById('secondPrize').value = '';
     document.getElementById('thirdPrize').value = '';
 
-    if (!document.getElementById('winnersFilterDate').value) {
-        const today = new Date();
-        document.getElementById('winnersFilterDate').value =
-            `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-    }
+    const todayVal = getTodayStr();
+    if (!document.getElementById('winnersFilterDate').value)
+        document.getElementById('winnersFilterDate').value = todayVal;
+
+    const premiosDateEl = document.getElementById('premiosFilterDate');
+    if (premiosDateEl && !premiosDateEl.value) premiosDateEl.value = todayVal;
+
+    // Cargar premios ganados desde la BD
+    loadSellerWinningTickets();
 }
 
 function showConfigPage() {
@@ -3132,6 +3136,177 @@ function displayWinningTickets(winningTickets) {
             </tbody>
         </table>
     `;
+}
+
+// ==================== Seller winning tickets (DB-backed) ====================
+
+const MATCH_LABELS_APP = {
+    chance:           '2 últ. (chance)',
+    billete_4exactas: '4 cifras exactas',
+    pale_1er:         '1er Palé',
+    pale_2do:         '2do Palé',
+    pale_3er:         '3er Palé',
+    nac_3_primeras:   '3 primeras',
+    nac_3_ultimas:    '3 últimas',
+    nac_2_primeras:   '2 primeras',
+    nac_2_ultimas:    '2 últimas',
+    nac_1_ultima:     'Última cifra',
+};
+const PRIZE_POS_LABELS = { '1st': '1er', '2nd': '2do', '3rd': '3er' };
+
+async function loadSellerWinningTickets() {
+    const sectionEl = document.getElementById('dbPremiosSection');
+    if (!sectionEl || !currentProfile) return;
+
+    const dateEl   = document.getElementById('premiosFilterDate');
+    const statusEl = document.getElementById('premiosFilterStatus');
+    const filterDate   = dateEl?.value   || getTodayStr();
+    const filterStatus = statusEl?.value || null;
+    const isSubAdminView = currentProfile.role === 'sub_admin';
+
+    sectionEl.innerHTML = `<div style="text-align:center;padding:16px;color:#888;font-size:13px;">Cargando premios...</div>`;
+
+    try {
+        let data, error;
+        if (isSubAdminView) {
+            ({ data, error } = await db.rpc('get_subadmin_winning_tickets', {
+                p_sub_admin_id: currentProfile.id,
+                p_date_from:    filterDate,
+                p_date_to:      filterDate,
+                p_status:       filterStatus || null,
+            }));
+        } else {
+            ({ data, error } = await db.rpc('get_seller_winning_tickets', {
+                p_seller_id:  currentProfile.id,
+                p_date_from:  filterDate,
+                p_date_to:    filterDate,
+                p_status:     filterStatus || null,
+            }));
+        }
+        if (error) throw error;
+
+        const rows = data || [];
+        const sym  = currentProfile.currency_symbol || '$';
+
+        if (rows.length === 0) {
+            sectionEl.innerHTML = `
+            <div style="text-align:center;padding:20px 16px;color:#888;font-size:13px;">
+                <div style="font-size:28px;margin-bottom:6px;">★</div>
+                <p>No hay tickets ganadores para esta fecha.</p>
+                <p style="font-size:11px;margin-top:4px;color:#aaa;">El admin debe guardar los resultados primero.</p>
+            </div>`;
+            return;
+        }
+
+        // Group by ticket_number_id to stack multi-prize rows
+        const grouped = {};
+        rows.forEach(r => {
+            if (!grouped[r.id]) grouped[r.id] = { ...r, prizes: [] };
+            grouped[r.id].prizes.push({
+                prize_position: r.prize_position,
+                match_type:     r.match_type,
+                multiplier:     r.multiplier,
+                prize_amount:   r.prize_amount,
+            });
+        });
+
+        const totalPending = rows.filter(r => !r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
+        const totalPaid    = rows.filter(r =>  r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
+        const countPending = rows.filter(r => !r.is_paid).length;
+
+        let html = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+            <div style="background:#fff8e1;border:1px solid #f59e0b;border-radius:10px;padding:10px;text-align:center;">
+                <div style="font-size:18px;font-weight:bold;color:#d97706;">${sym}${totalPending.toFixed(2)}</div>
+                <div style="font-size:10px;color:#92400e;margin-top:2px;">Pendiente (${countPending})</div>
+            </div>
+            <div style="background:#f0fdf4;border:1px solid #22c55e;border-radius:10px;padding:10px;text-align:center;">
+                <div style="font-size:18px;font-weight:bold;color:#15803d;">${sym}${totalPaid.toFixed(2)}</div>
+                <div style="font-size:10px;color:#166534;margin-top:2px;">Pagado</div>
+            </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">`;
+
+        Object.values(grouped).forEach(row => {
+            const isPaid      = row.is_paid;
+            const total       = row.prizes.reduce((s, p) => s + parseFloat(p.prize_amount || 0), 0);
+            const posLabel    = PRIZE_POS_LABELS[row.prizes[0]?.prize_position] || '';
+            const matchLabel  = MATCH_LABELS_APP[row.prizes[0]?.match_type] || row.prizes[0]?.match_type || '';
+
+            const prizeBreakdown = row.prizes.length > 1
+                ? row.prizes.map(p =>
+                    `<div style="display:flex;justify-content:space-between;font-size:11px;color:#555;padding:2px 0;">
+                        <span>${PRIZE_POS_LABELS[p.prize_position] || p.prize_position} · ${MATCH_LABELS_APP[p.match_type] || p.match_type} ×${p.multiplier}</span>
+                        <span style="font-weight:600;color:#dc2626;">${sym}${parseFloat(p.prize_amount).toFixed(2)}</span>
+                    </div>`).join('')
+                : `<span style="font-size:11px;color:#555;">${posLabel} · ${matchLabel} ×${row.prizes[0]?.multiplier}</span>`;
+
+            const canPay = !isPaid && !isSubAdminView;
+            const payBtn = canPay
+                ? `<button onclick="payWinningTicket('${row.id}')"
+                    style="margin-top:8px;width:100%;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
+                    Pagar Premio ${sym}${total.toFixed(2)}
+                   </button>`
+                : isPaid
+                    ? `<div style="margin-top:6px;font-size:11px;color:#15803d;text-align:center;">
+                        ✓ Pagado${row.paid_at ? ' · ' + new Date(row.paid_at).toLocaleDateString('es') : ''}
+                       </div>`
+                    : `<div style="margin-top:6px;font-size:11px;color:#b45309;text-align:center;">
+                        Pendiente de pago por el vendedor
+                       </div>`;
+
+            html += `
+            <div style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                    <div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span style="font-size:22px;font-weight:bold;font-family:monospace;">${row.number}</span>
+                            <span style="font-size:10px;background:${isPaid ? '#dcfce7' : '#fef3c7'};color:${isPaid ? '#166534' : '#92400e'};padding:2px 8px;border-radius:20px;font-weight:600;">
+                                ${isPaid ? 'PAGADO' : 'PENDIENTE'}
+                            </span>
+                        </div>
+                        <div style="font-size:11px;color:#666;margin-top:2px;">${row.lottery_name}${row.draw_time_label ? ' · ' + row.draw_time_label : ''} · ${row.draw_date}</div>
+                        <div style="font-size:11px;color:#888;margin-top:1px;">Ticket: ${row.ticket_num}${isSubAdminView && row.seller_name ? ' · ' + row.seller_name : ''}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:18px;font-weight:bold;color:#dc2626;">${sym}${total.toFixed(2)}</div>
+                        <div style="font-size:10px;color:#aaa;">vs <span style="font-family:monospace;">${row.winning_number}</span></div>
+                    </div>
+                </div>
+                <div style="margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6;">
+                    ${prizeBreakdown}
+                </div>
+                ${payBtn}
+            </div>`;
+        });
+
+        html += `</div>`;
+        sectionEl.innerHTML = html;
+
+    } catch (e) {
+        console.error('loadSellerWinningTickets error:', e);
+        sectionEl.innerHTML = `<div style="color:#dc2626;font-size:13px;padding:12px;">Error: ${e.message || 'No se pudieron cargar los premios.'}</div>`;
+    }
+}
+
+async function payWinningTicket(winningTicketId) {
+    if (!currentProfile) return;
+    if (!confirm('¿Confirmas que pagaste este premio al cliente?')) return;
+    showLoading();
+    try {
+        const { data, error } = await db.rpc('pay_winning_ticket', {
+            p_winning_ticket_id: winningTicketId,
+            p_seller_id:         currentProfile.id,
+        });
+        if (error) throw error;
+        if (!data) throw new Error('No se pudo registrar el pago. Verifica que el ticket sea tuyo y esté pendiente.');
+        showNotification('Premio marcado como pagado', 'success');
+        loadSellerWinningTickets();
+    } catch (e) {
+        showNotification('Error: ' + (e.message || 'No se pudo registrar'), 'error', 5000);
+    } finally {
+        hideLoading();
+    }
 }
 
 // ==================== Bluetooth Printer ====================

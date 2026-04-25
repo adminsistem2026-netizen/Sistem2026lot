@@ -22,6 +22,8 @@ export default function ManageResults() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genResult, setGenResult] = useState(null); // { count, error }
 
   useEffect(() => { loadLotteries(); }, []);
 
@@ -87,9 +89,31 @@ export default function ManageResults() {
       if (err) throw err;
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+      // Auto-detect winners after saving results
+      generateWinners(selectedLottery, selectedDrawTime || null, selectedDate);
     } catch (e) {
       setError(e.message);
     } finally { setSaving(false); }
+  }
+
+  async function generateWinners(lotteryId, drawTimeId, drawDate) {
+    if (!lotteryId || !drawDate) return;
+    setGenerating(true);
+    setGenResult(null);
+    try {
+      const { data, error: e } = await db.rpc('generate_winning_tickets', {
+        p_admin_id:     profile.id,
+        p_lottery_id:   lotteryId,
+        p_draw_time_id: drawTimeId,
+        p_draw_date:    drawDate,
+      });
+      if (e) throw e;
+      setGenResult({ count: data ?? 0 });
+    } catch (e) {
+      setGenResult({ error: e.message || JSON.stringify(e) });
+    } finally {
+      setGenerating(false);
+    }
   }
 
   const lot = lotteries.find(l => l.id === selectedLottery);
@@ -279,6 +303,25 @@ export default function ManageResults() {
           >
             {saving ? 'Guardando...' : saved ? '✓ Guardado' : 'Guardar resultados'}
           </button>
+
+          {/* Detección de ganadores */}
+          <div className="border-t border-slate-700 pt-3 space-y-2">
+            <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wide">Tickets ganadores</p>
+            {genResult && (
+              <p className={`text-xs font-medium ${genResult.error ? 'text-red-400' : 'text-emerald-400'}`}>
+                {genResult.error
+                  ? `Error al detectar: ${genResult.error}`
+                  : `✓ ${genResult.count} ticket${genResult.count !== 1 ? 's' : ''} ganador${genResult.count !== 1 ? 'es' : ''} detectado${genResult.count !== 1 ? 's' : ''}`}
+              </p>
+            )}
+            <button
+              onClick={() => generateWinners(selectedLottery, selectedDrawTime || null, selectedDate)}
+              disabled={generating || !selectedLottery || !selectedDate}
+              className="w-full py-2 rounded-xl text-xs font-semibold bg-violet-700 hover:bg-violet-600 disabled:opacity-40 text-white transition"
+            >
+              {generating ? 'Detectando...' : '★ Detectar ganadores manualmente'}
+            </button>
+          </div>
         </div>
       )}
     </div>

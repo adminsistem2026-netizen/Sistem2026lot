@@ -22,6 +22,7 @@ import ManageLimits from './pages/admin/ManageLimits';
 import ManageResults from './pages/admin/ManageResults';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminCobros from './pages/admin/AdminCobros';
+import AdminPremios from './pages/admin/AdminPremios';
 
 import SuperAdminLayout from './pages/superadmin/SuperAdminLayout';
 import SuperDashboard from './pages/superadmin/SuperDashboard';
@@ -72,6 +73,7 @@ export default function App() {
                 <Route path="resultados" element={<ManageResults />} />
                 <Route path="config" element={<AdminSettings />} />
                 <Route path="cobros" element={<AdminCobros />} />
+                <Route path="premios" element={<AdminPremios />} />
               </Route>
 
               {/* Super Admin */}
