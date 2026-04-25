@@ -340,8 +340,14 @@ export default function AdminPremios() {
                   </div>
 
                   {/* Meta row */}
-                  <div className="mt-2 ml-9 flex items-center gap-3 text-xs text-slate-600">
+                  <div className="mt-2 ml-9 flex items-center flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
                     <span>{row.seller_name}</span>
+                    {row.customer_name && (
+                      <>
+                        <span>·</span>
+                        <span className="text-indigo-400 font-semibold">{row.customer_name}</span>
+                      </>
+                    )}
                     <span>·</span>
                     <span>Apostado: {fmtAmt(row.bet_amount, sym)}</span>
                     <span>·</span>

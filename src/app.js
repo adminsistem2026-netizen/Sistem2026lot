@@ -476,6 +476,11 @@ async function generateTicket() {
 
         const ticketId = rpcData || null;
 
+        // Guardar customer_name directamente por si el RPC no lo persiste
+        if (customerName && ticketId) {
+            await db.from('tickets').update({ customer_name: customerName }).eq('id', ticketId);
+        }
+
         // Build local ticket object for preview
         const ticket = {
             id: ticketId,
@@ -1737,6 +1742,24 @@ function showVerifyWinnersPage() {
 
     const premiosDateEl = document.getElementById('premiosFilterDate');
     if (premiosDateEl && !premiosDateEl.value) premiosDateEl.value = todayVal;
+
+    // Resetear filtros al entrar a la página
+    const premiosStatusEl = document.getElementById('premiosFilterStatus');
+    if (premiosStatusEl) premiosStatusEl.value = '';
+
+    // Poblar select de loterías con las loterías ya cargadas
+    const premiosLotSel = document.getElementById('premiosFilterLottery');
+    if (premiosLotSel) {
+        premiosLotSel.innerHTML = '<option value="">Todas</option>';
+        lotteries.forEach(l => {
+            const o = document.createElement('option');
+            o.value = l.id; o.textContent = l.display_name;
+            premiosLotSel.appendChild(o);
+        });
+        premiosLotSel.value = '';
+    }
+    const premiosDtSel = document.getElementById('premiosFilterDrawTime');
+    if (premiosDtSel) { premiosDtSel.innerHTML = '<option value="">Todas</option>'; premiosDtSel.disabled = true; }
 
     // Cargar premios ganados desde la BD
     loadSellerWinningTickets();
@@ -3154,14 +3177,130 @@ const MATCH_LABELS_APP = {
 };
 const PRIZE_POS_LABELS = { '1st': '1er', '2nd': '2do', '3rd': '3er' };
 
+// Datos crudos del último fetch (para re-filtrar sin ir al servidor)
+let _premiosAllRows = [];
+
+function onPremiosLotteryChange() {
+    const lotId   = document.getElementById('premiosFilterLottery')?.value || '';
+    const dtSel   = document.getElementById('premiosFilterDrawTime');
+    if (!dtSel) return;
+    dtSel.innerHTML = '<option value="">Todas</option>';
+    if (lotId && drawTimesMap[lotId]) {
+        drawTimesMap[lotId].forEach(dt => {
+            const o = document.createElement('option');
+            o.value = dt.id; o.textContent = dt.time_label;
+            dtSel.appendChild(o);
+        });
+        dtSel.disabled = false;
+    } else {
+        dtSel.disabled = true;
+    }
+    loadSellerWinningTickets();
+}
+
+function renderPremiosFiltered() {
+    const sectionEl  = document.getElementById('dbPremiosSection');
+    if (!sectionEl) return;
+    const statusVal  = document.getElementById('premiosFilterStatus')?.value || '';
+    const sym        = currentProfile?.currency_symbol || '$';
+    const isSubAdminView = currentProfile?.role === 'sub_admin';
+
+    let rows = _premiosAllRows;
+    if (statusVal === 'pending') rows = rows.filter(r => !r.is_paid);
+    else if (statusVal === 'paid') rows = rows.filter(r =>  r.is_paid);
+
+    if (rows.length === 0) {
+        sectionEl.innerHTML = `
+        <div style="text-align:center;padding:20px 16px;color:#888;font-size:13px;">
+            <div style="font-size:28px;margin-bottom:6px;">★</div>
+            <p>No hay tickets ganadores para esta selección.</p>
+        </div>`;
+        return;
+    }
+
+    const grouped = {};
+    rows.forEach(r => {
+        if (!grouped[r.id]) grouped[r.id] = { ...r, prizes: [] };
+        grouped[r.id].prizes.push({
+            prize_position: r.prize_position,
+            match_type:     r.match_type,
+            multiplier:     r.multiplier,
+            prize_amount:   r.prize_amount,
+        });
+    });
+
+    const allRows      = _premiosAllRows;
+    const totalPending = allRows.filter(r => !r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
+    const totalPaid    = allRows.filter(r =>  r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
+    const countPending = allRows.filter(r => !r.is_paid).length;
+
+    let html = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <div style="background:#fff8e1;border:1px solid #f59e0b;border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-size:18px;font-weight:bold;color:#d97706;">${sym}${totalPending.toFixed(2)}</div>
+            <div style="font-size:10px;color:#92400e;margin-top:2px;">Pendiente (${countPending})</div>
+        </div>
+        <div style="background:#f0fdf4;border:1px solid #22c55e;border-radius:10px;padding:10px;text-align:center;">
+            <div style="font-size:18px;font-weight:bold;color:#15803d;">${sym}${totalPaid.toFixed(2)}</div>
+            <div style="font-size:10px;color:#166534;margin-top:2px;">Pagado</div>
+        </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;">`;
+
+    Object.values(grouped).forEach(row => {
+        const isPaid     = row.is_paid;
+        const total      = row.prizes.reduce((s, p) => s + parseFloat(p.prize_amount || 0), 0);
+        const posLabel   = PRIZE_POS_LABELS[row.prizes[0]?.prize_position] || '';
+        const matchLabel = MATCH_LABELS_APP[row.prizes[0]?.match_type] || row.prizes[0]?.match_type || '';
+
+        const prizeBreakdown = row.prizes.length > 1
+            ? row.prizes.map(p =>
+                `<div style="display:flex;justify-content:space-between;font-size:11px;color:#555;padding:2px 0;">
+                    <span>${PRIZE_POS_LABELS[p.prize_position] || p.prize_position} · ${MATCH_LABELS_APP[p.match_type] || p.match_type} ×${p.multiplier}</span>
+                    <span style="font-weight:600;color:#dc2626;">${sym}${parseFloat(p.prize_amount).toFixed(2)}</span>
+                </div>`).join('')
+            : `<span style="font-size:11px;color:#555;">${posLabel} · ${matchLabel} ×${row.prizes[0]?.multiplier}</span>`;
+
+        const statusTag = isPaid
+            ? `<div style="margin-top:6px;font-size:11px;color:#15803d;text-align:center;font-weight:600;">✓ Pagado</div>`
+            : `<div style="margin-top:6px;font-size:11px;color:#b45309;text-align:center;">Pendiente — marcar como pagado en Ventas</div>`;
+
+        html += `
+        <div style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="font-size:22px;font-weight:bold;font-family:monospace;">${row.number}</span>
+                        <span style="font-size:10px;background:${isPaid ? '#dcfce7' : '#fef3c7'};color:${isPaid ? '#166534' : '#92400e'};padding:2px 8px;border-radius:20px;font-weight:600;">
+                            ${isPaid ? 'PAGADO' : 'PENDIENTE'}
+                        </span>
+                    </div>
+                    <div style="font-size:11px;color:#666;margin-top:2px;">${row.lottery_name}${row.draw_time_label ? ' · ' + row.draw_time_label : ''} · ${row.draw_date}</div>
+                    <div style="font-size:11px;color:#888;margin-top:1px;">Ticket: ${row.ticket_num}${isSubAdminView && row.seller_name ? ' · ' + row.seller_name : ''}${row.customer_name ? ' · <span style="color:#6366f1;font-weight:600;">' + row.customer_name + '</span>' : ''}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:18px;font-weight:bold;color:#dc2626;">${sym}${total.toFixed(2)}</div>
+                    <div style="font-size:10px;color:#aaa;">vs <span style="font-family:monospace;">${row.winning_number}</span></div>
+                </div>
+            </div>
+            <div style="margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6;">
+                ${prizeBreakdown}
+            </div>
+            ${statusTag}
+        </div>`;
+    });
+
+    html += `</div>`;
+    sectionEl.innerHTML = html;
+}
+
 async function loadSellerWinningTickets() {
     const sectionEl = document.getElementById('dbPremiosSection');
     if (!sectionEl || !currentProfile) return;
 
-    const dateEl   = document.getElementById('premiosFilterDate');
-    const statusEl = document.getElementById('premiosFilterStatus');
-    const filterDate   = dateEl?.value   || getTodayStr();
-    const filterStatus = statusEl?.value || null;
+    const filterDate   = document.getElementById('premiosFilterDate')?.value   || getTodayStr();
+    const filterLotId  = document.getElementById('premiosFilterLottery')?.value || null;
+    const filterDtId   = document.getElementById('premiosFilterDrawTime')?.value || null;
     const isSubAdminView = currentProfile.role === 'sub_admin';
 
     sectionEl.innerHTML = `<div style="text-align:center;padding:16px;color:#888;font-size:13px;">Cargando premios...</div>`;
@@ -3173,22 +3312,24 @@ async function loadSellerWinningTickets() {
                 p_sub_admin_id: currentProfile.id,
                 p_date_from:    filterDate,
                 p_date_to:      filterDate,
-                p_status:       filterStatus || null,
+                p_lottery_id:   filterLotId  || null,
+                p_status:       null,
             }));
         } else {
             ({ data, error } = await db.rpc('get_seller_winning_tickets', {
-                p_seller_id:  currentProfile.id,
-                p_date_from:  filterDate,
-                p_date_to:    filterDate,
-                p_status:     filterStatus || null,
+                p_seller_id:    currentProfile.id,
+                p_date_from:    filterDate,
+                p_date_to:      filterDate,
+                p_lottery_id:   filterLotId  || null,
+                p_draw_time_id: filterDtId   || null,
+                p_status:       null,
             }));
         }
         if (error) throw error;
 
-        const rows = data || [];
-        const sym  = currentProfile.currency_symbol || '$';
+        _premiosAllRows = data || [];
 
-        if (rows.length === 0) {
+        if (_premiosAllRows.length === 0) {
             sectionEl.innerHTML = `
             <div style="text-align:center;padding:20px 16px;color:#888;font-size:13px;">
                 <div style="font-size:28px;margin-bottom:6px;">★</div>
@@ -3198,80 +3339,7 @@ async function loadSellerWinningTickets() {
             return;
         }
 
-        // Group by ticket_number_id to stack multi-prize rows
-        const grouped = {};
-        rows.forEach(r => {
-            if (!grouped[r.id]) grouped[r.id] = { ...r, prizes: [] };
-            grouped[r.id].prizes.push({
-                prize_position: r.prize_position,
-                match_type:     r.match_type,
-                multiplier:     r.multiplier,
-                prize_amount:   r.prize_amount,
-            });
-        });
-
-        const totalPending = rows.filter(r => !r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
-        const totalPaid    = rows.filter(r =>  r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
-        const countPending = rows.filter(r => !r.is_paid).length;
-
-        let html = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-            <div style="background:#fff8e1;border:1px solid #f59e0b;border-radius:10px;padding:10px;text-align:center;">
-                <div style="font-size:18px;font-weight:bold;color:#d97706;">${sym}${totalPending.toFixed(2)}</div>
-                <div style="font-size:10px;color:#92400e;margin-top:2px;">Pendiente (${countPending})</div>
-            </div>
-            <div style="background:#f0fdf4;border:1px solid #22c55e;border-radius:10px;padding:10px;text-align:center;">
-                <div style="font-size:18px;font-weight:bold;color:#15803d;">${sym}${totalPaid.toFixed(2)}</div>
-                <div style="font-size:10px;color:#166534;margin-top:2px;">Pagado</div>
-            </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:8px;">`;
-
-        Object.values(grouped).forEach(row => {
-            const isPaid      = row.is_paid;
-            const total       = row.prizes.reduce((s, p) => s + parseFloat(p.prize_amount || 0), 0);
-            const posLabel    = PRIZE_POS_LABELS[row.prizes[0]?.prize_position] || '';
-            const matchLabel  = MATCH_LABELS_APP[row.prizes[0]?.match_type] || row.prizes[0]?.match_type || '';
-
-            const prizeBreakdown = row.prizes.length > 1
-                ? row.prizes.map(p =>
-                    `<div style="display:flex;justify-content:space-between;font-size:11px;color:#555;padding:2px 0;">
-                        <span>${PRIZE_POS_LABELS[p.prize_position] || p.prize_position} · ${MATCH_LABELS_APP[p.match_type] || p.match_type} ×${p.multiplier}</span>
-                        <span style="font-weight:600;color:#dc2626;">${sym}${parseFloat(p.prize_amount).toFixed(2)}</span>
-                    </div>`).join('')
-                : `<span style="font-size:11px;color:#555;">${posLabel} · ${matchLabel} ×${row.prizes[0]?.multiplier}</span>`;
-
-            const statusTag = isPaid
-                ? `<div style="margin-top:6px;font-size:11px;color:#15803d;text-align:center;font-weight:600;">✓ Pagado</div>`
-                : `<div style="margin-top:6px;font-size:11px;color:#b45309;text-align:center;">Pendiente — marcar como pagado en Ventas</div>`;
-
-            html += `
-            <div id="wt-card-${row.id}" style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                    <div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <span style="font-size:22px;font-weight:bold;font-family:monospace;">${row.number}</span>
-                            <span style="font-size:10px;background:${isPaid ? '#dcfce7' : '#fef3c7'};color:${isPaid ? '#166534' : '#92400e'};padding:2px 8px;border-radius:20px;font-weight:600;">
-                                ${isPaid ? 'PAGADO' : 'PENDIENTE'}
-                            </span>
-                        </div>
-                        <div style="font-size:11px;color:#666;margin-top:2px;">${row.lottery_name}${row.draw_time_label ? ' · ' + row.draw_time_label : ''} · ${row.draw_date}</div>
-                        <div style="font-size:11px;color:#888;margin-top:1px;">Ticket: ${row.ticket_num}${isSubAdminView && row.seller_name ? ' · ' + row.seller_name : ''}</div>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:18px;font-weight:bold;color:#dc2626;">${sym}${total.toFixed(2)}</div>
-                        <div style="font-size:10px;color:#aaa;">vs <span style="font-family:monospace;">${row.winning_number}</span></div>
-                    </div>
-                </div>
-                <div style="margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6;">
-                    ${prizeBreakdown}
-                </div>
-                ${statusTag}
-            </div>`;
-        });
-
-        html += `</div>`;
-        sectionEl.innerHTML = html;
+        renderPremiosFiltered();
 
     } catch (e) {
         console.error('loadSellerWinningTickets error:', e);
@@ -4159,7 +4227,7 @@ Object.assign(window, {
     searchTickets, showSalesByDate, showTodaySales, onSalesLotteryFilter, displayTickets, deleteSalesByDate, borrarTodasVentas,
     processQuickInput, editPieces, removeNumber,
     applyFilters, switchTab, updateNumberSalesTable, updateBilletesSalesTable,
-    checkWinningTickets,
+    checkWinningTickets, loadSellerWinningTickets,
     calculateWinnings, calculateReventadoWinnings, clearPrizeInputs, clearReventadoPrizeInput,
     setGlobalLimit, setIndividualLimit, removeLimitConfig, saveConfigAndReturn, switchLimitTab,
     showPrinterConfig, closePrinterConfig, loadPairedDevices, selectPrinter, printCurrentTicket,
@@ -4234,3 +4302,5 @@ window.eliminarPagoSubAdmin        = eliminarPagoSubAdmin;
 window.onSalesDrawTimeFilter       = onSalesDrawTimeFilter;
 window.onNumDrawTimeFilter         = onNumDrawTimeFilter;
 window.onWinnersDrawTimeFilter     = onWinnersDrawTimeFilter;
+window.onPremiosLotteryChange      = onPremiosLotteryChange;
+window.renderPremiosFiltered       = renderPremiosFiltered;

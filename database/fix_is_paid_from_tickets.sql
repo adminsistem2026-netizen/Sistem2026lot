@@ -5,6 +5,12 @@
 -- Ejecutar en InsForge SQL Editor.
 -- ============================================================
 
+-- DROP previo necesario para poder cambiar el tipo de retorno
+DROP FUNCTION IF EXISTS public.get_winning_tickets(UUID,DATE,DATE,UUID,UUID,UUID,TEXT);
+DROP FUNCTION IF EXISTS public.get_winning_tickets_summary(UUID,DATE,DATE,UUID,UUID,UUID);
+DROP FUNCTION IF EXISTS public.get_seller_winning_tickets(UUID,DATE,DATE,UUID,UUID,TEXT);
+DROP FUNCTION IF EXISTS public.get_subadmin_winning_tickets(UUID,DATE,DATE,UUID,UUID,TEXT);
+
 -- 1. get_winning_tickets (panel admin)
 CREATE OR REPLACE FUNCTION public.get_winning_tickets(
   p_admin_id     UUID,
@@ -38,7 +44,8 @@ RETURNS TABLE (
   paid_at          TIMESTAMPTZ,
   paid_by          UUID,
   draw_date        DATE,
-  created_at       TIMESTAMPTZ
+  created_at       TIMESTAMPTZ,
+  customer_name    TEXT
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -67,7 +74,8 @@ AS $$
     NULL::TIMESTAMPTZ,
     NULL::UUID,
     wt.draw_date,
-    wt.created_at
+    wt.created_at,
+    t.customer_name
   FROM winning_tickets wt
   JOIN lotteries  l  ON l.id  = wt.lottery_id
   LEFT JOIN draw_times dt ON dt.id = wt.draw_time_id
@@ -152,7 +160,8 @@ RETURNS TABLE (
   is_paid         BOOLEAN,
   paid_at         TIMESTAMPTZ,
   draw_date       DATE,
-  created_at      TIMESTAMPTZ
+  created_at      TIMESTAMPTZ,
+  customer_name   TEXT
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -174,7 +183,8 @@ AS $$
     t.is_paid,
     NULL::TIMESTAMPTZ,
     wt.draw_date,
-    wt.created_at
+    wt.created_at,
+    t.customer_name
   FROM winning_tickets wt
   JOIN lotteries  l  ON l.id  = wt.lottery_id
   LEFT JOIN draw_times dt ON dt.id = wt.draw_time_id
@@ -219,7 +229,8 @@ RETURNS TABLE (
   prize_amount    NUMERIC,
   is_paid         BOOLEAN,
   paid_at         TIMESTAMPTZ,
-  draw_date       DATE
+  draw_date       DATE,
+  customer_name   TEXT
 )
 LANGUAGE sql
 SECURITY DEFINER
@@ -242,7 +253,8 @@ AS $$
     wt.prize_amount,
     t.is_paid,
     NULL::TIMESTAMPTZ,
-    wt.draw_date
+    wt.draw_date,
+    t.customer_name
   FROM winning_tickets wt
   JOIN lotteries  l  ON l.id  = wt.lottery_id
   LEFT JOIN draw_times dt ON dt.id = wt.draw_time_id

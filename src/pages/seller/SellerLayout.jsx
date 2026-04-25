@@ -5,6 +5,7 @@ const NAV = [
   { to: '/seller', label: 'Vender', end: true },
   { to: '/seller/ventas', label: 'Mis Ventas' },
   { to: '/seller/numeros', label: 'Números' },
+  { to: '/seller/premios', label: 'Premios' },
 ];
 
 export default function SellerLayout() {

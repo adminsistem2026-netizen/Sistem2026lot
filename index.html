@@ -1759,6 +1759,10 @@
             <span class="menu-icon">💳</span>
             <span>Mis Cobros</span>
         </div>
+        <div class="menu-item" onclick="showVerifyWinnersPage()">
+            <span class="menu-icon">🏆</span>
+            <span>Mis Premios</span>
+        </div>
         <!-- Ítems exclusivos Sub-Admin (ocultos por defecto) -->
         <div class="menu-item sub-admin-only" style="display:none;" onclick="showMisVendedoresPage()">
             <span class="menu-icon">👥</span>
@@ -1960,7 +1964,7 @@
             </button>
         </div>
         <!-- Filtros de premios -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
             <div>
                 <label style="font-size:11px;color:#666;display:block;margin-bottom:3px;">Fecha</label>
                 <input type="date" id="premiosFilterDate"
@@ -1969,11 +1973,27 @@
             </div>
             <div>
                 <label style="font-size:11px;color:#666;display:block;margin-bottom:3px;">Estado</label>
-                <select id="premiosFilterStatus" onchange="loadSellerWinningTickets()"
+                <select id="premiosFilterStatus" onchange="renderPremiosFiltered()"
                     style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">
                     <option value="">Todos</option>
                     <option value="pending">Pendientes</option>
                     <option value="paid">Pagados</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <div>
+                <label style="font-size:11px;color:#666;display:block;margin-bottom:3px;">Lotería</label>
+                <select id="premiosFilterLottery" onchange="onPremiosLotteryChange()"
+                    style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;">
+                    <option value="">Todas</option>
+                </select>
+            </div>
+            <div>
+                <label style="font-size:11px;color:#666;display:block;margin-bottom:3px;">Hora</label>
+                <select id="premiosFilterDrawTime" onchange="loadSellerWinningTickets()"
+                    style="width:100%;padding:7px;border:1px solid #ddd;border-radius:8px;font-size:13px;background:#fff;" disabled>
+                    <option value="">Todas</option>
                 </select>
             </div>
         </div>
@@ -1983,52 +2003,14 @@
         </div>
     </div>
 
-    <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0;">
-
-    <!-- ── SECCIÓN EXISTENTE: Verificación manual ── -->
-    <details style="margin-bottom:15px;">
-        <summary style="cursor:pointer;font-size:14px;font-weight:600;color:#555;padding:8px 0;">
-            Verificación manual de premios
-        </summary>
-        <div style="margin-top:12px;">
-            <!-- Filtros manuales -->
-            <div style="margin-bottom: 15px;">
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-                    <div class="input-group">
-                        <input type="date" id="winnersFilterDate">
-                    </div>
-                    <div class="input-group">
-                        <select id="filterLottery">
-                            <option value="">Todas las Loterías</option>
-                        </select>
-                    </div>
-                    <div class="input-group">
-                        <select id="filterDrawTime" onchange="onWinnersDrawTimeFilter()" disabled>
-                            <option value="">Todas las Horas</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <!-- Números ganadores manuales -->
-            <div style="margin-bottom: 15px;">
-                <h4 style="font-size:13px;color:#555;margin-bottom:8px;">Ingresar números ganadores manualmente</h4>
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
-                    <div class="input-group">
-                        <input type="number" id="firstPrize" placeholder="1er Premio" inputmode="numeric" pattern="[0-9]*">
-                    </div>
-                    <div class="input-group">
-                        <input type="number" id="secondPrize" placeholder="2do Premio" inputmode="numeric" pattern="[0-9]*">
-                    </div>
-                    <div class="input-group">
-                        <input type="number" id="thirdPrize" placeholder="3er Premio" inputmode="numeric" pattern="[0-9]*">
-                    </div>
-                </div>
-                <button onclick="checkWinningTickets()" style="margin-top: 15px;">Verificar Ganadores</button>
-            </div>
-            <!-- Resultados manuales -->
-            <div id="winningTicketsResult" style="margin-top: 20px;"></div>
-        </div>
-    </details>
+    <!-- Elementos ocultos requeridos por funciones JS existentes -->
+    <input type="hidden" id="winnersFilterDate">
+    <input type="hidden" id="firstPrize">
+    <input type="hidden" id="secondPrize">
+    <input type="hidden" id="thirdPrize">
+    <select id="filterLottery" style="display:none;"></select>
+    <select id="filterDrawTime" style="display:none;" disabled></select>
+    <div id="winningTicketsResult" style="display:none;"></div>
 
     <!-- Botón para volver a la página principal -->
     <button onclick="showMainPage()" style="margin-top: 10px;">Volver a Ventas</button>
