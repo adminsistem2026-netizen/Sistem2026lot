@@ -3183,6 +3183,7 @@ async function loadSellerWinningTickets() {
                 p_status:     filterStatus || null,
             }));
         }
+        console.log('[loadSellerWinningTickets] filterDate:', filterDate, '| filterStatus:', filterStatus, '| rows:', data, '| error:', error);
         if (error) throw error;
 
         const rows = data || [];
@@ -3294,7 +3295,7 @@ async function payWinningTicket(winningTicketId) {
     if (!confirm('¿Confirmas que pagaste este premio al cliente?')) return;
     showLoading();
     try {
-        const { error } = await db.from('winning_tickets')
+        const { data: updateData, error } = await db.from('winning_tickets')
             .update({
                 is_paid:  true,
                 paid_at:  new Date().toISOString(),
@@ -3303,6 +3304,7 @@ async function payWinningTicket(winningTicketId) {
             .eq('id', winningTicketId)
             .eq('seller_id', currentProfile.id)
             .eq('is_paid', false);
+        console.log('[payWinningTicket] id:', winningTicketId, '| seller_id:', currentProfile.id, '| data:', updateData, '| error:', error);
         if (error) throw error;
 
         // Actualizar el card en el DOM inmediatamente sin esperar el reload
