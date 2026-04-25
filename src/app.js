@@ -3301,18 +3301,33 @@ async function payWinningTicket(winningTicketId) {
     if (!confirm('¿Confirmas que pagaste este premio al cliente?')) return;
     showLoading();
     try {
-        const { error } = await db.from('winning_tickets')
-            .update({
-                is_paid:  true,
-                paid_at:  new Date().toISOString(),
-                paid_by:  currentProfile.id,
-            })
+        // DEBUG: ver el row ANTES del update
+        const { data: before, error: eBefore } = await db.from('winning_tickets')
+            .select('id, seller_id, is_paid')
             .eq('id', winningTicketId);
-        if (error) throw error;
+
+        // Hacer el update y pedir el row de vuelta
+        const { data: updated, error: eUpdate } = await db.from('winning_tickets')
+            .update({ is_paid: true, paid_at: new Date().toISOString(), paid_by: currentProfile.id })
+            .eq('id', winningTicketId)
+            .select('id, seller_id, is_paid');
+
+        // DEBUG: ver el row DESPUÉS del update
+        const { data: after, error: eAfter } = await db.from('winning_tickets')
+            .select('id, seller_id, is_paid')
+            .eq('id', winningTicketId);
+
+        alert(
+            'profile.id: ' + currentProfile.id +
+            '\nBEFORE: ' + JSON.stringify(before) +
+            '\nUPDATE data: ' + JSON.stringify(updated) +
+            '\nUPDATE error: ' + JSON.stringify(eUpdate) +
+            '\nAFTER: ' + JSON.stringify(after)
+        );
+
+        if (eUpdate) throw eUpdate;
 
         showNotification('✅ Premio marcado como pagado', 'success');
-
-        // Marcar el ID para que el re-render lo muestre como pagado incluso si el servidor devuelve caché
         _justPaidWinningId = winningTicketId;
         const statusEl = document.getElementById('premiosFilterStatus');
         if (statusEl) statusEl.value = '';
