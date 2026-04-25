@@ -3153,7 +3153,6 @@ const MATCH_LABELS_APP = {
     nac_1_ultima:     'Última cifra',
 };
 const PRIZE_POS_LABELS = { '1st': '1er', '2nd': '2do', '3rd': '3er' };
-let _justPaidWinningId = null;
 
 async function loadSellerWinningTickets() {
     const sectionEl = document.getElementById('dbPremiosSection');
@@ -3186,13 +3185,7 @@ async function loadSellerWinningTickets() {
         }
         if (error) throw error;
 
-        let rows = data || [];
-        // Si acabamos de pagar un ticket, forzar is_paid=true localmente
-        // por si el servidor devuelve dato cacheado todavía
-        if (_justPaidWinningId) {
-            rows = rows.map(r => r.id === _justPaidWinningId ? { ...r, is_paid: true, paid_at: new Date().toISOString() } : r);
-            _justPaidWinningId = null;
-        }
+        const rows = data || [];
         const sym  = currentProfile.currency_symbol || '$';
 
         if (rows.length === 0) {
@@ -3248,19 +3241,9 @@ async function loadSellerWinningTickets() {
                     </div>`).join('')
                 : `<span style="font-size:11px;color:#555;">${posLabel} · ${matchLabel} ×${row.prizes[0]?.multiplier}</span>`;
 
-            const canPay = !isPaid && !isSubAdminView;
-            const payBtn = canPay
-                ? `<button onclick="payWinningTicket('${row.id}')"
-                    style="margin-top:8px;width:100%;padding:8px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">
-                    Pagar Premio ${sym}${total.toFixed(2)}
-                   </button>`
-                : isPaid
-                    ? `<div style="margin-top:6px;font-size:11px;color:#15803d;text-align:center;">
-                        ✓ Pagado${row.paid_at ? ' · ' + new Date(row.paid_at).toLocaleDateString('es') : ''}
-                       </div>`
-                    : `<div style="margin-top:6px;font-size:11px;color:#b45309;text-align:center;">
-                        Pendiente de pago por el vendedor
-                       </div>`;
+            const statusTag = isPaid
+                ? `<div style="margin-top:6px;font-size:11px;color:#15803d;text-align:center;font-weight:600;">✓ Pagado</div>`
+                : `<div style="margin-top:6px;font-size:11px;color:#b45309;text-align:center;">Pendiente — marcar como pagado en Ventas</div>`;
 
             html += `
             <div id="wt-card-${row.id}" style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
@@ -3283,7 +3266,7 @@ async function loadSellerWinningTickets() {
                 <div style="margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6;">
                     ${prizeBreakdown}
                 </div>
-                ${payBtn}
+                ${statusTag}
             </div>`;
         });
 
@@ -3296,48 +3279,6 @@ async function loadSellerWinningTickets() {
     }
 }
 
-async function payWinningTicket(winningTicketId) {
-    if (!currentProfile) return;
-    if (!confirm('¿Confirmas que pagaste este premio al cliente?')) return;
-    showLoading();
-    try {
-        // DEBUG: ver el row ANTES del update
-        const { data: before, error: eBefore } = await db.from('winning_tickets')
-            .select('id, seller_id, is_paid')
-            .eq('id', winningTicketId);
-
-        // Hacer el update y pedir el row de vuelta
-        const { data: updated, error: eUpdate } = await db.from('winning_tickets')
-            .update({ is_paid: true, paid_at: new Date().toISOString(), paid_by: currentProfile.id })
-            .eq('id', winningTicketId)
-            .select('id, seller_id, is_paid');
-
-        // DEBUG: ver el row DESPUÉS del update
-        const { data: after, error: eAfter } = await db.from('winning_tickets')
-            .select('id, seller_id, is_paid')
-            .eq('id', winningTicketId);
-
-        alert(
-            'profile.id: ' + currentProfile.id +
-            '\nBEFORE: ' + JSON.stringify(before) +
-            '\nUPDATE data: ' + JSON.stringify(updated) +
-            '\nUPDATE error: ' + JSON.stringify(eUpdate) +
-            '\nAFTER: ' + JSON.stringify(after)
-        );
-
-        if (eUpdate) throw eUpdate;
-
-        showNotification('✅ Premio marcado como pagado', 'success');
-        _justPaidWinningId = winningTicketId;
-        const statusEl = document.getElementById('premiosFilterStatus');
-        if (statusEl) statusEl.value = '';
-        await loadSellerWinningTickets();
-    } catch (e) {
-        showNotification('Error: ' + (e.message || 'No se pudo registrar el pago'), 'error', 5000);
-    } finally {
-        hideLoading();
-    }
-}
 
 // ==================== Bluetooth Printer ====================
 function showPrinterConfig() {
