@@ -2425,13 +2425,23 @@
     </div>
 
     <!-- Filtros -->
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
         <input type="date" id="balanceFilterFrom" onchange="onBalanceFilterChange()"
             style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
         <span style="color:#94a3b8;font-size:0.8em;align-self:center;">—</span>
         <input type="date" id="balanceFilterTo" onchange="onBalanceFilterChange()"
             style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
         <button id="balanceFilterClear" onclick="clearBalanceFilter()" style="display:none;background:#e2e8f0;border:none;border-radius:10px;padding:7px 12px;font-size:0.8em;color:#475569;cursor:pointer;">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <select id="balanceLoteria" onchange="onBalanceLotChange()"
+            style="padding:7px 10px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;font-size:0.8em;color:#1e293b;">
+            <option value="">Todas las loterías</option>
+        </select>
+        <select id="balanceHorario" onchange="onBalanceFilterChange()"
+            style="padding:7px 10px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;font-size:0.8em;color:#1e293b;">
+            <option value="">Todos los sorteos</option>
+        </select>
     </div>
 
     <!-- Período -->

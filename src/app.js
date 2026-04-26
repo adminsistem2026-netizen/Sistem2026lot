@@ -1900,6 +1900,19 @@ function showBalancePage() {
     closeMenu();
     hideAllPages();
     document.getElementById('balancePage').style.display = 'block';
+    // Poblar selector de loterías
+    const lotSel = document.getElementById('balanceLoteria');
+    if (lotSel) {
+        lotSel.innerHTML = '<option value="">Todas las loterías</option>';
+        lotteries.forEach(l => {
+            const o = document.createElement('option');
+            o.value = l.id; o.textContent = l.name || l.display_name || l.code;
+            lotSel.appendChild(o);
+        });
+    }
+    // Resetear horario
+    const horSel = document.getElementById('balanceHorario');
+    if (horSel) horSel.innerHTML = '<option value="">Todos los sorteos</option>';
     loadBalancePage();
 }
 
@@ -1909,12 +1922,14 @@ async function loadBalancePage() {
 
     const fromEl = document.getElementById('balanceFilterFrom');
     const toEl   = document.getElementById('balanceFilterTo');
-    const from   = fromEl?.value || null;
-    const to     = toEl?.value   || null;
+    const from      = fromEl?.value || null;
+    const to        = toEl?.value   || null;
+    const lotteryId = document.getElementById('balanceLoteria')?.value  || null;
+    const drawTimeId= document.getElementById('balanceHorario')?.value  || null;
 
     // Clear/show filter button
     const clearBtn = document.getElementById('balanceFilterClear');
-    if (clearBtn) clearBtn.style.display = (from || to) ? 'block' : 'none';
+    if (clearBtn) clearBtn.style.display = (from || to || lotteryId || drawTimeId) ? 'block' : 'none';
 
     // Reset UI to loading state
     ['balanceTotalSales','balanceComision','balanceAdminPart','balancePremios','balanceValor'].forEach(id => {
@@ -1927,8 +1942,8 @@ async function loadBalancePage() {
             p_seller_id:    currentProfile.id,
             p_date_from:    from,
             p_date_to:      to,
-            p_lottery_id:   null,
-            p_draw_time_id: null,
+            p_lottery_id:   lotteryId,
+            p_draw_time_id: drawTimeId,
         };
 
         const [{ data: balData }, { data: detData }, { data: histData }] = await Promise.all([
@@ -2011,10 +2026,30 @@ function onBalanceFilterChange() {
 function clearBalanceFilter() {
     const fromEl = document.getElementById('balanceFilterFrom');
     const toEl   = document.getElementById('balanceFilterTo');
+    const lotSel = document.getElementById('balanceLoteria');
+    const horSel = document.getElementById('balanceHorario');
     if (fromEl) fromEl.value = '';
     if (toEl)   toEl.value   = '';
+    if (lotSel) lotSel.value = '';
+    if (horSel) { horSel.innerHTML = '<option value="">Todos los sorteos</option>'; }
     const clearBtn = document.getElementById('balanceFilterClear');
     if (clearBtn) clearBtn.style.display = 'none';
+    loadBalancePage();
+}
+
+function onBalanceLotChange() {
+    const lotId  = document.getElementById('balanceLoteria')?.value || null;
+    const horSel = document.getElementById('balanceHorario');
+    if (!horSel) return;
+    horSel.innerHTML = '<option value="">Todos los sorteos</option>';
+    if (lotId) {
+        const lot = lotteries.find(l => l.id === lotId);
+        (lot?.draw_times || []).forEach(dt => {
+            const o = document.createElement('option');
+            o.value = dt.id; o.textContent = dt.time_label;
+            horSel.appendChild(o);
+        });
+    }
     loadBalancePage();
 }
 
@@ -4453,7 +4488,7 @@ Object.assign(window, {
     openPercentageModal, closePercentageModal, saveSellerConfig,
     showCobrosPage, loadCobros, filterCobrosHistorial, clearCobrosFilter,
     showBalancePage, loadBalancePage, onBalanceFilterChange, clearBalanceFilter,
-    toggleBalanceDetail, toggleBalanceHistory,
+    onBalanceLotChange, toggleBalanceDetail, toggleBalanceHistory,
     showNotification, closeNotification, showConfirm,
     showKeyboard, hideKeyboard, addDigit, deleteDigit, submitNumber,
     toggleMenu, openMenu, closeMenu,
