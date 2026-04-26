@@ -1759,6 +1759,10 @@
             <span class="menu-icon">💳</span>
             <span>Mis Cobros</span>
         </div>
+        <div class="menu-item" onclick="showBalancePage()">
+            <span class="menu-icon">⚖️</span>
+            <span>Mi Balance</span>
+        </div>
         <div class="menu-item" onclick="showVerifyWinnersPage()">
             <span class="menu-icon">🏆</span>
             <span>Mis Premios</span>
@@ -2409,6 +2413,88 @@
 
     <div id="cobrosHistorial" style="display:flex;flex-direction:column;gap:8px;">
         <p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>
+    </div>
+</div>
+
+<!-- Página de Mi Balance -->
+<div id="balancePage" class="container" style="display: none;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
+        <h2 style="margin:0;font-size:1.2em;white-space:nowrap;">Mi Balance</h2>
+        <button onclick="loadBalancePage()" style="margin-left:auto;font-size:0.8em;background:#4f46e5;color:white;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:600;">↺</button>
+    </div>
+
+    <!-- Filtros -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <input type="date" id="balanceFilterFrom" onchange="onBalanceFilterChange()"
+            style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
+        <span style="color:#94a3b8;font-size:0.8em;align-self:center;">—</span>
+        <input type="date" id="balanceFilterTo" onchange="onBalanceFilterChange()"
+            style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
+        <button id="balanceFilterClear" onclick="clearBalanceFilter()" style="display:none;background:#e2e8f0;border:none;border-radius:10px;padding:7px 12px;font-size:0.8em;color:#475569;cursor:pointer;">✕</button>
+    </div>
+
+    <!-- Período -->
+    <p id="balancePeriodo" style="text-align:center;font-size:0.75em;color:#94a3b8;margin-bottom:12px;"></p>
+
+    <!-- Tarjetas de resumen -->
+    <div id="balanceResumen" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;">
+            <p style="margin:0;font-size:0.7em;color:#64748b;">Total recaudado</p>
+            <p id="balanceTotalSales" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#1e293b;">$0.00</p>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;">
+            <p style="margin:0;font-size:0.7em;color:#64748b;">Mi comisión (<span id="balancePct">0</span>%)</p>
+            <p id="balanceComision" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#7c3aed;">$0.00</p>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;">
+            <p style="margin:0;font-size:0.7em;color:#64748b;">Premios pagados</p>
+            <p id="balancePremios" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#d97706;">$0.00</p>
+        </div>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;">
+            <p style="margin:0;font-size:0.7em;color:#64748b;">Parte del admin</p>
+            <p id="balanceAdminPart" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#2563eb;">$0.00</p>
+        </div>
+    </div>
+
+    <!-- Balance destacado -->
+    <div id="balanceDestacado" style="border-radius:14px;padding:16px;text-align:center;margin-bottom:16px;border:1px solid #e2e8f0;background:#f0fdf4;">
+        <p style="margin:0;font-size:0.72em;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Balance actual</p>
+        <p id="balanceValor" style="margin:6px 0 2px;font-size:2em;font-weight:bold;color:#16a34a;">$0.00</p>
+        <p id="balanceLabel" style="margin:0;font-size:0.78em;color:#64748b;"></p>
+    </div>
+
+    <!-- Detalle por día -->
+    <div style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <p style="margin:0;font-weight:600;font-size:0.9em;color:#1e293b;">Detalle por día</p>
+            <button onclick="toggleBalanceDetail()" id="balanceDetailToggle" style="font-size:0.75em;background:#e2e8f0;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#475569;">▼ Ver</button>
+        </div>
+        <div id="balanceDetalle" style="display:none;overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.78em;">
+                <thead>
+                    <tr style="background:#f1f5f9;color:#64748b;">
+                        <th style="padding:8px 6px;text-align:left;font-weight:600;white-space:nowrap;">Fecha</th>
+                        <th style="padding:8px 6px;text-align:right;font-weight:600;">Recaudado</th>
+                        <th style="padding:8px 6px;text-align:right;font-weight:600;">Comisión</th>
+                        <th style="padding:8px 6px;text-align:right;font-weight:600;">Premios</th>
+                        <th style="padding:8px 6px;text-align:right;font-weight:600;">Balance</th>
+                    </tr>
+                </thead>
+                <tbody id="balanceDetalleBody">
+                    <tr><td colspan="5" style="text-align:center;padding:16px;color:#94a3b8;">Cargando...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Historial de cortes -->
+    <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+            <p style="margin:0;font-weight:600;font-size:0.9em;color:#1e293b;">Historial de cortes</p>
+            <button onclick="toggleBalanceHistory()" id="balanceHistoryToggle" style="font-size:0.75em;background:#e2e8f0;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#475569;">▼ Ver</button>
+        </div>
+        <div id="balanceHistorial" style="display:none;"></div>
     </div>
 </div>
 

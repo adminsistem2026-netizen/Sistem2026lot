@@ -1609,7 +1609,7 @@ function verificarGanadoresSA() {
 // ==================== Page navigation ====================
 function hideAllPages() {
     ['loginPage','mainPage','salesPage','numberSalesPage','verifyWinnersPage','configPage','cobrosPage',
-     'misVendedoresPage','ventasSubAdminPage','cobrosSubAdminPage','numerosSubAdminPage'].forEach(id => {
+     'balancePage','misVendedoresPage','ventasSubAdminPage','cobrosSubAdminPage','numerosSubAdminPage'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -1887,6 +1887,206 @@ function renderCobrosHistorial() {
             <span style="font-weight:bold;color:#16a34a;">${sym}${totalFiltered.toFixed(2)}</span>
         </div>
     `;
+}
+
+// ==================== Mi Balance (vendedor) ====================
+
+let balanceDetailOpen  = false;
+let balanceHistoryOpen = false;
+let balanceDetailData  = [];
+let balanceHistoryData = [];
+
+function showBalancePage() {
+    closeMenu();
+    hideAllPages();
+    document.getElementById('balancePage').style.display = 'block';
+    loadBalancePage();
+}
+
+async function loadBalancePage() {
+    if (!currentProfile?.id) return;
+    const sym = currentProfile?.currency_symbol || '$';
+
+    const fromEl = document.getElementById('balanceFilterFrom');
+    const toEl   = document.getElementById('balanceFilterTo');
+    const from   = fromEl?.value || null;
+    const to     = toEl?.value   || null;
+
+    // Clear/show filter button
+    const clearBtn = document.getElementById('balanceFilterClear');
+    if (clearBtn) clearBtn.style.display = (from || to) ? 'block' : 'none';
+
+    // Reset UI to loading state
+    ['balanceTotalSales','balanceComision','balanceAdminPart','balancePremios','balanceValor'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'Cargando...';
+    });
+
+    try {
+        const params = {
+            p_seller_id:    currentProfile.id,
+            p_date_from:    from,
+            p_date_to:      to,
+            p_lottery_id:   null,
+            p_draw_time_id: null,
+        };
+
+        const [{ data: balData }, { data: detData }, { data: histData }] = await Promise.all([
+            db.rpc('get_seller_balance_for_seller',        params),
+            db.rpc('get_seller_balance_detail_for_seller', params),
+            db.rpc('get_settlements_history', {
+                p_admin_id:  currentProfile.parent_admin_id,
+                p_seller_id: currentProfile.id,
+            }),
+        ]);
+
+        const bal = balData?.[0];
+        balanceDetailData  = detData  || [];
+        balanceHistoryData = histData || [];
+
+        if (bal) {
+            const totalSales   = parseFloat(bal.total_sales       || 0);
+            const commission   = parseFloat(bal.total_commission  || 0);
+            const adminPart    = parseFloat(bal.admin_part        || 0);
+            const prizes       = parseFloat(bal.total_prizes_paid || 0);
+            const balance      = parseFloat(bal.balance           || 0);
+            const pct          = parseFloat(bal.commission_pct    || 0);
+
+            document.getElementById('balanceTotalSales').textContent  = `${sym}${totalSales.toFixed(2)}`;
+            document.getElementById('balanceComision').textContent    = `${sym}${commission.toFixed(2)}`;
+            document.getElementById('balanceAdminPart').textContent   = `${sym}${adminPart.toFixed(2)}`;
+            document.getElementById('balancePremios').textContent     = `${sym}${prizes.toFixed(2)}`;
+            document.getElementById('balancePct').textContent         = pct.toFixed(1);
+
+            const valorEl    = document.getElementById('balanceValor');
+            const labelEl    = document.getElementById('balanceLabel');
+            const destEl     = document.getElementById('balanceDestacado');
+
+            if (valorEl) valorEl.textContent = `${sym}${Math.abs(balance).toFixed(2)}`;
+            if (labelEl) {
+                if (balance > 0)      labelEl.textContent = 'Debo al administrador';
+                else if (balance < 0) labelEl.textContent = 'El admin me debe';
+                else                  labelEl.textContent = 'Sin deuda pendiente';
+            }
+            if (destEl) {
+                if (balance > 0)      { destEl.style.background = '#f0fdf4'; destEl.style.borderColor = '#bbf7d0'; if (valorEl) valorEl.style.color = '#16a34a'; }
+                else if (balance < 0) { destEl.style.background = '#fff1f2'; destEl.style.borderColor = '#fecdd3'; if (valorEl) valorEl.style.color = '#e11d48'; }
+                else                  { destEl.style.background = '#f8fafc'; destEl.style.borderColor = '#e2e8f0'; if (valorEl) valorEl.style.color = '#64748b'; }
+            }
+
+            // Period
+            const periodoEl = document.getElementById('balancePeriodo');
+            if (periodoEl && bal.period_start && bal.period_end) {
+                const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+                periodoEl.textContent = `Período: ${fmtD(bal.period_start)} → ${fmtD(bal.period_end)}`;
+            }
+        } else {
+            ['balanceTotalSales','balanceComision','balanceAdminPart','balancePremios'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = `${sym}0.00`;
+            });
+            const valorEl = document.getElementById('balanceValor');
+            if (valorEl) valorEl.textContent = `${sym}0.00`;
+        }
+
+        renderBalanceDetail();
+        renderBalanceHistory();
+    } catch (e) {
+        console.error('loadBalancePage error:', e);
+        const valorEl = document.getElementById('balanceValor');
+        if (valorEl) valorEl.textContent = 'Error';
+    }
+}
+
+function onBalanceFilterChange() {
+    const fromEl   = document.getElementById('balanceFilterFrom');
+    const toEl     = document.getElementById('balanceFilterTo');
+    const clearBtn = document.getElementById('balanceFilterClear');
+    const from     = fromEl?.value || '';
+    const to       = toEl?.value   || '';
+    if (clearBtn) clearBtn.style.display = (from || to) ? 'block' : 'none';
+    loadBalancePage();
+}
+
+function clearBalanceFilter() {
+    const fromEl = document.getElementById('balanceFilterFrom');
+    const toEl   = document.getElementById('balanceFilterTo');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    const clearBtn = document.getElementById('balanceFilterClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    loadBalancePage();
+}
+
+function toggleBalanceDetail() {
+    balanceDetailOpen = !balanceDetailOpen;
+    const el     = document.getElementById('balanceDetalle');
+    const toggle = document.getElementById('balanceDetailToggle');
+    if (el)     el.style.display     = balanceDetailOpen ? 'block' : 'none';
+    if (toggle) toggle.textContent   = balanceDetailOpen ? '▲ Ocultar' : '▼ Ver';
+}
+
+function toggleBalanceHistory() {
+    balanceHistoryOpen = !balanceHistoryOpen;
+    const el     = document.getElementById('balanceHistorial');
+    const toggle = document.getElementById('balanceHistoryToggle');
+    if (el)     el.style.display   = balanceHistoryOpen ? 'block' : 'none';
+    if (toggle) toggle.textContent = balanceHistoryOpen ? '▲ Ocultar' : '▼ Ver';
+}
+
+function renderBalanceDetail() {
+    const sym  = currentProfile?.currency_symbol || '$';
+    const body = document.getElementById('balanceDetalleBody');
+    if (!body) return;
+
+    if (balanceDetailData.length === 0) {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:14px;color:#94a3b8;">Sin movimientos en el período</td></tr>';
+        return;
+    }
+
+    const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+    body.innerHTML = balanceDetailData.map((row, i) => {
+        const bal = parseFloat(row.balance_day || 0);
+        const balColor = bal > 0 ? '#16a34a' : bal < 0 ? '#e11d48' : '#64748b';
+        return `<tr style="background:${i % 2 === 0 ? '#f8fafc' : 'white'};border-bottom:1px solid #f1f5f9;">
+            <td style="padding:7px 6px;white-space:nowrap;color:#475569;">${fmtD(row.day)}</td>
+            <td style="padding:7px 6px;text-align:right;color:#1e293b;">${sym}${parseFloat(row.total_sales||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;color:#7c3aed;">${sym}${parseFloat(row.total_commission||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;color:#d97706;">${sym}${parseFloat(row.prizes_paid||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;font-weight:600;color:${balColor};">${sym}${Math.abs(bal).toFixed(2)}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderBalanceHistory() {
+    const sym   = currentProfile?.currency_symbol || '$';
+    const histDiv = document.getElementById('balanceHistorial');
+    if (!histDiv) return;
+
+    if (balanceHistoryData.length === 0) {
+        histDiv.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:0.85em;padding:12px 0;">Sin cortes registrados</p>';
+        return;
+    }
+
+    const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+    histDiv.innerHTML = balanceHistoryData.map(s => {
+        const bal = parseFloat(s.balance_at_settlement || 0);
+        const balColor = bal > 0 ? '#16a34a' : bal < 0 ? '#e11d48' : '#64748b';
+        return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <p style="margin:0;font-size:0.78em;color:#64748b;">${fmtD(s.period_start)} → ${fmtD(s.period_end)}</p>
+                    <p style="margin:4px 0 0;font-size:0.72em;color:#94a3b8;">Corte: ${new Date(s.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}</p>
+                    ${s.notes ? `<p style="margin:4px 0 0;font-size:0.78em;color:#475569;font-style:italic;">"${s.notes}"</p>` : ''}
+                    <p style="margin:4px 0 0;font-size:0.75em;color:#94a3b8;">Ventas: ${sym}${parseFloat(s.total_sales||0).toFixed(2)} · Premios: ${sym}${parseFloat(s.total_prizes_paid||0).toFixed(2)}</p>
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <p style="margin:0;font-size:0.7em;color:#94a3b8;">Balance</p>
+                    <p style="margin:2px 0 0;font-size:1.1em;font-weight:bold;color:${balColor};">${sym}${Math.abs(bal).toFixed(2)}</p>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
 }
 
 // ==================== Draw time selects ====================
@@ -4252,6 +4452,8 @@ Object.assign(window, {
     showPrinterConfig, closePrinterConfig, loadPairedDevices, selectPrinter, printCurrentTicket,
     openPercentageModal, closePercentageModal, saveSellerConfig,
     showCobrosPage, loadCobros, filterCobrosHistorial, clearCobrosFilter,
+    showBalancePage, loadBalancePage, onBalanceFilterChange, clearBalanceFilter,
+    toggleBalanceDetail, toggleBalanceHistory,
     showNotification, closeNotification, showConfirm,
     showKeyboard, hideKeyboard, addDigit, deleteDigit, submitNumber,
     toggleMenu, openMenu, closeMenu,
