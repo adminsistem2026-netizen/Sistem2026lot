@@ -3453,10 +3453,13 @@ function renderPremiosFiltered() {
         return;
     }
 
+    // Group by ticket_id — one card per ticket, multiple winning numbers inside
     const grouped = {};
     rows.forEach(r => {
-        if (!grouped[r.id]) grouped[r.id] = { ...r, prizes: [] };
-        grouped[r.id].prizes.push({
+        if (!grouped[r.ticket_id]) grouped[r.ticket_id] = { ...r, matches: [] };
+        grouped[r.ticket_id].matches.push({
+            number:         r.number,
+            winning_number: r.winning_number,
             prize_position: r.prize_position,
             match_type:     r.match_type,
             multiplier:     r.multiplier,
@@ -3467,7 +3470,7 @@ function renderPremiosFiltered() {
     const allRows      = _premiosAllRows;
     const totalPending = allRows.filter(r => !r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
     const totalPaid    = allRows.filter(r =>  r.is_paid).reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
-    const countPending = allRows.filter(r => !r.is_paid).length;
+    const countPending = new Set(allRows.filter(r => !r.is_paid).map(r => r.ticket_id)).size;
 
     let html = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
@@ -3483,43 +3486,48 @@ function renderPremiosFiltered() {
     <div style="display:flex;flex-direction:column;gap:8px;">`;
 
     Object.values(grouped).forEach(row => {
-        const isPaid     = row.is_paid;
-        const total      = row.prizes.reduce((s, p) => s + parseFloat(p.prize_amount || 0), 0);
-        const posLabel   = PRIZE_POS_LABELS[row.prizes[0]?.prize_position] || '';
-        const matchLabel = MATCH_LABELS_APP[row.prizes[0]?.match_type] || row.prizes[0]?.match_type || '';
+        const isPaid = row.is_paid;
+        const total  = row.matches.reduce((s, m) => s + parseFloat(m.prize_amount || 0), 0);
 
-        const prizeBreakdown = row.prizes.length > 1
-            ? row.prizes.map(p =>
-                `<div style="display:flex;justify-content:space-between;font-size:11px;color:#555;padding:2px 0;">
-                    <span>${PRIZE_POS_LABELS[p.prize_position] || p.prize_position} · ${MATCH_LABELS_APP[p.match_type] || p.match_type} ×${p.multiplier}</span>
-                    <span style="font-weight:600;color:#dc2626;">${sym}${parseFloat(p.prize_amount).toFixed(2)}</span>
-                </div>`).join('')
-            : `<span style="font-size:11px;color:#555;">${posLabel} · ${matchLabel} ×${row.prizes[0]?.multiplier}</span>`;
+        const matchRows = row.matches.map(m =>
+            `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#555;padding:4px 0;border-top:1px solid #f3f4f6;">
+                <div>
+                    <span style="font-family:monospace;font-weight:700;color:#1e293b;font-size:13px;">${m.number}</span>
+                    <span style="color:#aaa;"> → ${m.winning_number}</span>
+                    <span style="margin-left:4px;color:#777;">${PRIZE_POS_LABELS[m.prize_position] || m.prize_position} · ${MATCH_LABELS_APP[m.match_type] || m.match_type} ×${m.multiplier}</span>
+                </div>
+                <span style="font-weight:600;color:#dc2626;flex-shrink:0;margin-left:8px;">${sym}${parseFloat(m.prize_amount).toFixed(2)}</span>
+            </div>`).join('');
 
         const statusTag = isPaid
             ? `<div style="margin-top:6px;font-size:11px;color:#15803d;text-align:center;font-weight:600;">✓ Pagado</div>`
             : `<button onclick="paySellerTicket('${row.ticket_id}', this)" style="margin-top:8px;width:100%;padding:9px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;letter-spacing:0.3px;">💰 Cobrar premio</button>`;
 
+        const customerHtml = row.customer_name
+            ? ` · <span style="color:#6366f1;font-weight:600;">${row.customer_name}</span>`
+            : '';
+        const sellerHtml = isSubAdminView && row.seller_name ? ` · ${row.seller_name}` : '';
+
         html += `
         <div style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                 <div>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                        <span style="font-size:22px;font-weight:bold;font-family:monospace;">${row.number}</span>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <span style="font-size:15px;font-weight:bold;font-family:monospace;">${row.ticket_num}</span>
+                        <span style="font-size:10px;color:#888;">${row.matches.length} acierto${row.matches.length !== 1 ? 's' : ''}</span>
                         <span style="font-size:10px;background:${isPaid ? '#dcfce7' : '#fef3c7'};color:${isPaid ? '#166534' : '#92400e'};padding:2px 8px;border-radius:20px;font-weight:600;">
                             ${isPaid ? 'PAGADO' : 'PENDIENTE'}
                         </span>
                     </div>
                     <div style="font-size:11px;color:#666;margin-top:2px;">${row.lottery_name}${row.draw_time_label ? ' · ' + row.draw_time_label : ''} · ${row.draw_date}</div>
-                    <div style="font-size:11px;color:#888;margin-top:1px;">Ticket: ${row.ticket_num}${isSubAdminView && row.seller_name ? ' · ' + row.seller_name : ''}${row.customer_name ? ' · <span style="color:#6366f1;font-weight:600;">' + row.customer_name + '</span>' : ''}</div>
+                    <div style="font-size:11px;color:#888;margin-top:1px;">Apostado: ${sym}${parseFloat(row.bet_amount || 0).toFixed(2)}${sellerHtml}${customerHtml}</div>
                 </div>
-                <div style="text-align:right;">
+                <div style="text-align:right;flex-shrink:0;margin-left:8px;">
                     <div style="font-size:18px;font-weight:bold;color:#dc2626;">${sym}${total.toFixed(2)}</div>
-                    <div style="font-size:10px;color:#aaa;">vs <span style="font-family:monospace;">${row.winning_number}</span></div>
                 </div>
             </div>
-            <div style="margin-top:6px;padding-top:6px;border-top:1px solid #f3f4f6;">
-                ${prizeBreakdown}
+            <div style="margin-top:4px;">
+                ${matchRows}
             </div>
             ${statusTag}
         </div>`;
