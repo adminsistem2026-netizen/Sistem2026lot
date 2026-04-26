@@ -78,9 +78,11 @@ export default function SellerPremios() {
   const grouped = useMemo(() => {
     const map = {};
     (rows || []).forEach(r => {
-      const key = r.ticket_number_id;
-      if (!map[key]) map[key] = { ...r, prizes: [] };
-      map[key].prizes.push({
+      const key = r.ticket_id;
+      if (!map[key]) map[key] = { ...r, matches: [] };
+      map[key].matches.push({
+        number:         r.number,
+        winning_number: r.winning_number,
         match_type:     r.match_type,
         prize_position: r.prize_position,
         multiplier:     r.multiplier,
@@ -89,7 +91,7 @@ export default function SellerPremios() {
     });
     return Object.values(map).map(g => ({
       ...g,
-      total_prize: g.prizes.reduce((acc, p) => acc + parseFloat(p.prize_amount || 0), 0),
+      total_prize: g.matches.reduce((acc, m) => acc + parseFloat(m.prize_amount || 0), 0),
     }));
   }, [rows]);
 
@@ -202,22 +204,23 @@ export default function SellerPremios() {
             const isPaid = row.is_paid;
             return (
               <div
-                key={row.ticket_number_id}
+                key={row.ticket_id}
                 className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <p className="font-mono text-sm font-bold text-gray-900 truncate">
-                      {row.ticket_number}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-mono text-sm font-bold text-gray-900 truncate">
+                        {row.ticket_number}
+                      </p>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0">
+                        {row.matches.length} acierto{row.matches.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
                     <p className="text-xs text-gray-500 mt-0.5">
                       {row.lottery_name}
                       {row.draw_time_label ? ` · ${row.draw_time_label}` : ''}
                       {' · '}{row.draw_date}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      Jugado: <span className="font-mono font-semibold text-gray-700">{row.number}</span>
-                      {'  '}Ganador: <span className="font-mono font-semibold text-gray-700">{row.winning_number}</span>
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1 flex-none">
@@ -235,28 +238,30 @@ export default function SellerPremios() {
                 </div>
 
                 <div className="mt-2 space-y-1">
-                  {row.prizes.map((p, i) => (
+                  {row.matches.map((m, i) => (
                     <div
                       key={i}
                       className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-1.5"
                     >
                       <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-sm font-semibold text-gray-800">{m.number}</span>
+                        <span className="text-xs text-gray-400">→ {m.winning_number}</span>
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                          p.prize_position === '1st'
+                          m.prize_position === '1st'
                             ? 'bg-blue-100 text-blue-700'
-                            : p.prize_position === '2nd'
+                            : m.prize_position === '2nd'
                               ? 'bg-green-100 text-green-700'
                               : 'bg-yellow-100 text-yellow-700'
                         }`}>
-                          {PRIZE_LABELS[p.prize_position] || p.prize_position}
+                          {PRIZE_LABELS[m.prize_position] || m.prize_position}
                         </span>
                         <span className="text-xs text-gray-500">
-                          {MATCH_LABELS[p.match_type] || p.match_type}
+                          {MATCH_LABELS[m.match_type] || m.match_type}
                         </span>
-                        <span className="text-xs text-gray-300">×{p.multiplier}</span>
+                        <span className="text-xs text-gray-300">×{m.multiplier}</span>
                       </div>
                       <span className="text-xs font-semibold text-gray-800">
-                        {fmtAmt(p.prize_amount, sym)}
+                        {fmtAmt(m.prize_amount, sym)}
                       </span>
                     </div>
                   ))}

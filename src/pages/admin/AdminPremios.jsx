@@ -152,18 +152,17 @@ export default function AdminPremios() {
   const activeFilters = [sellerId, lotteryId, drawTimeId, status,
     dateFrom !== today || dateTo !== today ? 1 : null].filter(Boolean).length;
 
-  // Group rows by ticket_number_id to show stacked prizes as sub-rows
+  // Group rows by ticket_id — one card per ticket, multiple winning numbers inside
   const grouped = useMemo(() => {
     const map = {};
     (rows || []).forEach(r => {
-      const key = r.ticket_number_id;
-      if (!map[key]) map[key] = { ...r, prizes: [] };
-      map[key].prizes.push({ match_type: r.match_type, prize_position: r.prize_position, multiplier: r.multiplier, prize_amount: r.prize_amount });
+      const key = r.ticket_id;
+      if (!map[key]) map[key] = { ...r, matches: [] };
+      map[key].matches.push({ number: r.number, winning_number: r.winning_number, match_type: r.match_type, prize_position: r.prize_position, multiplier: r.multiplier, prize_amount: r.prize_amount });
     });
-    // Merge prize_amount totals per ticket_number_id
     return Object.values(map).map(g => ({
       ...g,
-      total_prize: g.prizes.reduce((acc, p) => acc + parseFloat(p.prize_amount || 0), 0),
+      total_prize: g.matches.reduce((acc, m) => acc + parseFloat(m.prize_amount || 0), 0),
     }));
   }, [rows]);
 
@@ -293,13 +292,10 @@ export default function AdminPremios() {
         ) : (
           <div className="divide-y divide-slate-800">
             {grouped.map(row => {
-              const isPaid    = row.is_paid;
-              const isSingle  = row.prizes.length === 1;
-              const prizePos  = PRIZE_LABELS[row.prizes[0]?.prize_position] || row.prizes[0]?.prize_position;
-              const matchLbl  = MATCH_LABELS[row.prizes[0]?.match_type] || row.prizes[0]?.match_type;
+              const isPaid = row.is_paid;
               return (
-                <div key={row.ticket_number_id} className={`px-4 py-3 ${isPaid ? 'opacity-60' : ''}`}>
-                  {/* Row header */}
+                <div key={row.ticket_id} className={`px-4 py-3 ${isPaid ? 'opacity-60' : ''}`}>
+                  {/* Ticket header */}
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${isPaid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
@@ -307,8 +303,8 @@ export default function AdminPremios() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-lg font-bold text-white">{row.number}</span>
-                          <span className="text-xs text-slate-500 font-mono truncate">{row.ticket_num}</span>
+                          <span className="font-mono text-base font-bold text-white">{row.ticket_num}</span>
+                          <span className="text-xs text-slate-500">{row.matches.length} acierto{row.matches.length !== 1 ? 's' : ''}</span>
                         </div>
                         <p className="text-xs text-slate-400 mt-0.5">{row.lottery_name}{row.draw_time_label ? ` · ${row.draw_time_label}` : ''} · {row.draw_date}</p>
                       </div>
@@ -323,18 +319,20 @@ export default function AdminPremios() {
                     </div>
                   </div>
 
-                  {/* Prize breakdown */}
+                  {/* Winning numbers breakdown */}
                   <div className="mt-2 ml-9 space-y-1">
-                    {row.prizes.map((p, i) => (
+                    {row.matches.map((m, i) => (
                       <div key={i} className="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${p.prize_position === '1st' ? 'bg-indigo-500/30 text-indigo-300' : p.prize_position === '2nd' ? 'bg-emerald-500/30 text-emerald-300' : 'bg-amber-500/30 text-amber-300'}`}>
-                            {PRIZE_LABELS[p.prize_position] || p.prize_position}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-sm font-bold text-white">{m.number}</span>
+                          <span className="text-xs text-slate-500">→ {m.winning_number}</span>
+                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${m.prize_position === '1st' ? 'bg-indigo-500/30 text-indigo-300' : m.prize_position === '2nd' ? 'bg-emerald-500/30 text-emerald-300' : 'bg-amber-500/30 text-amber-300'}`}>
+                            {PRIZE_LABELS[m.prize_position] || m.prize_position}
                           </span>
-                          <span className="text-xs text-slate-400">{MATCH_LABELS[p.match_type] || p.match_type}</span>
-                          <span className="text-xs text-slate-600">×{p.multiplier}</span>
+                          <span className="text-xs text-slate-400">{MATCH_LABELS[m.match_type] || m.match_type}</span>
+                          <span className="text-xs text-slate-600">×{m.multiplier}</span>
                         </div>
-                        <span className="text-xs font-semibold text-rose-400">{fmtAmt(p.prize_amount, sym)}</span>
+                        <span className="text-xs font-semibold text-rose-400">{fmtAmt(m.prize_amount, sym)}</span>
                       </div>
                     ))}
                   </div>
@@ -350,8 +348,6 @@ export default function AdminPremios() {
                     )}
                     <span>·</span>
                     <span>Apostado: {fmtAmt(row.bet_amount, sym)}</span>
-                    <span>·</span>
-                    <span className="text-slate-500">Premio vs resultado: <span className="font-mono text-slate-400">{row.winning_number}</span></span>
                   </div>
                 </div>
               );
