@@ -362,33 +362,40 @@ async function loadTickets(filters = {}) {
             p_seller_id: isSeller ? currentProfile.id : null,
             p_admin_id:  isSeller ? null : currentProfile?.id || null,
         });
+        // Paginar get_ticket_numbers_for_user para superar el límite de 1000 filas
+        const rpcParams = {
+            p_seller_id: isSeller ? currentProfile.id : null,
+            p_admin_id:  isSeller ? null : currentProfile?.id || null,
+        };
+        let allNums = [];
         if (!numsError && numsData) {
-            console.log('[DEBUG] numsData length:', numsData.length, '| first row keys:', numsData[0] ? Object.keys(numsData[0]) : 'empty');
-            console.log('[DEBUG] numsData[0]:', numsData[0]);
-            console.log('[DEBUG] result[0].id:', result[0]?.id, '| result[0] keys:', result[0] ? Object.keys(result[0]) : 'empty');
-            numsData.forEach(n => {
+            allNums = numsData;
+            // Si llegó al límite (1000), seguir paginando
+            if (numsData.length === 1000) {
+                let offset = 1000;
+                while (true) {
+                    const { data: page, error: pageErr } = await db.rpc('get_ticket_numbers_for_user', rpcParams)
+                        .range(offset, offset + 999);
+                    if (pageErr || !page || page.length === 0) break;
+                    allNums = allNums.concat(page);
+                    if (page.length < 1000) break;
+                    offset += 1000;
+                }
+            }
+            allNums.forEach(n => {
                 if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
                 numsByTicket[n.ticket_id].push(n);
             });
-            const matched = result.filter(t => (numsByTicket[t.id] || []).length > 0).length;
-            console.log('[DEBUG] tickets with matched numbers:', matched, '/', result.length);
         } else {
-            // Fallback: fetch individual por ticket
-            let debugTotal = 0;
+            // Fallback: fetch individual por ticket (no seleccionar ticket_id por schema cache)
             for (const t of result) {
                 if (!t.id) continue;
-                const { data: nums, error: fetchErr } = await db.from('ticket_numbers')
+                const { data: nums } = await db.from('ticket_numbers')
                     .select('number, pieces, unit_price, subtotal')
                     .eq('ticket_id', t.id);
-                if (fetchErr) console.error('ticket_numbers fetch error:', fetchErr, t.id);
                 if (nums && nums.length > 0) {
                     numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
-                    debugTotal += nums.length;
                 }
-            }
-            console.warn(`[loadTickets] RPC error: ${numsError?.message || numsError?.code || JSON.stringify(numsError)} | fallback fetched ${debugTotal} numbers for ${result.length} tickets`);
-            if (debugTotal === 0 && result.length > 0) {
-                showNotification(`Sin números: RPC="${numsError?.code||numsError?.message||'err'}" fallback=0/${result.length}`, 'error', 10000);
             }
         }
 
