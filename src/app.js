@@ -343,66 +343,74 @@ function adaptTicket(t) {
 }
 
 // ==================== Tickets (DB) ====================
-async function loadTickets(filters = {}) {
+// Carga tickets de UNA fecha específica (default: hoy).
+// Al filtrar en DB por sale_date, el tamaño de respuesta es siempre pequeño
+// independientemente del volumen histórico — solución escalable.
+async function loadTickets(date) {
     try {
         const isSeller = currentProfile && currentProfile.parent_admin_id;
+        const targetDate = date || getTodayStr();
 
-        const { data: ticketsData, error: ticketsError } = await db.rpc('get_user_tickets', {
-            p_seller_id: isSeller ? currentProfile.id : null,
-            p_admin_id:  isSeller ? null : (currentProfile?.id || null),
-        });
+        let query = db.from('tickets')
+            .select('*')
+            .eq('sale_date', targetDate)
+            .eq('is_cancelled', false)
+            .order('created_at', { ascending: false });
+
+        if (isSeller) {
+            query = query.eq('seller_id', currentProfile.id);
+        } else {
+            query = query.eq('admin_id', currentProfile.id);
+        }
+
+        const { data: ticketsData, error: ticketsError } = await query;
         if (ticketsError) { console.error('loadTickets error:', ticketsError); return []; }
 
         const result = ticketsData || [];
         if (result.length === 0) return [];
 
-        // Intentar RPC bulk; si falla, hacer fetch individual con await
+        // Pocos tickets por día — fetch paralelo individual es rápido y no tiene límite de filas
         const numsByTicket = {};
-        const { data: numsData, error: numsError } = await db.rpc('get_ticket_numbers_for_user', {
-            p_seller_id: isSeller ? currentProfile.id : null,
-            p_admin_id:  isSeller ? null : currentProfile?.id || null,
-        });
-        // Paginar get_ticket_numbers_for_user para superar el límite de 1000 filas
-        const rpcParams = {
-            p_seller_id: isSeller ? currentProfile.id : null,
-            p_admin_id:  isSeller ? null : currentProfile?.id || null,
-        };
-        let allNums = [];
-        if (!numsError && numsData) {
-            allNums = numsData;
-            // Si llegó al límite (1000), seguir paginando
-            if (numsData.length === 1000) {
-                let offset = 1000;
-                while (true) {
-                    const { data: page, error: pageErr } = await db.rpc('get_ticket_numbers_for_user', rpcParams)
-                        .range(offset, offset + 999);
-                    if (pageErr || !page || page.length === 0) break;
-                    allNums = allNums.concat(page);
-                    if (page.length < 1000) break;
-                    offset += 1000;
-                }
+        await Promise.all(result.map(async t => {
+            if (!t.id) return;
+            const { data: nums } = await db.from('ticket_numbers')
+                .select('number, pieces, unit_price, subtotal')
+                .eq('ticket_id', t.id);
+            if (nums && nums.length > 0) {
+                numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
             }
-            allNums.forEach(n => {
-                if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
-                numsByTicket[n.ticket_id].push(n);
-            });
-        } else {
-            // Fallback: fetch individual por ticket (no seleccionar ticket_id por schema cache)
-            for (const t of result) {
-                if (!t.id) continue;
-                const { data: nums } = await db.from('ticket_numbers')
-                    .select('number, pieces, unit_price, subtotal')
-                    .eq('ticket_id', t.id);
-                if (nums && nums.length > 0) {
-                    numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
-                }
-            }
-        }
+        }));
 
         return result.map(t => adaptTicket({ ...t, ticket_numbers: numsByTicket[t.id] || [] }));
     } catch (e) {
         console.error('loadTickets exception:', e);
         return [];
+    }
+}
+
+// Busca un ticket específico por UUID o ticket_number sin cargar el historial.
+async function loadTicketById(ticketId) {
+    try {
+        const isSeller = currentProfile && currentProfile.parent_admin_id;
+
+        let { data } = await db.from('tickets').select('*').eq('id', ticketId);
+        if (!data || data.length === 0) {
+            ({ data } = await db.from('tickets').select('*').eq('ticket_number', ticketId));
+        }
+        if (!data || data.length === 0) return null;
+
+        const t = data[0];
+        if (isSeller && t.seller_id !== currentProfile.id) return null;
+        if (!isSeller && t.admin_id !== currentProfile.id) return null;
+
+        const { data: nums } = await db.from('ticket_numbers')
+            .select('number, pieces, unit_price, subtotal')
+            .eq('ticket_id', t.id);
+
+        return adaptTicket({ ...t, ticket_numbers: (nums || []).map(n => ({ ...n, ticket_id: t.id })) });
+    } catch (e) {
+        console.error('loadTicketById exception:', e);
+        return null;
     }
 }
 
@@ -545,9 +553,7 @@ async function generateTicket() {
 async function marcarComoPagado(ticketId) {
     showLoading();
     try {
-        // ticketId here is the ticket_number string; find dbId from displayed tickets
-        const allTickets = await loadTickets();
-        const ticket = allTickets.find(t => t.id === ticketId);
+        const ticket = await loadTicketById(ticketId);
         if (!ticket) {
             showNotification('❌ Ticket no encontrado', 'error');
             return;
@@ -583,8 +589,7 @@ async function marcarComoPagado(ticketId) {
 }
 
 async function deleteTicket(ticketId) {
-    const allTickets = await loadTickets();
-    const ticketToDelete = allTickets.find(t => t.id === ticketId);
+    const ticketToDelete = await loadTicketById(ticketId);
 
     if (!ticketToDelete) {
         showNotification('Ticket no encontrado', 'error');
@@ -2497,8 +2502,7 @@ function copyTicket(ticketId) {
         return;
     }
 
-    loadTickets().then(allTickets => {
-        const ticket = allTickets.find(t => t.id === ticketId);
+    loadTicketById(ticketId).then(ticket => {
         if (ticket) {
             const ticketPreview = document.getElementById('ticketPreview');
             if (ticketPreview && ticketPreview.style.display === 'block') closeTicket();
@@ -2533,8 +2537,7 @@ function copyTicket(ticketId) {
 }
 
 function viewTicket(ticketId) {
-    loadTickets().then(allTickets => {
-        const ticket = allTickets.find(t => t.id === ticketId);
+    loadTicketById(ticketId).then(ticket => {
         if (ticket) {
             showMainPageOnly();
             showTicketPreview(ticket);
@@ -2570,8 +2573,8 @@ function onSalesLotteryFilter() {
 function showSalesByDate(dateString) {
     const filterLottery = document.getElementById('salesFilterLottery')?.value || '';
     const filterDrawTime = document.getElementById('salesFilterDrawTime')?.value || '';
-    loadTickets().then(allTickets => {
-        let dayTickets = allTickets.filter(ticket => ticket.saleDate === dateString);
+    loadTickets(dateString).then(allTickets => {
+        let dayTickets = allTickets;
         if (filterLottery) dayTickets = dayTickets.filter(t => t.lotteryId === filterLottery);
         if (filterDrawTime) dayTickets = dayTickets.filter(t => t.drawTimeId === filterDrawTime);
         const activeTickets = dayTickets.filter(ticket => !ticket.cancelled);
@@ -2595,14 +2598,8 @@ function initSalesTotals() {
     const today = new Date();
     const dateString = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     document.getElementById('salesDate').value = dateString;
-    loadTickets().then(allTickets => {
-        const selectedDate = new Date(dateString + 'T00:00:00');
-        const endDate = new Date(dateString + 'T23:59:59');
-        const dayTickets = allTickets.filter(ticket => {
-            const ticketDate = new Date(ticket.datetime);
-            return ticketDate >= selectedDate && ticketDate <= endDate;
-        });
-        const activeDay = dayTickets.filter(t => !t.cancelled);
+    loadTickets(dateString).then(allTickets => {
+        const activeDay = allTickets.filter(t => !t.cancelled);
         const totalAmount = activeDay.reduce((sum, t) => sum + t.total, 0);
         document.getElementById('currentSalesDate').textContent = selectedDate.toLocaleDateString('es-ES');
         document.getElementById('totalTickets').textContent = activeDay.length;
@@ -2613,7 +2610,7 @@ function initSalesTotals() {
 async function displayTickets(ticketsToShow = null) {
     const ticketsList = document.getElementById('ticketsList');
     try {
-        const raw = ticketsToShow ?? await loadTickets();
+        const raw = ticketsToShow ?? await loadTickets(document.getElementById('salesDate')?.value || getTodayStr());
         const tickets = (raw || []).filter(t => !t.cancelled);
         if (!tickets || tickets.length === 0) {
             ticketsList.innerHTML = '<p style="text-align:center;color:#888;padding:20px;">No hay tickets registrados</p>';
@@ -2652,7 +2649,7 @@ async function displayTickets(ticketsToShow = null) {
 function searchTickets() {
     const searchValue = document.getElementById('searchInput').value.trim();
     if (!searchValue) return;
-    loadTickets().then(allTickets => {
+    loadTickets(document.getElementById('salesDate')?.value || getTodayStr()).then(allTickets => {
         const exact = allTickets.find(t => t.id.toLowerCase() === searchValue.toLowerCase());
         if (exact) {
             showMainPageOnly();
@@ -2677,8 +2674,7 @@ function deleteSalesByDate() {
         async () => {
             showLoading();
             try {
-                const allTickets = await loadTickets();
-                const toCancel = allTickets.filter(t => t.saleDate === selectedDate);
+                const allTickets = await loadTickets(selectedDate);
 
                 for (const ticket of toCancel) {
                     await db.from('tickets').update({ is_cancelled: true, cancelled_at: new Date().toISOString(), cancelled_by: currentUser?.id || null }).eq('id', ticket.dbId);
@@ -2703,7 +2699,7 @@ function borrarTodasVentas() {
         async () => {
             showLoading();
             try {
-                const allTickets = await loadTickets();
+                const allTickets = await loadTickets(getTodayStr());
                 for (const ticket of allTickets) {
                     await db.from('tickets').update({ is_cancelled: true, cancelled_at: new Date().toISOString(), cancelled_by: currentUser?.id || null }).eq('id', ticket.dbId);
                 }
@@ -2772,10 +2768,10 @@ function applyFilters() {
 }
 
 function updateNumberSalesTable() {
-    loadTickets().then(allTickets => {
+    const filterDate = document.getElementById('salesFilterDate').value || getTodayStr();
+    loadTickets(filterDate).then(allTickets => {
         const filterLottery = document.getElementById('filterLotteryType').value;
         const filterTime = document.getElementById('filterDrawTimeSelect').value;
-        const filterDate = document.getElementById('salesFilterDate').value;
 
         const numberSales = {};
         for (let i = 0; i <= 99; i++) {
@@ -2786,7 +2782,6 @@ function updateNumberSalesTable() {
             let passes = true;
             if (filterLottery && ticket.lotteryId !== filterLottery) passes = false;
             if (filterTime && ticket.drawTimeId !== filterTime) passes = false;
-            if (filterDate && ticket.saleDate !== filterDate) passes = false;
 
             if (passes) {
                 ticket.numbers.forEach(num => {
@@ -2813,17 +2808,16 @@ function updateNumberSalesTable() {
 }
 
 function updateBilletesSalesTable() {
-    loadTickets().then(allTickets => {
+    const filterDate = document.getElementById('salesFilterDate').value || getTodayStr();
+    loadTickets(filterDate).then(allTickets => {
         const filterLottery = document.getElementById('filterLotteryType').value;
         const filterTime = document.getElementById('filterDrawTimeSelect').value;
-        const filterDate = document.getElementById('salesFilterDate').value;
 
         const billetesSales = {};
         allTickets.forEach(ticket => {
             let passes = true;
             if (filterLottery && ticket.lotteryId !== filterLottery) passes = false;
             if (filterTime && ticket.drawTimeId !== filterTime) passes = false;
-            if (filterDate && ticket.saleDate !== filterDate) passes = false;
 
             if (passes) {
                 ticket.numbers.forEach(num => {
@@ -2856,10 +2850,10 @@ function updateBilletesSalesTable() {
 }
 
 function calculateSalesTotals(type) {
-    return loadTickets().then(allTickets => {
+    const filterDate = document.getElementById('salesFilterDate').value || getTodayStr();
+    return loadTickets(filterDate).then(allTickets => {
         const filterLottery = document.getElementById('filterLotteryType').value;
         const filterTime = document.getElementById('filterDrawTimeSelect').value;
-        const filterDate = document.getElementById('salesFilterDate').value;
 
         let totalTiempos = 0;
         let totalColones = 0;
@@ -2868,7 +2862,6 @@ function calculateSalesTotals(type) {
             let passes = true;
             if (filterLottery && ticket.lotteryId !== filterLottery) passes = false;
             if (filterTime && ticket.drawTimeId !== filterTime) passes = false;
-            if (filterDate && ticket.saleDate !== filterDate) passes = false;
 
             if (passes) {
                 ticket.numbers.forEach(num => {
@@ -3156,11 +3149,10 @@ async function loadAndDisplayWinningNumbers() {
         const bm3 = getPrizeMultiplier(3, lotteryObj, drawTimeObj, true);
         const sym = currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$';
 
-        const allTickets = await loadTickets();
+        const allTickets = await loadTickets(filterDate || getTodayStr());
         let filtered = allTickets;
         if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
         if (filterTime)    filtered = filtered.filter(t => t.drawTimeId === filterTime);
-        if (filterDate)    filtered = filtered.filter(t => t.saleDate === filterDate);
 
         const winners = [];
         let totalPago = 0, totalCobrado = 0;
@@ -3276,11 +3268,10 @@ function calculateWinnings() {
     const filterTime = document.getElementById('filterDrawTimeSelect').value;
     const filterDate = document.getElementById('salesFilterDate').value;
 
-    loadTickets().then(allTickets => {
+    loadTickets(filterDate || getTodayStr()).then(allTickets => {
         let filtered = allTickets;
         if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
         if (filterTime) filtered = filtered.filter(t => t.drawTimeId === filterTime);
-        if (filterDate) filtered = filtered.filter(t => t.saleDate === filterDate);
 
         const prizes = [firstPrize, secondPrize, thirdPrize].filter(p => p);
         const winners = [];
@@ -3316,11 +3307,10 @@ function calculateReventadoWinnings() {
     const filterTime = document.getElementById('filterDrawTimeSelect').value;
     const filterDate = document.getElementById('salesFilterDate').value;
 
-    loadTickets().then(allTickets => {
+    loadTickets(filterDate || getTodayStr()).then(allTickets => {
         let filtered = allTickets;
         if (filterLottery) filtered = filtered.filter(t => t.lotteryId === filterLottery);
         if (filterTime) filtered = filtered.filter(t => t.drawTimeId === filterTime);
-        if (filterDate) filtered = filtered.filter(t => t.saleDate === filterDate);
 
         const winners = [];
         filtered.forEach(ticket => {
@@ -3387,7 +3377,7 @@ function checkWinningTickets() {
     const filterLottery = document.getElementById('filterLottery').value;
     const filterDrawTime = document.getElementById('filterDrawTime').value;
 
-    loadTickets().then(allTickets => {
+    loadTickets(filterDateInput || getTodayStr()).then(allTickets => {
         let filtered = [...allTickets];
 
         if (filterDateInput) filtered = filtered.filter(t => t.saleDate === filterDateInput);
@@ -3860,10 +3850,10 @@ async function compartirTicket() {
 }
 
 function shareReport(type) {
-    loadTickets().then(allTickets => {
+    const filterDate = document.getElementById('salesFilterDate').value;
+    loadTickets(filterDate || getTodayStr()).then(allTickets => {
         const filterLottery = document.getElementById('filterLotteryType').value;
         const filterTime = document.getElementById('filterDrawTimeSelect').value;
-        const filterDate = document.getElementById('salesFilterDate').value;
 
         const sales = {};
         allTickets.forEach(ticket => {
@@ -3930,8 +3920,7 @@ async function openScannerModal() {
                 await _stopQr(_qrModal);
                 _qrModal = null;
                 document.getElementById('scannerModal').classList.remove('active');
-                const allTickets = await loadTickets();
-                const ticket = allTickets.find(t => t.id === decodedText || t.ticketNumber === decodedText);
+                const ticket = await loadTicketById(decodedText);
                 if (ticket) {
                     showTicketPreview(ticket);
                 } else {
@@ -3965,8 +3954,7 @@ async function toggleScanner() {
                     await _stopQr(_qrSales);
                     _qrSales = null;
                     scannerContainer.style.display = 'none';
-                    const allTickets = await loadTickets();
-                    const ticket = allTickets.find(t => t.id === decodedText || t.ticketNumber === decodedText);
+                    const ticket = await loadTicketById(decodedText);
                     if (ticket) {
                         verificarTicket(ticket);
                     } else {
@@ -4514,20 +4502,10 @@ function convertTicketsToCSV(ticketsList) {
 }
 
 function exportSalesToCSV(dateFilter = null) {
-    loadTickets().then(allTickets => {
+    loadTickets(dateFilter || getTodayStr()).then(allTickets => {
         if (allTickets.length === 0) { showNotification('No hay ventas para exportar.'); return; }
         let ticketsToExport = allTickets;
-        let filename = `ventas_todas_${new Date().toISOString().split('T')[0]}.csv`;
-        if (dateFilter) {
-            const start = new Date(dateFilter + 'T00:00:00');
-            const end = new Date(dateFilter + 'T23:59:59');
-            ticketsToExport = allTickets.filter(t => {
-                const d = new Date(t.datetime);
-                return d >= start && d <= end;
-            });
-            if (ticketsToExport.length === 0) { showNotification('No hay ventas para la fecha seleccionada.'); return; }
-            filename = `ventas_${dateFilter}.csv`;
-        }
+        let filename = `ventas_${dateFilter || getTodayStr()}.csv`;
         const csvContent = convertTicketsToCSV(ticketsToExport);
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
