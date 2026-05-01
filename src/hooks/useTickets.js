@@ -72,7 +72,7 @@ export function useTickets() {
   const loadTodayTickets = useCallback(async (filters = {}) => {
     let query = db
       .from('tickets')
-      .select('*, ticket_numbers(number, pieces, unit_price, subtotal)')
+      .select('*, ticket_numbers(number, pieces, subtotal)')
       .eq('seller_id', profile.id)
       .eq('sale_date', filters.date || today())
       .eq('is_cancelled', false)
@@ -86,7 +86,11 @@ export function useTickets() {
 
     return tickets.map(t => ({
       ...t,
-      ticket_numbers: (t.ticket_numbers || []).map(n => ({ ...n, ticket_id: t.id })),
+      ticket_numbers: (t.ticket_numbers || []).map(n => {
+        const pieces = Number(n.pieces) || 1;
+        const subtotal = parseFloat(n.subtotal || 0);
+        return { ...n, ticket_id: t.id, unit_price: subtotal / pieces };
+      }),
     }));
   }, [profile]);
 

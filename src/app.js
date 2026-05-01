@@ -329,11 +329,16 @@ function adaptTicket(t) {
         lotteryId: t.lottery_id || '',
         drawTime: getDrawTimeLabelById(t.draw_time_id),
         drawTimeId: t.draw_time_id || '',
-        numbers: (t.ticket_numbers || []).map(n => ({
-            number: n.number,
-            pieces: n.pieces,
-            subTotal: parseFloat(n.subtotal || 0),
-        })),
+        numbers: (t.ticket_numbers || []).map(n => {
+            const pieces = Number(n.pieces) || 1;
+            const subtotal = parseFloat(n.subtotal || 0);
+            return {
+                number: n.number,
+                pieces,
+                subTotal: subtotal,
+                unitPrice: parseFloat(n.unit_price || 0) || (subtotal / pieces),
+            };
+        }),
         total: parseFloat(t.total_amount || 0),
         paid: t.is_paid || false,
         cancelled: t.is_cancelled || false,
@@ -352,7 +357,7 @@ async function loadTickets(date) {
         const targetDate = date || getTodayStr();
 
         let query = db.from('tickets')
-            .select('*, ticket_numbers(number, pieces, unit_price, subtotal)')
+            .select('*, ticket_numbers(number, pieces, subtotal)')
             .eq('sale_date', targetDate)
             .eq('is_cancelled', false)
             .order('created_at', { ascending: false });
@@ -393,7 +398,7 @@ async function loadTicketById(ticketId) {
         if (!isSeller && t.admin_id !== currentProfile.id) return null;
 
         const { data: withNums } = await db.from('tickets')
-            .select('*, ticket_numbers(number, pieces, unit_price, subtotal)')
+            .select('*, ticket_numbers(number, pieces, subtotal)')
             .eq('id', t.id)
             .single();
 
