@@ -72,7 +72,7 @@ export function useTickets() {
   const loadTodayTickets = useCallback(async (filters = {}) => {
     let query = db
       .from('tickets')
-      .select('*')
+      .select('*, ticket_numbers(number, pieces, unit_price, subtotal)')
       .eq('seller_id', profile.id)
       .eq('sale_date', filters.date || today())
       .eq('is_cancelled', false)
@@ -84,22 +84,9 @@ export function useTickets() {
     const { data: tickets } = await query;
     if (!tickets || tickets.length === 0) return [];
 
-    // Fetch ticket_numbers individually (workaround InsForge schema cache bugs)
-    // ticket_id not selected to avoid schema-cache issues; assigned from t.id
-    const numsByTicket = {};
-    for (const t of tickets) {
-      if (!t.id) continue;
-      const { data: nums } = await db.from('ticket_numbers')
-        .select('number, pieces, unit_price, subtotal')
-        .eq('ticket_id', t.id);
-      if (nums && nums.length > 0) {
-        numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
-      }
-    }
-
     return tickets.map(t => ({
       ...t,
-      ticket_numbers: numsByTicket[t.id] || [],
+      ticket_numbers: (t.ticket_numbers || []).map(n => ({ ...n, ticket_id: t.id })),
     }));
   }, [profile]);
 

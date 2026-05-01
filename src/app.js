@@ -352,7 +352,7 @@ async function loadTickets(date) {
         const targetDate = date || getTodayStr();
 
         let query = db.from('tickets')
-            .select('*')
+            .select('*, ticket_numbers(number, pieces, unit_price, subtotal)')
             .eq('sale_date', targetDate)
             .eq('is_cancelled', false)
             .order('created_at', { ascending: false });
@@ -367,21 +367,10 @@ async function loadTickets(date) {
         if (ticketsError) { console.error('loadTickets error:', ticketsError); return []; }
 
         const result = ticketsData || [];
-        if (result.length === 0) return [];
-
-        // Pocos tickets por día — fetch paralelo individual es rápido y no tiene límite de filas
-        const numsByTicket = {};
-        await Promise.all(result.map(async t => {
-            if (!t.id) return;
-            const { data: nums } = await db.from('ticket_numbers')
-                .select('number, pieces, unit_price, subtotal')
-                .eq('ticket_id', t.id);
-            if (nums && nums.length > 0) {
-                numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
-            }
+        return result.map(t => adaptTicket({
+            ...t,
+            ticket_numbers: (t.ticket_numbers || []).map(n => ({ ...n, ticket_id: t.id })),
         }));
-
-        return result.map(t => adaptTicket({ ...t, ticket_numbers: numsByTicket[t.id] || [] }));
     } catch (e) {
         console.error('loadTickets exception:', e);
         return [];
@@ -403,11 +392,13 @@ async function loadTicketById(ticketId) {
         if (isSeller && t.seller_id !== currentProfile.id) return null;
         if (!isSeller && t.admin_id !== currentProfile.id) return null;
 
-        const { data: nums } = await db.from('ticket_numbers')
-            .select('number, pieces, unit_price, subtotal')
-            .eq('ticket_id', t.id);
+        const { data: withNums } = await db.from('tickets')
+            .select('*, ticket_numbers(number, pieces, unit_price, subtotal)')
+            .eq('id', t.id)
+            .single();
 
-        return adaptTicket({ ...t, ticket_numbers: (nums || []).map(n => ({ ...n, ticket_id: t.id })) });
+        const nums = withNums?.ticket_numbers || [];
+        return adaptTicket({ ...t, ticket_numbers: nums.map(n => ({ ...n, ticket_id: t.id })) });
     } catch (e) {
         console.error('loadTicketById exception:', e);
         return null;
