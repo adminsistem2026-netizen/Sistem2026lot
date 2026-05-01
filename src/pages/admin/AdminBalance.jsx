@@ -50,6 +50,7 @@ export default function AdminBalance() {
 
   // Settlement modal
   const [showSettleModal, setShowSettleModal] = useState(false);
+  const [settleAmount, setSettleAmount]       = useState('');
   const [settleNotes, setSettleNotes]         = useState('');
   const [settling, setSettling]               = useState(false);
   const [settleError, setSettleError]         = useState('');
@@ -146,16 +147,32 @@ export default function AdminBalance() {
 
   // ── Settlement ────────────────────────────────────────────
   async function handleSettle() {
+    const rawAmount = parseFloat(settleAmount);
+    const currentBalance = Number(balance?.balance || 0);
+    const maxAmount = Math.abs(currentBalance);
+
+    if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
+      setSettleError('Ingresa un monto valido mayor que 0');
+      return;
+    }
+    if (rawAmount > maxAmount) {
+      setSettleError(`El monto no puede ser mayor que ${fmt(maxAmount, sym)}`);
+      return;
+    }
+
     setSettling(true);
     setSettleError('');
     try {
+      const signedAmount = currentBalance < 0 ? -rawAmount : rawAmount;
       const { error } = await db.rpc('create_settlement', {
-        p_admin_id:  profile.id,
-        p_seller_id: selectedSellerId,
-        p_notes:     settleNotes.trim() || null,
+        p_admin_id:   profile.id,
+        p_seller_id:  selectedSellerId,
+        p_amount:     signedAmount,
+        p_notes:      settleNotes.trim() || null,
       });
       if (error) throw error;
       setShowSettleModal(false);
+      setSettleAmount('');
       setSettleNotes('');
       await loadBalance();
     } catch (err) {
@@ -185,6 +202,11 @@ export default function AdminBalance() {
     if (v < 0) return `${fmt(Math.abs(v), sym)} a pagar`;
     return `${fmt(0, sym)} (sin deuda)`;
   }
+
+  const lastSettlement = settlements[0] || null;
+  const previousPending = lastSettlement
+    ? Number(lastSettlement.balance_at_settlement || 0) - Number(lastSettlement.amount || 0)
+    : 0;
 
   // ── Totals for "Hoy" tab ─────────────────────────────────
   const totals = allSellers.reduce(
@@ -322,6 +344,12 @@ export default function AdminBalance() {
                   <p className="text-xs text-slate-400 mb-1">Premios pagados</p>
                   <p className="text-lg font-bold text-amber-400">{fmt(balance.total_prizes_paid, sym)}</p>
                 </div>
+                {previousPending !== 0 && (
+                  <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 col-span-2">
+                    <p className="text-xs text-slate-400 mb-1">Saldo pendiente anterior</p>
+                    <p className={`text-lg font-bold ${balanceColor(previousPending)}`}>{fmt(previousPending, sym)}</p>
+                  </div>
+                )}
               </div>
 
               {/* Balance highlight */}
@@ -348,7 +376,12 @@ export default function AdminBalance() {
                   <IcRefresh /> Actualizar
                 </button>
                 <button
-                  onClick={() => { setSettleNotes(''); setSettleError(''); setShowSettleModal(true); }}
+                  onClick={() => {
+                    setSettleAmount(Math.abs(Number(balance?.balance || 0)).toFixed(2));
+                    setSettleNotes('');
+                    setSettleError('');
+                    setShowSettleModal(true);
+                  }}
                   className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 rounded-xl transition"
                 >
                   <IcScissors /> Hacer corte
@@ -427,9 +460,15 @@ export default function AdminBalance() {
                             </p>
                             {s.notes && <p className="text-xs text-slate-400 mt-1 italic">"{s.notes}"</p>}
                             <div className="flex gap-3 mt-1.5 text-xs text-slate-500">
+                              <span>Liquidado: <span className={Number(s.amount || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{fmt(s.amount, sym)}</span></span>
                               <span>Ventas: <span className="text-slate-300">{fmt(s.total_sales, sym)}</span></span>
                               <span>Premios: <span className="text-amber-400">{fmt(s.total_prizes_paid, sym)}</span></span>
                             </div>
+                            {Number(s.balance_at_settlement || 0) !== Number(s.amount || 0) && (
+                              <p className={`text-xs mt-1 ${balanceColor(Number(s.balance_at_settlement || 0) - Number(s.amount || 0))}`}>
+                                Pendiente despues del corte: {fmt(Number(s.balance_at_settlement || 0) - Number(s.amount || 0), sym)}
+                              </p>
+                            )}
                           </div>
                           <div className="text-right shrink-0">
                             <p className="text-xs text-slate-500 mb-0.5">Balance</p>
@@ -605,9 +644,38 @@ export default function AdminBalance() {
                   {fmt(balance.balance, sym)}
                 </span>
               </div>
+              {previousPending !== 0 && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Pendiente anterior</span>
+                  <span className={balanceColor(previousPending)}>{fmt(previousPending, sym)}</span>
+                </div>
+              )}
               {Number(balance.balance) < 0 && (
                 <p className="text-rose-400 text-xs">
                   Balance negativo: el admin paga {fmt(Math.abs(balance.balance), sym)} al vendedor
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                {Number(balance.balance) >= 0 ? 'Monto recibido del vendedor' : 'Monto entregado al vendedor'}
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={settleAmount}
+                onChange={e => setSettleAmount(e.target.value)}
+                placeholder={String(Math.abs(Number(balance.balance || 0)).toFixed(2))}
+                className="w-full bg-slate-900 border border-slate-600 text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <p className="text-xs text-slate-500 mt-1.5">
+                Maximo para este corte: {fmt(Math.abs(Number(balance.balance || 0)), sym)}
+              </p>
+              {settleAmount && Number(settleAmount) > 0 && Number(settleAmount) < Math.abs(Number(balance.balance || 0)) && (
+                <p className={`text-xs mt-1 ${balanceColor(Number(balance.balance || 0) - (Number(balance.balance || 0) < 0 ? -Number(settleAmount) : Number(settleAmount)))}`}>
+                  Quedara pendiente: {fmt(Number(balance.balance || 0) - (Number(balance.balance || 0) < 0 ? -Number(settleAmount) : Number(settleAmount)), sym)}
                 </p>
               )}
             </div>
@@ -629,7 +697,7 @@ export default function AdminBalance() {
 
             <div className="flex gap-3 pt-1">
               <button
-                onClick={() => setShowSettleModal(false)}
+                onClick={() => { setShowSettleModal(false); setSettleAmount(''); }}
                 disabled={settling}
                 className="flex-1 border border-slate-600 text-slate-300 text-sm py-2.5 rounded-xl hover:bg-slate-700 transition disabled:opacity-50"
               >

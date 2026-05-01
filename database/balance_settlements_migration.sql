@@ -74,12 +74,14 @@ DECLARE
   v_period_from DATE;
   v_period_to   DATE;
   v_last_settle DATE;
+  v_prev_pending NUMERIC := 0;
 BEGIN
   SELECT seller_percentage INTO v_pct FROM profiles WHERE id = p_seller_id;
   v_pct := COALESCE(v_pct, 0);
 
   IF p_date_from IS NULL THEN
-    SELECT period_end INTO v_last_settle
+    SELECT period_end, COALESCE(balance_at_settlement - amount, 0)
+    INTO v_last_settle, v_prev_pending
     FROM settlements
     WHERE seller_id = p_seller_id AND admin_id = p_admin_id
     ORDER BY created_at DESC
@@ -133,7 +135,7 @@ BEGIN
     sa.total * v_pct / 100,
     sa.total - sa.total * v_pct / 100,
     pr.total,
-    (sa.total - sa.total * v_pct / 100) - pr.total,
+    v_prev_pending + (sa.total - sa.total * v_pct / 100) - pr.total,
     v_period_from,
     v_period_to
   FROM sales sa, prizes pr, sinfo si;
@@ -293,6 +295,14 @@ AS $$
       AND (p_lottery_id   IS NULL OR wt.lottery_id   = p_lottery_id)
       AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)
     GROUP BY wt.seller_id
+  ),
+  seller_pending AS (
+    SELECT DISTINCT ON (s.seller_id)
+      s.seller_id,
+      COALESCE(s.balance_at_settlement - s.amount, 0) AS pending
+    FROM settlements s
+    WHERE s.admin_id = p_admin_id
+    ORDER BY s.seller_id, s.created_at DESC
   )
   SELECT
     s.id,
@@ -302,10 +312,11 @@ AS $$
     COALESCE(ss.total, 0) * s.pct / 100,
     COALESCE(ss.total, 0) - COALESCE(ss.total, 0) * s.pct / 100,
     COALESCE(sp.total, 0),
-    (COALESCE(ss.total, 0) - COALESCE(ss.total, 0) * s.pct / 100) - COALESCE(sp.total, 0)
+    COALESCE(pd.pending, 0) + (COALESCE(ss.total, 0) - COALESCE(ss.total, 0) * s.pct / 100) - COALESCE(sp.total, 0)
   FROM sellers s
   LEFT JOIN seller_sales  ss ON ss.seller_id = s.id
   LEFT JOIN seller_prizes sp ON sp.seller_id = s.id
+  LEFT JOIN seller_pending pd ON pd.seller_id = s.id
   ORDER BY s.full_name;
 $$;
 
@@ -319,6 +330,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.create_settlement(
   p_admin_id  UUID,
   p_seller_id UUID,
+  p_amount    NUMERIC DEFAULT NULL,
   p_notes     TEXT DEFAULT NULL
 )
 RETURNS TABLE (
@@ -346,6 +358,7 @@ DECLARE
   v_commission   NUMERIC := 0;
   v_admin_part   NUMERIC := 0;
   v_balance      NUMERIC := 0;
+  v_amount       NUMERIC := 0;
   v_new_id       UUID;
 BEGIN
   IF NOT EXISTS (
@@ -391,20 +404,36 @@ BEGIN
 
   v_commission := v_total_sales * v_pct / 100;
   v_admin_part := v_total_sales - v_commission;
-  v_balance    := v_admin_part - v_total_prizes;
+  SELECT COALESCE(balance_at_settlement - amount, 0)
+  INTO v_amount
+  FROM settlements
+  WHERE seller_id = p_seller_id AND admin_id = p_admin_id
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  v_balance := COALESCE(v_amount, 0) + v_admin_part - v_total_prizes;
+  v_amount := COALESCE(p_amount, v_balance);
+
+  IF v_balance > 0 AND (v_amount < 0 OR v_amount > v_balance) THEN
+    RAISE EXCEPTION 'El monto del corte debe estar entre 0 y %', v_balance;
+  END IF;
+
+  IF v_balance < 0 AND (v_amount > 0 OR v_amount < v_balance) THEN
+    RAISE EXCEPTION 'El monto del corte debe estar entre % y 0', v_balance;
+  END IF;
 
   INSERT INTO settlements (
     admin_id, seller_id, amount, balance_at_settlement,
     total_sales, total_commission, total_prizes_paid,
     notes, period_start, period_end, created_by
   ) VALUES (
-    p_admin_id, p_seller_id, v_balance, v_balance,
+    p_admin_id, p_seller_id, v_amount, v_balance,
     v_total_sales, v_commission, v_total_prizes,
     p_notes, v_period_from, v_period_to, p_admin_id
   ) RETURNING id INTO v_new_id;
 
   RETURN QUERY
-  SELECT v_new_id, v_balance, v_balance, v_total_sales, v_commission, v_total_prizes,
+  SELECT v_new_id, v_amount, v_balance, v_total_sales, v_commission, v_total_prizes,
          v_period_from, v_period_to, NOW()::TIMESTAMPTZ;
 END;
 $$;
@@ -493,6 +522,7 @@ DECLARE
   v_period_from DATE;
   v_period_to   DATE;
   v_last_settle DATE;
+  v_prev_pending NUMERIC := 0;
 BEGIN
   IF p_seller_id != auth.uid() THEN
     RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
@@ -505,7 +535,8 @@ BEGIN
   v_pct := COALESCE(v_pct, 0);
 
   IF p_date_from IS NULL THEN
-    SELECT period_end INTO v_last_settle
+    SELECT period_end, COALESCE(balance_at_settlement - amount, 0)
+    INTO v_last_settle, v_prev_pending
     FROM settlements
     WHERE seller_id = p_seller_id AND admin_id = v_admin_id
     ORDER BY created_at DESC
@@ -558,7 +589,7 @@ BEGIN
     sa.total * v_pct / 100,
     sa.total - sa.total * v_pct / 100,
     pr.total,
-    (sa.total - sa.total * v_pct / 100) - pr.total,
+    v_prev_pending + (sa.total - sa.total * v_pct / 100) - pr.total,
     v_period_from,
     v_period_to
   FROM sales sa, prizes pr, sinfo si;
@@ -675,7 +706,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_seller_balance(UUID,UUID,DATE,DATE,UUID,UUID)            TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_seller_balance_detail(UUID,UUID,DATE,DATE,UUID,UUID)     TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_all_sellers_balance(UUID,DATE,DATE,UUID,UUID)            TO authenticated;
-GRANT EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,TEXT)                            TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,NUMERIC,TEXT)                    TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_settlements_history(UUID,UUID)                           TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_seller_balance_for_seller(UUID,DATE,DATE,UUID,UUID)      TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_seller_balance_detail_for_seller(UUID,DATE,DATE,UUID,UUID) TO authenticated;
