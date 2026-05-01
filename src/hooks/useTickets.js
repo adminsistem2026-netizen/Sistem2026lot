@@ -62,7 +62,7 @@ export function useTickets() {
         lottery_display_name: lottery.display_name,
         draw_time_label: drawTime.time_label,
         currency_symbol: lottery.currency_symbol,
-        numbers,
+        numbers: JSON.parse(JSON.stringify(numbers)),
       };
     } finally {
       setSaving(false);
@@ -70,10 +70,9 @@ export function useTickets() {
   }
 
   const loadTodayTickets = useCallback(async (filters = {}) => {
-    const adminId = profile?.parent_admin_id || profile?.id;
     let query = db
       .from('tickets')
-      .select(`*, ticket_numbers(*)`)
+      .select('*')
       .eq('seller_id', profile.id)
       .eq('sale_date', filters.date || today())
       .eq('is_cancelled', false)
@@ -82,8 +81,30 @@ export function useTickets() {
     if (filters.lottery_id) query = query.eq('lottery_id', filters.lottery_id);
     if (filters.draw_time_id) query = query.eq('draw_time_id', filters.draw_time_id);
 
-    const { data } = await query;
-    return data || [];
+    const { data: tickets } = await query;
+    if (!tickets || tickets.length === 0) return [];
+
+    // Fetch ticket_numbers per ticket individually to avoid InsForge nested-select
+    // and .in() SDK bugs (same workaround used in app.js)
+    const numsResults = await Promise.all(
+      tickets.map(t =>
+        db.from('ticket_numbers')
+          .select('ticket_id, number, pieces, unit_price, subtotal')
+          .eq('ticket_id', t.id)
+          .then(({ data }) => data || [])
+      )
+    );
+
+    const numsByTicket = {};
+    numsResults.flat().forEach(n => {
+      if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
+      numsByTicket[n.ticket_id].push(n);
+    });
+
+    return tickets.map(t => ({
+      ...t,
+      ticket_numbers: numsByTicket[t.id] || [],
+    }));
   }, [profile]);
 
   async function markAsPaid(ticketId) {

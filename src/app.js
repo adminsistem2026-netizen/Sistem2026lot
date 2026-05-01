@@ -346,22 +346,38 @@ function adaptTicket(t) {
 async function loadTickets(filters = {}) {
     try {
         const isSeller = currentProfile && currentProfile.parent_admin_id;
-        const { data: ticketsData, error: ticketsError } = await db.rpc('get_user_tickets', {
+
+        // Intentar RPC; si no existe usar query directa como fallback
+        let result = [];
+        const { data: rpcData, error: rpcError } = await db.rpc('get_user_tickets', {
             p_seller_id: isSeller ? currentProfile.id : null,
             p_admin_id:  isSeller ? null : (currentProfile?.id || null),
         });
-        if (ticketsError) { console.error('loadTickets error:', ticketsError); return []; }
+        if (!rpcError) {
+            result = rpcData || [];
+        } else {
+            // Fallback: query directa a tickets
+            console.warn('get_user_tickets RPC no disponible, usando query directa');
+            const q = isSeller
+                ? db.from('tickets').select('*').eq('seller_id', currentProfile.id).eq('is_cancelled', false).order('created_at', { ascending: false })
+                : db.from('tickets').select('*').eq('admin_id', currentProfile.id).eq('is_cancelled', false).order('created_at', { ascending: false });
+            const { data: fallback } = await q;
+            result = fallback || [];
+        }
 
-        const result = ticketsData || [];
         if (result.length === 0) return [];
 
-        // Fetch ticket_numbers via RPC para evitar bug .in() de InsForge y traer solo los del usuario
-        const { data: numsData } = await db.rpc('get_ticket_numbers_for_user', {
-            p_seller_id: isSeller ? currentProfile.id : null,
-            p_admin_id:  isSeller ? null : currentProfile?.id || null,
-        });
+        // Fetch ticket_numbers individualmente por ticket (evita RPCs inexistentes y el bug .in() de InsForge)
+        const numsResults = await Promise.all(
+            result.map(t =>
+                db.from('ticket_numbers')
+                    .select('ticket_id, number, pieces, unit_price, subtotal')
+                    .eq('ticket_id', t.id)
+                    .then(({ data }) => data || [])
+            )
+        );
         const numsByTicket = {};
-        (numsData || []).forEach(n => {
+        numsResults.flat().forEach(n => {
             if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
             numsByTicket[n.ticket_id].push(n);
         });
@@ -2306,76 +2322,119 @@ function resetForm() {
     document.getElementById('totalValue').innerText = 'VALOR DE TICKET: 0.00$';
 }
 
-function showTicketPreview(ticket) {
+async function showTicketPreview(ticket) {
     currentPreviewTicket = ticket;
     const preview = document.getElementById('ticketPreview');
     const content = document.getElementById('ticketContent');
 
-    // Format sale datetime like the printed ticket
-    let formattedDateTime = ticket.saleDate || '';
+    // Date formatting
+    const d = new Date(ticket.datetime);
+    let dayCapitalized = '', dateStr = '', timeStr = '';
     try {
-        const d = new Date(ticket.datetime);
         if (!isNaN(d)) {
-            const dd   = String(d.getDate()).padStart(2,'0');
-            const mm   = String(d.getMonth()+1).padStart(2,'0');
-            const yyyy = d.getFullYear();
-            const hh   = String(d.getHours()).padStart(2,'0');
-            const min  = String(d.getMinutes()).padStart(2,'0');
-            formattedDateTime = `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+            const dayRaw = d.toLocaleDateString('es-ES', { weekday: 'long' });
+            dayCapitalized = dayRaw.charAt(0).toUpperCase() + dayRaw.slice(1);
+            dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            timeStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
         }
     } catch(e) {}
 
-    const lotteryName = getDisplayName(ticket.lottery) || ticket.lottery || '';
-    const currency = ticket.currencySymbol || '$';
-    const divider = `<div style="border-bottom:1px dashed #000;margin:5px 0;"></div>`;
+    const lotteryLabel = getDisplayName(ticket.lottery) || ticket.lottery || '';
+    const drawLabel    = ticket.drawTime || '';
+    const currency     = ticket.currencySymbol || '$';
+    const nums         = ticket.numbers || [];
+
+    // Unit price per tipo (subTotal / pieces)
+    const chanceItem = nums.find(n => n.number.length === 2);
+    const paleItem   = nums.find(n => n.number.length === 4);
+    const chancePrice = (chanceItem && parseInt(chanceItem.pieces) > 0)
+        ? (parseFloat(chanceItem.subTotal || 0) / parseInt(chanceItem.pieces)).toFixed(2) : null;
+    const palePrice = (paleItem && parseInt(paleItem.pieces) > 0)
+        ? (parseFloat(paleItem.subTotal || 0) / parseInt(paleItem.pieces)).toFixed(2) : null;
+    const pricesLine = [
+        chancePrice && parseFloat(chancePrice) > 0 ? `Chance ${chancePrice}` : '',
+        palePrice   && parseFloat(palePrice)   > 0 ? `Pale ${palePrice}`     : '',
+    ].filter(Boolean).join('&nbsp;&nbsp;');
+
+    const totalPieces = nums.reduce((s, n) => s + parseInt(n.pieces || 0, 10), 0);
+
+    // Generate QR as inline data URL so it queda dentro del área capturada
+    let qrDataUrl = '';
+    try {
+        const tmpDiv = document.createElement('div');
+        tmpDiv.style.cssText = 'position:fixed;left:-9999px;top:-9999px;';
+        document.body.appendChild(tmpDiv);
+        new QRCode(tmpDiv, {
+            text: ticket.id || ticket.ticketNumber || 'N/A',
+            width: 130,
+            height: 130,
+            colorDark: '#000000',
+            colorLight: '#ffffff',
+            correctLevel: QRCode.CorrectLevel.H,
+        });
+        await new Promise(r => setTimeout(r, 80));
+        const qrCanvas = tmpDiv.querySelector('canvas');
+        if (qrCanvas) qrDataUrl = qrCanvas.toDataURL();
+        document.body.removeChild(tmpDiv);
+    } catch(e) {}
+
+    // Ocultar el div #qrcode separado (el QR ya está inline)
+    document.getElementById('qrcode').style.display = 'none';
 
     content.innerHTML = `
-    <div style="font-family:'Courier New',Courier,monospace;background:white;padding:14px 16px;max-width:320px;margin:0 auto;">
+    <div id="ticketCapture" style="background:#fff;font-family:Arial,Helvetica,sans-serif;color:#000;width:100%;">
 
-      <!-- Header -->
-      <div style="text-align:center;font-size:1.5em;font-weight:bold;letter-spacing:1px;">${lotteryName}</div>
-      ${ticket.drawTime ? `<div style="text-align:center;font-size:0.9em;">Sorteo: ${ticket.drawTime}</div>` : ''}
-      <div style="text-align:center;font-size:0.9em;">Venta: ${formattedDateTime}</div>
-      ${divider}
-
-      <!-- Column headers -->
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin:3px 0;">
-        <span style="font-size:1.1em;font-weight:bold;">CIFRA&nbsp;&nbsp;CANT</span>
-        <span style="font-size:0.82em;">SUBTOTAL</span>
+      <div style="text-align:center;padding:14px 12px 12px;border-bottom:1.5px solid #000;">
+        <div style="font-size:26px;font-weight:bold;line-height:1.25;">${dayCapitalized}</div>
+        <div style="font-size:26px;font-weight:bold;line-height:1.25;">${dateStr}</div>
+        <div style="font-size:22px;font-weight:bold;line-height:1.3;margin-top:2px;">${lotteryLabel}${drawLabel ? ' ' + drawLabel : ''}</div>
       </div>
-      <div style="border-bottom:1px solid #000;margin-bottom:4px;"></div>
 
-      <!-- Number rows -->
-      ${ticket.numbers.map(n => `
-        <div style="margin:4px 0 0 0;">
-          <div style="font-size:1.25em;font-weight:bold;">*${n.number}*&nbsp;&nbsp;*${n.pieces}*</div>
-          <div style="text-align:right;font-size:0.95em;">${currency}${parseFloat(n.subTotal||0).toFixed(2)}</div>
-          ${divider}
-        </div>
-      `).join('')}
+      <div style="padding:10px 14px;border-bottom:1.5px solid #000;font-size:14px;line-height:1.7;">
+        <div>orderNo: <strong>${ticket.id || ticket.ticketNumber || ''}</strong></div>
+        <div>Pedido: ${dateStr} ${timeStr}</div>
+        ${pricesLine ? `<div style="margin-top:2px;">${pricesLine}</div>` : ''}
+      </div>
 
-      <!-- Total -->
-      <div style="text-align:right;font-size:1.35em;font-weight:bold;margin:4px 0;">TOTAL: ${currency}${parseFloat(ticket.total||0).toFixed(2)}</div>
+      <table style="width:100%;border-collapse:collapse;color:#000;">
+        <thead>
+          <tr style="border-bottom:1.5px solid #000;">
+            <th style="padding:8px 14px;text-align:left;font-weight:600;font-size:15px;">Numero</th>
+            <th style="padding:8px 14px;text-align:center;font-weight:600;font-size:15px;">Cantidad</th>
+            <th style="padding:8px 14px;text-align:right;font-weight:600;font-size:15px;">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${nums.map(n => `
+            <tr style="border-bottom:1px solid #e5e5e5;">
+              <td style="padding:6px 14px;text-align:left;font-weight:bold;font-size:18px;">*${n.number}*</td>
+              <td style="padding:6px 14px;text-align:center;font-weight:bold;font-size:18px;">${n.pieces}</td>
+              <td style="padding:6px 14px;text-align:right;font-weight:bold;font-size:18px;">${parseFloat(n.subTotal||0).toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="border-top:2.5px solid #000;">
+            <td style="padding:8px 14px;font-weight:bold;font-size:17px;">Total</td>
+            <td style="padding:8px 14px;text-align:center;font-weight:bold;font-size:17px;">${totalPieces}</td>
+            <td style="padding:8px 14px;text-align:right;font-weight:bold;font-size:17px;">${currency}${parseFloat(ticket.total||0).toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
 
-      <!-- Footer -->
-      <div style="font-size:0.85em;margin-top:4px;">Vendedor: ${sellerName}</div>
-      ${ticket.customerName ? `<div style="font-size:0.85em;">Cliente: ${ticket.customerName}</div>` : ''}
-      ${ticket.ticketNumber ? `<div style="font-size:0.8em;font-weight:bold;">#${ticket.ticketNumber}</div>` : ''}
-      <div style="font-size:0.75em;word-break:break-all;color:#555;">${ticket.id}</div>
-      <div style="font-size:0.85em;">SIN TICKET NO HAY RECLAMO</div>
+      <div style="border-top:1.5px solid #000;padding:10px 14px;">
+        ${sellerName ? `<div style="text-align:center;font-weight:bold;font-size:16px;">-${sellerName}-</div>` : ''}
+        ${ticket.customerName ? `<div style="text-align:left;font-size:14px;margin-top:4px;">${ticket.customerName}</div>` : ''}
+      </div>
+
+      ${qrDataUrl ? `<div style="border-top:1.5px solid #000;padding:14px 12px;display:flex;justify-content:center;"><img src="${qrDataUrl}" style="width:120px;height:120px;display:block;" /></div>` : ''}
+
+      <div style="border-top:1.5px solid #000;padding:10px 14px;text-align:center;">
+        <span style="color:#3b82f6;font-size:13px;font-weight:500;">Revisa su lista antes del sorteo</span>
+      </div>
+
     </div>
     `;
-
-    const qrDiv = document.getElementById('qrcode');
-    qrDiv.innerHTML = '';
-    new QRCode(qrDiv, {
-        text: ticket.id,
-        width: 100,
-        height: 100,
-        colorDark: '#000000',
-        colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel.H,
-    });
 
     const actionsDiv = preview.querySelector('.ticket-actions');
     if (ticket.paid) {
@@ -3762,23 +3821,16 @@ async function captureAndShareScreen() {
 
 async function compartirTicket() {
     try {
-        const ticketElement = document.getElementById('ticketPreview');
-        const actionButtons = ticketElement.querySelector('.ticket-actions');
-        actionButtons.style.display = 'none';
-        actionButtons.style.visibility = 'hidden';
-
-        await new Promise(resolve => setTimeout(resolve, 100));
+        const ticketElement = document.getElementById('ticketCapture');
+        if (!ticketElement) { showNotification('No se pudo generar el ticket.'); return; }
 
         const canvas = await html2canvas(ticketElement, {
-            scale: 2,
+            scale: 3,
             backgroundColor: '#ffffff',
             logging: false,
             useCORS: true,
             allowTaint: true,
         });
-
-        actionButtons.style.display = 'grid';
-        actionButtons.style.visibility = 'visible';
 
         const base64 = canvas.toDataURL('image/png');
         if (typeof Android !== 'undefined') {
@@ -3787,12 +3839,6 @@ async function compartirTicket() {
     } catch (error) {
         console.error('Error al compartir:', error);
         showNotification('No se pudo compartir el ticket. Intente de nuevo.');
-        const ticketElement = document.getElementById('ticketPreview');
-        const actionButtons = ticketElement.querySelector('.ticket-actions');
-        if (actionButtons) {
-            actionButtons.style.display = 'grid';
-            actionButtons.style.visibility = 'visible';
-        }
     }
 }
 

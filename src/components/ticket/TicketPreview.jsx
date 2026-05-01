@@ -12,28 +12,34 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
   if (!ticket) return null;
 
   const date = new Date(ticket.created_at);
-  const hours = date.getHours() % 12 || 12;
-  const minutes = date.getMinutes().toString().padStart(2, '0');
-  const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
   const sym = ticket.currency_symbol || '$';
   const sellerName = profile?.seller_code || ticket.seller_name || profile?.full_name || '';
+  const numbers = ticket.numbers || [];
+
+  const dayOfWeek = date.toLocaleDateString('es-ES', { weekday: 'long' });
+  const dayCapitalized = dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1);
+  const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const timeStr = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`;
+
+  const unitPriceOf = (n) => Number(n.unitPrice ?? n.unit_price ?? 0);
+  const chanceNum = numbers.find(n => n.number.length === 2);
+  const paleNum   = numbers.find(n => n.number.length === 4);
+  const chancePrice = chanceNum ? unitPriceOf(chanceNum) : null;
+  const palePrice   = paleNum   ? unitPriceOf(paleNum)   : null;
+  const totalPieces = numbers.reduce((s, n) => s + Number(n.pieces), 0);
 
   async function captureTicket() {
     const el = ticketRef.current;
     if (!el) return null;
-    const actionsEl = el.querySelector('[data-actions]');
-    if (actionsEl) actionsEl.style.display = 'none';
     try {
-      const canvas = await html2canvas(el, {
-        scale: 2,
+      return await html2canvas(el, {
+        scale: 3,
         backgroundColor: '#ffffff',
         useCORS: true,
+        allowTaint: true,
         logging: false,
       });
-      if (actionsEl) actionsEl.style.display = '';
-      return canvas;
     } catch {
-      if (actionsEl) actionsEl.style.display = '';
       return null;
     }
   }
@@ -42,7 +48,6 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
     const canvas = await captureTicket();
     if (!canvas) { showToast('Error al generar imagen', 'error'); return; }
 
-    // Intentar compartir como imagen (Android abrirá sheet con WhatsApp)
     try {
       if (navigator.canShare) {
         const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
@@ -54,22 +59,22 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
       }
     } catch { /* continúa con fallback */ }
 
-    // Fallback Android nativo
     if (typeof Android !== 'undefined' && Android.shareTicketFromAndroid) {
       Android.shareTicketFromAndroid(canvas.toDataURL('image/png'));
       return;
     }
 
     // Fallback web: texto a WhatsApp
+    const hours = date.getHours() % 12 || 12;
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
     const lines = [
       `*${ticket.lottery_display_name}* — ${ticket.draw_time_label}`,
       `📅 ${date.toLocaleDateString('es-ES')} ${hours}:${minutes} ${ampm}`,
       sellerName ? `👤 ${sellerName}` : '',
       `🎫 ${ticket.ticket_number}`,
       '---',
-      ...(ticket.numbers || []).map(n =>
-        `*${n.number}*/${n.pieces}T/${sym}${Number(n.subtotal).toFixed(2)}`
-      ),
+      ...numbers.map(n => `*${n.number}*/${n.pieces}T/${sym}${Number(n.subtotal).toFixed(2)}`),
       '---',
       `*TOTAL: ${sym}${Number(ticket.total_amount).toFixed(2)}*`,
       '_SIN TICKET NO HAY RECLAMO_',
@@ -94,13 +99,11 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
     const lines = [
       `LOTERÍA — ${ticket.lottery_display_name}`,
       `Sorteo: ${ticket.draw_time_label}`,
-      `Fecha: ${date.toLocaleDateString('es-ES')} ${hours}:${minutes} ${ampm}`,
+      `Fecha: ${dateStr} ${timeStr}`,
       `Ticket: ${ticket.ticket_number}`,
       sellerName ? `Vendedor: ${sellerName}` : '',
       '---',
-      ...(ticket.numbers || []).map(n =>
-        `*${n.number}*/${n.pieces}T/${sym}${Number(n.subtotal).toFixed(2)}`
-      ),
+      ...numbers.map(n => `*${n.number}*/${n.pieces}T/${sym}${Number(n.subtotal).toFixed(2)}`),
       '---',
       `TOTAL: ${sym}${Number(ticket.total_amount).toFixed(2)}`,
       'SIN TICKET NO HAY RECLAMO',
@@ -127,6 +130,19 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
     }
   }
 
+  /* ─── inline styles para garantizar render fiel en html2canvas ─── */
+  const S = {
+    ticket: {
+      backgroundColor: '#ffffff',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      color: '#000000',
+      width: '100%',
+    },
+    borderSolid: { borderBottom: '1.5px solid #000000' },
+    borderTop:   { borderTop:    '1.5px solid #000000' },
+    borderTop2:  { borderTop:    '2.5px solid #000000' },
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50">
       <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-sm shadow-2xl max-h-[95vh] flex flex-col">
@@ -136,146 +152,161 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
         </div>
 
-        {/* Ticket scrollable */}
         <div className="overflow-y-auto flex-1">
-          <div ref={ticketRef} className="bg-white px-5 pt-4 pb-2">
 
-            {/* ══ HEADER ══ */}
-            <div className="text-center pb-3 mb-3 border-b-2 border-dashed border-gray-400">
-              <p className="text-3xl font-black tracking-widest text-gray-900">APM11</p>
-              {sellerName && (
-                <p className="text-sm font-bold text-gray-600 mt-0.5">{sellerName}</p>
-              )}
-              <p className="text-[11px] text-gray-400 mt-1 tracking-wide">SIN TICKET NO HAY RECLAMO</p>
+          {/* ══ TICKET IMPRIMIBLE ══ */}
+          <div ref={ticketRef} style={S.ticket}>
+
+            {/* HEADER: día / fecha / lotería */}
+            <div style={{ textAlign: 'center', padding: '14px 12px 12px', ...S.borderSolid }}>
+              <div style={{ fontSize: '28px', fontWeight: 'bold', lineHeight: '1.25', color: '#000' }}>
+                {dayCapitalized}
+              </div>
+              <div style={{ fontSize: '28px', fontWeight: 'bold', lineHeight: '1.25', color: '#000' }}>
+                {dateStr}
+              </div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', lineHeight: '1.3', color: '#000', marginTop: '2px' }}>
+                {ticket.lottery_display_name}
+                {ticket.draw_time_label ? ` ${ticket.draw_time_label}` : ''}
+              </div>
             </div>
 
-            {/* ══ INFO ══ */}
-            <div className="text-xs space-y-0.5 mb-3 font-mono">
-              <div className="flex justify-between">
-                <span className="text-gray-500">FECHA</span>
-                <span className="font-bold text-gray-800">
-                  {date.toLocaleDateString('es-ES')} {hours}:{minutes} {ampm}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">LOTERÍA</span>
-                <span className="font-bold text-gray-800 text-right max-w-[60%] truncate">
-                  {ticket.lottery_display_name}
-                </span>
-              </div>
-              {ticket.draw_time_label && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">SORTEO</span>
-                  <span className="font-bold text-gray-800">{ticket.draw_time_label}</span>
+            {/* INFO: orderNo / Pedido / precios */}
+            <div style={{ padding: '10px 14px', ...S.borderSolid, fontSize: '14px', lineHeight: '1.7', color: '#000' }}>
+              <div>orderNo: <strong>{ticket.ticket_number}</strong></div>
+              <div>Pedido: {dateStr} {timeStr}</div>
+              {(chancePrice || palePrice) && (
+                <div style={{ marginTop: '2px' }}>
+                  {chancePrice > 0 && `Chance ${chancePrice.toFixed(2)}`}
+                  {chancePrice > 0 && palePrice > 0 && '  '}
+                  {palePrice > 0 && `Pale ${palePrice.toFixed(2)}`}
+                </div>
+              )}
+            </div>
+
+            {/* TABLA DE NÚMEROS */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', color: '#000' }}>
+              <thead>
+                <tr style={S.borderSolid}>
+                  <th style={{ padding: '8px 14px', textAlign: 'left',   fontWeight: '600', fontSize: '15px' }}>Numero</th>
+                  <th style={{ padding: '8px 14px', textAlign: 'center', fontWeight: '600', fontSize: '15px' }}>Cantidad</th>
+                  <th style={{ padding: '8px 14px', textAlign: 'right',  fontWeight: '600', fontSize: '15px' }}>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {numbers.map((n, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #e5e5e5' }}>
+                    <td style={{ padding: '6px 14px', textAlign: 'left',   fontWeight: 'bold', fontSize: '18px' }}>*{n.number}*</td>
+                    <td style={{ padding: '6px 14px', textAlign: 'center', fontWeight: 'bold', fontSize: '18px' }}>{n.pieces}</td>
+                    <td style={{ padding: '6px 14px', textAlign: 'right',  fontWeight: 'bold', fontSize: '18px' }}>{Number(n.subtotal).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={S.borderTop2}>
+                  <td style={{ padding: '8px 14px', fontWeight: 'bold', fontSize: '17px' }}>Total</td>
+                  <td style={{ padding: '8px 14px', textAlign: 'center', fontWeight: 'bold', fontSize: '17px' }}>{totalPieces}</td>
+                  <td style={{ padding: '8px 14px', textAlign: 'right',  fontWeight: 'bold', fontSize: '17px' }}>
+                    {sym}{Number(ticket.total_amount).toFixed(2)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+
+            {/* VENDEDOR / CLIENTE */}
+            <div style={{ ...S.borderTop, padding: '10px 14px' }}>
+              {sellerName && (
+                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16px', color: '#000' }}>
+                  -{sellerName}-
                 </div>
               )}
               {ticket.customer_name && (
-                <div className="flex justify-between">
-                  <span className="text-gray-500">CLIENTE</span>
-                  <span className="font-bold text-gray-800">{ticket.customer_name}</span>
+                <div style={{ textAlign: 'left', fontSize: '14px', marginTop: '4px', color: '#000' }}>
+                  {ticket.customer_name}
                 </div>
               )}
-              <div className="flex justify-between">
-                <span className="text-gray-500">ID</span>
-                <span className="font-bold text-gray-700 text-[10px]">{ticket.ticket_number}</span>
-              </div>
             </div>
 
-            {/* ══ QR ══ */}
-            <div className="flex justify-center my-3">
-              <QRCodeSVG value={ticket.ticket_number} size={100} />
+            {/* QR */}
+            <div style={{ ...S.borderTop, padding: '14px 12px', display: 'flex', justifyContent: 'center' }}>
+              <QRCodeSVG value={ticket.ticket_number} size={120} />
             </div>
 
-            {/* ══ NÚMEROS ══ */}
-            <div className="border-t-2 border-b-2 border-dashed border-gray-400 py-3 mb-3">
-              {(ticket.numbers || []).map((n, i) => (
-                <div key={i} className="flex justify-between items-baseline font-mono py-0.5">
-                  <span className="text-xl font-black text-gray-900">*{n.number}*</span>
-                  <span className="text-sm font-bold text-gray-500">{n.pieces}T</span>
-                  <span className="text-base font-bold text-gray-800">
-                    {sym}{Number(n.subtotal).toFixed(2)}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {/* ══ TOTAL ══ */}
-            <div className="text-center pb-3 border-b-2 border-dashed border-gray-400 mb-1">
-              <p className="text-xs text-gray-400 font-mono tracking-widest">TOTAL A PAGAR</p>
-              <p className="text-3xl font-black text-gray-900 font-mono">
-                {sym}{Number(ticket.total_amount).toFixed(2)}
-              </p>
-            </div>
-
-            {/* ══ ACCIONES (ocultas en imagen) ══ */}
-            <div data-actions className="pt-3 pb-2 space-y-2">
-              {/* Fila 1: COBRAR + COPIAR */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => onMarkPaid(ticket)}
-                  disabled={ticket.is_paid}
-                  className={`py-3 rounded-xl text-sm font-bold uppercase tracking-wide ${
-                    ticket.is_paid
-                      ? 'bg-gray-100 text-gray-400'
-                      : 'bg-gradient-to-br from-[#28a745] to-[#20c997] text-white active:opacity-80'
-                  }`}
-                >
-                  {ticket.is_paid ? '✓ COBRADO' : 'COBRAR'}
-                </button>
-                <button
-                  onClick={handleCopy}
-                  className="py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gradient-to-br from-[#8e9eab] to-[#6c7b7f] text-white active:opacity-80"
-                >
-                  COPIAR
-                </button>
-              </div>
-
-              {/* Fila 2: WHATSAPP (ancho completo) */}
-              <button
-                onClick={handleShareWhatsapp}
-                className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gradient-to-br from-[#25D366] to-[#128C7E] text-white active:opacity-80"
-              >
-                📲 COMPARTIR WHATSAPP
-              </button>
-
-              {/* Fila 3: COMPARTIR + CERRAR */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={handleShare}
-                  className="py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gradient-to-br from-[#007bff] to-[#0056b3] text-white active:opacity-80"
-                >
-                  COMPARTIR
-                </button>
-                <button
-                  onClick={onClose}
-                  className="py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gray-100 text-gray-700 active:bg-gray-200"
-                >
-                  CERRAR
-                </button>
-              </div>
-
-              {/* Imprimir */}
-              {onPrint && (
-                <button
-                  onClick={() => onPrint(ticket)}
-                  className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gray-900 text-white active:opacity-80"
-                >
-                  🖨 IMPRIMIR
-                </button>
-              )}
-
-              {/* Anular */}
-              {!ticket.is_cancelled && !ticket.is_paid && onCancel && (
-                <button
-                  onClick={() => onCancel(ticket)}
-                  className="w-full py-2 rounded-xl text-xs text-red-400 active:text-red-600 font-semibold"
-                >
-                  Anular ticket
-                </button>
-              )}
+            {/* FOOTER */}
+            <div style={{ ...S.borderTop, padding: '10px 14px', textAlign: 'center' }}>
+              <span style={{ color: '#3b82f6', fontSize: '13px', fontWeight: '500' }}>
+                Revisa su lista antes del sorteo
+              </span>
             </div>
 
           </div>
+          {/* fin ticket imprimible */}
+
+          {/* ══ ACCIONES ══ */}
+          <div className="px-4 pt-3 pb-4 space-y-2">
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => onMarkPaid(ticket)}
+                disabled={ticket.is_paid}
+                className={`py-3 rounded-xl text-sm font-bold uppercase tracking-wide ${
+                  ticket.is_paid
+                    ? 'bg-gray-100 text-gray-400'
+                    : 'bg-gradient-to-br from-[#28a745] to-[#20c997] text-white active:opacity-80'
+                }`}
+              >
+                {ticket.is_paid ? '✓ COBRADO' : 'COBRAR'}
+              </button>
+              <button
+                onClick={handleCopy}
+                className="py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gradient-to-br from-[#8e9eab] to-[#6c7b7f] text-white active:opacity-80"
+              >
+                COPIAR
+              </button>
+            </div>
+
+            <button
+              onClick={handleShareWhatsapp}
+              className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gradient-to-br from-[#25D366] to-[#128C7E] text-white active:opacity-80"
+            >
+              📲 COMPARTIR WHATSAPP
+            </button>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleShare}
+                className="py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gradient-to-br from-[#007bff] to-[#0056b3] text-white active:opacity-80"
+              >
+                COMPARTIR
+              </button>
+              <button
+                onClick={onClose}
+                className="py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gray-100 text-gray-700 active:bg-gray-200"
+              >
+                CERRAR
+              </button>
+            </div>
+
+            {onPrint && (
+              <button
+                onClick={() => onPrint(ticket)}
+                className="w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wide bg-gray-900 text-white active:opacity-80"
+              >
+                🖨 IMPRIMIR
+              </button>
+            )}
+
+            {!ticket.is_cancelled && !ticket.is_paid && onCancel && (
+              <button
+                onClick={() => onCancel(ticket)}
+                className="w-full py-2 rounded-xl text-xs text-red-400 active:text-red-600 font-semibold"
+              >
+                Anular ticket
+              </button>
+            )}
+
+          </div>
+
         </div>
       </div>
     </div>
