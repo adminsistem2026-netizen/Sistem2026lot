@@ -368,17 +368,16 @@ async function loadTickets(filters = {}) {
                 numsByTicket[n.ticket_id].push(n);
             });
         } else {
-            // Fallback: fetch individual por ticket usando await
+            // Fallback: fetch individual por ticket
+            // No seleccionamos ticket_id (puede no estar en schema cache de InsForge);
+            // usamos t.id directamente como clave
             for (const t of result) {
                 if (!t.id) continue;
                 const { data: nums } = await db.from('ticket_numbers')
-                    .select('ticket_id, number, pieces, unit_price, subtotal')
+                    .select('number, pieces, unit_price, subtotal')
                     .eq('ticket_id', t.id);
-                if (nums) {
-                    nums.forEach(n => {
-                        if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
-                        numsByTicket[n.ticket_id].push(n);
-                    });
+                if (nums && nums.length > 0) {
+                    numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
                 }
             }
         }

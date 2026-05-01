@@ -84,22 +84,18 @@ export function useTickets() {
     const { data: tickets } = await query;
     if (!tickets || tickets.length === 0) return [];
 
-    // Fetch ticket_numbers per ticket individually to avoid InsForge nested-select
-    // and .in() SDK bugs (same workaround used in app.js)
-    const numsResults = await Promise.all(
-      tickets.map(t =>
-        db.from('ticket_numbers')
-          .select('ticket_id, number, pieces, unit_price, subtotal')
-          .eq('ticket_id', t.id)
-          .then(({ data }) => data || [])
-      )
-    );
-
+    // Fetch ticket_numbers individually (workaround InsForge schema cache bugs)
+    // ticket_id not selected to avoid schema-cache issues; assigned from t.id
     const numsByTicket = {};
-    numsResults.flat().forEach(n => {
-      if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
-      numsByTicket[n.ticket_id].push(n);
-    });
+    for (const t of tickets) {
+      if (!t.id) continue;
+      const { data: nums } = await db.from('ticket_numbers')
+        .select('number, pieces, unit_price, subtotal')
+        .eq('ticket_id', t.id);
+      if (nums && nums.length > 0) {
+        numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
+      }
+    }
 
     return tickets.map(t => ({
       ...t,
