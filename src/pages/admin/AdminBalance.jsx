@@ -119,7 +119,14 @@ export default function AdminBalance() {
       const [{ data: balData }, { data: detData }, { data: settData }] = await Promise.all([
         db.rpc('get_seller_balance',        params),
         db.rpc('get_seller_balance_detail', params),
-        db.rpc('get_settlements_history',   { p_admin_id: profile.id, p_seller_id: selectedSellerId }),
+        db.rpc('get_settlements_history',   {
+          p_admin_id: profile.id,
+          p_seller_id: selectedSellerId,
+          p_date_from: dateFrom || null,
+          p_date_to: dateTo || null,
+          p_lottery_id: lotteryId || null,
+          p_draw_time_id: drawTimeId || null,
+        }),
       ]);
       setBalance(balData?.[0] || null);
       setDetail(detData || []);
@@ -169,6 +176,10 @@ export default function AdminBalance() {
         p_seller_id:  selectedSellerId,
         p_amount:     signedAmount,
         p_notes:      settleNotes.trim() || null,
+        p_date_from:  dateFrom || null,
+        p_date_to:    dateTo || null,
+        p_lottery_id: lotteryId || null,
+        p_draw_time_id: drawTimeId || null,
       });
       if (error) throw error;
       setShowSettleModal(false);
@@ -201,6 +212,23 @@ export default function AdminBalance() {
     if (v > 0) return `${fmt(v, sym)} a cobrar`;
     if (v < 0) return `${fmt(Math.abs(v), sym)} a pagar`;
     return `${fmt(0, sym)} (sin deuda)`;
+  }
+
+  function currentScopeLabel() {
+    const lotteryName = lotteries.find(l => l.id === lotteryId)?.display_name;
+    const drawName = drawTimes.find(d => d.id === drawTimeId)?.time_label;
+    const from = dateFrom ? fmtDate(dateFrom) : null;
+    const to = dateTo ? fmtDate(dateTo) : null;
+
+    if (!lotteryName && !drawName && !from && !to) {
+      return 'Global';
+    }
+
+    const parts = [];
+    if (from || to) parts.push(`Fecha: ${from || 'inicio'} -> ${to || 'hoy'}`);
+    if (lotteryName) parts.push(`Loteria: ${lotteryName}`);
+    if (drawName) parts.push(`Sorteo: ${drawName}`);
+    return parts.join(' | ');
   }
 
   const lastSettlement = settlements[0] || null;
@@ -618,6 +646,10 @@ export default function AdminBalance() {
 
             <div className="bg-slate-900 rounded-xl p-4 space-y-2 text-sm">
               <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Resumen del corte</p>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Alcance</span>
+                <span className="text-white text-xs text-right">{currentScopeLabel()}</span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Vendedor</span>
                 <span className="text-white font-medium">{balance.seller_name}</span>
