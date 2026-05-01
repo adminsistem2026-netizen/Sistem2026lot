@@ -1755,10 +1755,6 @@
             <span class="menu-icon">📊</span>
             <span>Tiempos Vendidos</span>
         </div>
-        <div class="menu-item" onclick="showCobrosPage()">
-            <span class="menu-icon">💳</span>
-            <span>Mis Cobros</span>
-        </div>
         <div class="menu-item" onclick="showBalancePage()">
             <span class="menu-icon">⚖️</span>
             <span>Mi Balance</span>
@@ -1775,10 +1771,6 @@
         <div class="menu-item sub-admin-only" style="display:none;" onclick="showVentasSubAdminPage()">
             <span class="menu-icon">📈</span>
             <span>Ventas mis vendedores</span>
-        </div>
-        <div class="menu-item sub-admin-only" style="display:none;" onclick="showCobrosSubAdminPage()">
-            <span class="menu-icon">💵</span>
-            <span>Cobros mis vendedores</span>
         </div>
         <div class="menu-item sub-admin-only" style="display:none;" onclick="showNumerosSubAdminPage()">
             <span class="menu-icon">🔢</span>
@@ -2255,47 +2247,6 @@
     </div>
 </div>
 
-<!-- Cobros mis vendedores (sub_admin) -->
-<div id="cobrosSubAdminPage" class="container" style="display: none;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-        <button onclick="cobrosSubAdminBack()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
-        <h2 id="cobrosSubAdminTitle" style="margin:0;font-size:1.2em;flex:1;">Cobros mis vendedores</h2>
-        <button onclick="loadCobrosSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.8em;font-weight:600;cursor:pointer;">↺</button>
-    </div>
-    <!-- Lista de vendedores -->
-    <div id="cobrosSubAdminLista" style="display:flex;flex-direction:column;gap:8px;"></div>
-    <!-- Detalle vendedor -->
-    <div id="cobrosSubAdminDetalle" style="display:none;">
-        <div id="cobrosSubAdminBalanceCard" style="margin-bottom:12px;"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <p style="margin:0;font-size:0.85em;font-weight:600;color:#1e293b;">Historial de cobros</p>
-            <button onclick="openCobrarSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;color:white;padding:6px 12px;font-size:0.8em;font-weight:600;cursor:pointer;">+ Registrar cobro</button>
-        </div>
-        <div id="cobrosSubAdminPagos" style="display:flex;flex-direction:column;gap:6px;"></div>
-    </div>
-    <!-- Modal registrar cobro -->
-    <div id="cobrarSubAdminModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
-        <div style="background:white;border-radius:16px;padding:20px;width:90%;max-width:360px;box-shadow:0 20px 40px rgba(0,0,0,0.2);">
-            <h3 id="cobrarSubAdminModalTitle" style="margin:0 0 16px;font-size:1em;color:#1e293b;">Registrar cobro</h3>
-            <div style="display:flex;flex-direction:column;gap:10px;">
-                <div>
-                    <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Monto *</label>
-                    <input type="number" id="cobrarSubAdminMonto" step="0.01" min="0.01" placeholder="0.00" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;">
-                </div>
-                <div>
-                    <label style="font-size:12px;color:#64748b;display:block;margin-bottom:4px;">Nota (opcional)</label>
-                    <input type="text" id="cobrarSubAdminNota" placeholder="Ej: Pago semana 1" style="width:100%;padding:10px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;">
-                </div>
-                <p id="cobrarSubAdminError" style="display:none;color:#dc2626;font-size:12px;margin:0;"></p>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px;">
-                    <button onclick="closeCobrarSubAdminModal()" style="background:#e2e8f0;border:none;border-radius:8px;padding:10px;font-size:0.85em;color:#475569;cursor:pointer;font-weight:600;">Cancelar</button>
-                    <button id="cobrarSubAdminBtn" onclick="guardarCobrarSubAdmin()" style="background:#4f46e5;border:none;border-radius:8px;padding:10px;font-size:0.85em;color:white;cursor:pointer;font-weight:600;">Guardar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Números mis vendedores (sub_admin) -->
 <div id="numerosSubAdminPage" class="container" style="display: none;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
@@ -2362,57 +2313,6 @@
 
     <div id="numerosSAContenido">
         <p style="text-align:center;color:#888;padding:20px 0;">Selecciona una fecha para ver números</p>
-    </div>
-</div>
-
-<!-- Página de Cobros -->
-<div id="cobrosPage" class="container" style="display: none;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
-        <button onclick="showMainPage()" style="background:#e2e8f0;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;padding:0;color:#475569;font-size:1em;display:flex;align-items:center;justify-content:center;flex-shrink:0;">&#8592;</button>
-        <h2 style="margin:0;font-size:1.2em;white-space:nowrap;">Mis Cobros</h2>
-    </div>
-
-    <!-- Resumen financiero -->
-    <div id="cobrosResumen" style="background:linear-gradient(135deg,#6c63ff,#4f46e5);border-radius:16px;padding:16px;color:white;margin-bottom:16px;">
-        <p style="margin:0 0 4px;font-size:0.75em;text-transform:uppercase;letter-spacing:1px;opacity:0.8;">Mi estado de cuenta</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
-            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
-                <p style="margin:0;font-size:0.7em;opacity:0.8;">Total vendido</p>
-                <p id="cobrosTotal" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;">$0.00</p>
-            </div>
-            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
-                <p style="margin:0;font-size:0.7em;opacity:0.8;">Mi comisión</p>
-                <p id="cobrosComision" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;">$0.00</p>
-            </div>
-            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
-                <p style="margin:0;font-size:0.7em;opacity:0.8;">Total pagado</p>
-                <p id="cobrosPagado" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;color:#86efac;">$0.00</p>
-            </div>
-            <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;">
-                <p style="margin:0;font-size:0.7em;opacity:0.8;">Saldo pendiente</p>
-                <p id="cobrosSaldo" style="margin:4px 0 0;font-size:1.3em;font-weight:bold;color:#fca5a5;">$0.00</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Historial de pagos -->
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <p style="margin:0;font-weight:600;font-size:0.95em;">Historial de cobros</p>
-        <button onclick="loadCobros()" style="font-size:0.8em;background:#4f46e5;color:white;border:none;border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:600;">↺ Actualizar</button>
-    </div>
-
-    <!-- Filtro de fechas -->
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
-        <input type="date" id="cobrosFilterFrom" onchange="filterCobrosHistorial()" oninput="filterCobrosHistorial()"
-            style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
-        <span style="color:#94a3b8;font-size:0.8em;">—</span>
-        <input type="date" id="cobrosFilterTo" onchange="filterCobrosHistorial()" oninput="filterCobrosHistorial()"
-            style="flex:1;min-width:120px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:10px;padding:7px 10px;font-size:0.8em;color:#1e293b;" />
-        <button id="cobrosFilterClear" onclick="clearCobrosFilter()" style="display:none;background:#e2e8f0;border:none;border-radius:10px;padding:7px 12px;font-size:0.8em;color:#475569;cursor:pointer;white-space:nowrap;">✕ Limpiar</button>
-    </div>
-
-    <div id="cobrosHistorial" style="display:flex;flex-direction:column;gap:8px;">
-        <p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>
     </div>
 </div>
 

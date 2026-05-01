@@ -1130,220 +1130,6 @@ async function loadVentasSubAdmin() {
     }
 }
 
-// ---- Cobros mis vendedores ----
-let selectedCobroSeller = null;
-let editingCobro = null;
-
-async function showCobrosSubAdminPage() {
-    closeMenu();
-    hideAllPages();
-    selectedCobroSeller = null;
-    document.getElementById('cobrosSubAdminPage').style.display = 'block';
-    document.getElementById('cobrosSubAdminTitle').textContent = 'Cobros mis vendedores';
-    document.getElementById('cobrosSubAdminLista').style.display = 'flex';
-    document.getElementById('cobrosSubAdminDetalle').style.display = 'none';
-    await loadCobrosSubAdmin();
-}
-
-async function loadCobrosSubAdmin() {
-    const lista = document.getElementById('cobrosSubAdminLista');
-    lista.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>';
-    try {
-        const { data, error } = await db.rpc('get_subadmin_balances', { p_sub_admin_id: currentProfile.id });
-        if (error) throw error;
-        const rows = data || [];
-        if (rows.length === 0) {
-            lista.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Sin vendedores asignados.</p>';
-            return;
-        }
-        const sym = currentProfile?.currency_symbol || '$';
-        lista.innerHTML = rows.map(r => {
-            const pct = parseFloat(r.seller_percentage || 0);
-            const total = parseFloat(r.total_sales || 0);
-            const paid  = parseFloat(r.total_paid  || 0);
-            const commission = total * (pct / 100);
-            const owes  = total - commission - paid;
-            const color = owes > 0.005 ? '#dc2626' : '#16a34a';
-            return `
-                <div style="background:white;border:1px solid #e2e8f0;border-radius:12px;padding:14px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                        <p style="margin:0;font-weight:700;color:#1e293b;font-size:0.9em;">${r.seller_name}</p>
-                        <span style="font-size:0.75em;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:999px;">${pct}%</span>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.78em;color:#475569;margin-bottom:10px;">
-                        <div>Total ventas:<br><strong style="color:#1e293b;">${sym}${total.toFixed(2)}</strong></div>
-                        <div>Su comisión:<br><strong style="color:#7c3aed;">${sym}${commission.toFixed(2)}</strong></div>
-                        <div>Total pagado:<br><strong style="color:#16a34a;">${sym}${paid.toFixed(2)}</strong></div>
-                        <div>Saldo pendiente:<br><strong style="color:${color};">${sym}${owes.toFixed(2)}</strong></div>
-                    </div>
-                    <button onclick="verDetalleCobroSubAdmin(${JSON.stringify(r).split('"').join('&quot;')})" style="width:100%;background:#4f46e5;border:none;border-radius:8px;color:white;padding:8px;font-size:0.82em;font-weight:600;cursor:pointer;">Ver detalle / Cobrar</button>
-                </div>
-            `;
-        }).join('');
-    } catch (e) {
-        lista.innerHTML = `<p style="text-align:center;color:#dc2626;padding:20px 0;">Error: ${e.message}</p>`;
-    }
-}
-
-async function verDetalleCobroSubAdmin(seller) {
-    selectedCobroSeller = seller;
-    document.getElementById('cobrosSubAdminTitle').textContent = seller.seller_name;
-    document.getElementById('cobrosSubAdminLista').style.display = 'none';
-    document.getElementById('cobrosSubAdminDetalle').style.display = 'block';
-    renderCobroBalanceCard();
-    await loadPagosSubAdmin();
-}
-
-function renderCobroBalanceCard() {
-    const r = selectedCobroSeller;
-    const pct = parseFloat(r.seller_percentage || 0);
-    const total = parseFloat(r.total_sales || 0);
-    const paid  = parseFloat(r.total_paid  || 0);
-    const commission = total * (pct / 100);
-    const owes  = total - commission - paid;
-    const sym   = currentProfile?.currency_symbol || '$';
-    const color = owes > 0.005 ? '#dc2626' : '#16a34a';
-    document.getElementById('cobrosSubAdminBalanceCard').innerHTML = `
-        <div style="background:linear-gradient(135deg,#6c63ff,#4f46e5);border-radius:14px;padding:14px;color:white;margin-bottom:4px;">
-            <p style="margin:0 0 8px;font-size:0.7em;opacity:0.8;text-transform:uppercase;letter-spacing:1px;">${r.seller_name} — ${pct}% comisión</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;text-align:center;">
-                    <p style="margin:0;font-size:0.65em;opacity:0.8;">Total ventas</p>
-                    <p style="margin:4px 0 0;font-size:1.1em;font-weight:bold;">${sym}${total.toFixed(2)}</p>
-                </div>
-                <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;text-align:center;">
-                    <p style="margin:0;font-size:0.65em;opacity:0.8;">Su comisión</p>
-                    <p style="margin:4px 0 0;font-size:1.1em;font-weight:bold;">${sym}${commission.toFixed(2)}</p>
-                </div>
-                <div style="background:rgba(255,255,255,0.15);border-radius:10px;padding:10px;text-align:center;">
-                    <p style="margin:0;font-size:0.65em;opacity:0.8;">Total pagado</p>
-                    <p style="margin:4px 0 0;font-size:1.1em;font-weight:bold;">${sym}${paid.toFixed(2)}</p>
-                </div>
-                <div style="background:rgba(255,255,255,0.25);border-radius:10px;padding:10px;text-align:center;border:2px solid rgba(255,255,255,0.4);">
-                    <p style="margin:0;font-size:0.65em;opacity:0.8;">Saldo pendiente</p>
-                    <p style="margin:4px 0 0;font-size:1.1em;font-weight:bold;">${sym}${owes.toFixed(2)}</p>
-                </div>
-            </div>
-        </div>
-    `;
-}
-
-async function loadPagosSubAdmin() {
-    const cont = document.getElementById('cobrosSubAdminPagos');
-    cont.innerHTML = '<p style="text-align:center;color:#888;padding:12px 0;font-size:0.85em;">Cargando...</p>';
-    try {
-        const { data, error } = await db.rpc('get_subadmin_seller_payments', {
-            p_seller_id:    selectedCobroSeller.seller_id,
-            p_sub_admin_id: currentProfile.id,
-        });
-        if (error) throw error;
-        const pagos = data || [];
-        const sym = currentProfile?.currency_symbol || '$';
-        if (pagos.length === 0) {
-            cont.innerHTML = '<p style="text-align:center;color:#888;padding:12px 0;font-size:0.85em;">Sin cobros registrados.</p>';
-            return;
-        }
-        cont.innerHTML = pagos.map(p => {
-            const fecha = new Date(p.created_at).toLocaleDateString('es', { day:'2-digit', month:'short', year:'numeric' });
-            return `
-                <div style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:12px;display:flex;justify-content:space-between;align-items:center;">
-                    <div>
-                        <p style="margin:0;font-weight:700;color:#16a34a;font-size:0.9em;">${sym}${parseFloat(p.amount).toFixed(2)}</p>
-                        <p style="margin:2px 0 0;font-size:0.72em;color:#64748b;">${fecha}${p.notes ? ' · ' + p.notes : ''}</p>
-                    </div>
-                    <button onclick="eliminarPagoSubAdmin('${p.id}')" style="background:#fee2e2;border:none;border-radius:8px;padding:6px 10px;color:#dc2626;font-size:0.75em;cursor:pointer;font-weight:600;">Eliminar</button>
-                </div>
-            `;
-        }).join('');
-    } catch (e) {
-        cont.innerHTML = `<p style="text-align:center;color:#dc2626;padding:12px 0;font-size:0.85em;">Error: ${e.message}</p>`;
-    }
-}
-
-function cobrosSubAdminBack() {
-    if (selectedCobroSeller) {
-        selectedCobroSeller = null;
-        document.getElementById('cobrosSubAdminTitle').textContent = 'Cobros mis vendedores';
-        document.getElementById('cobrosSubAdminLista').style.display = 'flex';
-        document.getElementById('cobrosSubAdminDetalle').style.display = 'none';
-        loadCobrosSubAdmin();
-    } else {
-        showMainPage();
-    }
-}
-
-function openCobrarSubAdmin() {
-    editingCobro = null;
-    document.getElementById('cobrarSubAdminModalTitle').textContent = 'Registrar cobro';
-    document.getElementById('cobrarSubAdminMonto').value = '';
-    document.getElementById('cobrarSubAdminNota').value = '';
-    document.getElementById('cobrarSubAdminError').style.display = 'none';
-    document.getElementById('cobrarSubAdminModal').style.display = 'flex';
-}
-
-function closeCobrarSubAdminModal() {
-    document.getElementById('cobrarSubAdminModal').style.display = 'none';
-}
-
-async function guardarCobrarSubAdmin() {
-    const montoStr = document.getElementById('cobrarSubAdminMonto').value;
-    const nota     = document.getElementById('cobrarSubAdminNota').value.trim();
-    const errEl    = document.getElementById('cobrarSubAdminError');
-    const btn      = document.getElementById('cobrarSubAdminBtn');
-    const monto    = parseFloat(montoStr);
-
-    if (!montoStr || isNaN(monto) || monto <= 0) {
-        errEl.textContent = 'El monto debe ser mayor a 0';
-        errEl.style.display = 'block';
-        return;
-    }
-    btn.disabled = true;
-    btn.textContent = 'Guardando...';
-    errEl.style.display = 'none';
-    try {
-        const { error } = await db.from('payments').insert({
-            seller_id:     selectedCobroSeller.seller_id,
-            admin_id:      currentProfile.id,
-            amount:        monto,
-            notes:         nota || null,
-            registered_by: currentProfile.id,
-        });
-        if (error) throw error;
-        closeCobrarSubAdminModal();
-        showNotification('Cobro registrado', 'success');
-        // Recargar balance actualizado
-        const { data } = await db.rpc('get_subadmin_balances', { p_sub_admin_id: currentProfile.id });
-        const updated = (data || []).find(r => r.seller_id === selectedCobroSeller.seller_id);
-        if (updated) { selectedCobroSeller = updated; renderCobroBalanceCard(); }
-        await loadPagosSubAdmin();
-    } catch (e) {
-        errEl.textContent = e.message || 'Error al guardar';
-        errEl.style.display = 'block';
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Guardar';
-    }
-}
-
-async function eliminarPagoSubAdmin(paymentId) {
-    showConfirm('¿Eliminar este cobro?', 'Eliminar cobro', async () => {
-        showLoading();
-        try {
-            const { error } = await db.from('payments').delete().eq('id', paymentId);
-            if (error) throw error;
-            showNotification('Cobro eliminado', 'success');
-            const { data } = await db.rpc('get_subadmin_balances', { p_sub_admin_id: currentProfile.id });
-            const updated = (data || []).find(r => r.seller_id === selectedCobroSeller.seller_id);
-            if (updated) { selectedCobroSeller = updated; renderCobroBalanceCard(); }
-            await loadPagosSubAdmin();
-        } catch (e) {
-            showNotification('Error: ' + e.message, 'error');
-        } finally {
-            hideLoading();
-        }
-    });
-}
-
 // ---- Números mis vendedores ----
 async function showNumerosSubAdminPage() {
     closeMenu();
@@ -1811,116 +1597,6 @@ function showConfigPage() {
     updateLimitBilleteDrawTimes();
     displayCurrentLimits('chances');
     displayCurrentLimits('billetes');
-}
-
-function showCobrosPage() {
-    closeMenu();
-    hideAllPages();
-    document.getElementById('cobrosPage').style.display = 'block';
-    loadCobros();
-}
-
-let cobrosAllPayments = [];
-
-async function loadCobros() {
-    const sym = currentProfile?.currency_symbol || '$';
-    const histDiv = document.getElementById('cobrosHistorial');
-    histDiv.innerHTML = '<p style="text-align:center;color:#888;padding:20px 0;">Cargando...</p>';
-
-    // Limpiar filtros al recargar
-    const fromEl = document.getElementById('cobrosFilterFrom');
-    const toEl   = document.getElementById('cobrosFilterTo');
-    if (fromEl) fromEl.value = '';
-    if (toEl)   toEl.value   = '';
-    const clearBtn = document.getElementById('cobrosFilterClear');
-    if (clearBtn) clearBtn.style.display = 'none';
-
-    try {
-        // Balance del vendedor
-        const { data: balances } = await db.rpc('get_seller_balances', {
-            p_admin_id: currentProfile.parent_admin_id,
-        });
-        const myBalance = (balances || []).find(b => b.seller_id === currentProfile.id);
-        const totalSales = parseFloat(myBalance?.total_sales || 0);
-        const pct = parseFloat(myBalance?.seller_percentage || currentProfile?.seller_percentage || 0);
-        const commission = totalSales * (pct / 100);
-        const owes = totalSales - commission;
-        const paid = parseFloat(myBalance?.total_paid || 0);
-        const balance = owes - paid;
-
-        document.getElementById('cobrosTotal').textContent = `${sym}${totalSales.toFixed(2)}`;
-        document.getElementById('cobrosComision').textContent = `${sym}${commission.toFixed(2)}`;
-        document.getElementById('cobrosPagado').textContent = `${sym}${paid.toFixed(2)}`;
-        const saldoEl = document.getElementById('cobrosSaldo');
-        saldoEl.textContent = balance <= 0 ? '✓ Al día' : `${sym}${balance.toFixed(2)}`;
-        saldoEl.style.color = balance <= 0 ? '#86efac' : '#fca5a5';
-
-        // Historial de pagos
-        const { data: payments } = await db.rpc('get_seller_payments', {
-            p_seller_id: currentProfile.id,
-        });
-
-        cobrosAllPayments = payments || [];
-        renderCobrosHistorial();
-    } catch (e) {
-        document.getElementById('cobrosHistorial').innerHTML = '<p style="text-align:center;color:red;padding:20px 0;">Error al cargar cobros</p>';
-        console.error('loadCobros error:', e);
-    }
-}
-
-function filterCobrosHistorial() {
-    const clearBtn = document.getElementById('cobrosFilterClear');
-    const from = document.getElementById('cobrosFilterFrom')?.value || '';
-    const to   = document.getElementById('cobrosFilterTo')?.value   || '';
-    if (clearBtn) clearBtn.style.display = (from || to) ? 'block' : 'none';
-    renderCobrosHistorial();
-}
-
-function clearCobrosFilter() {
-    const fromEl = document.getElementById('cobrosFilterFrom');
-    const toEl   = document.getElementById('cobrosFilterTo');
-    if (fromEl) fromEl.value = '';
-    if (toEl)   toEl.value   = '';
-    const clearBtn = document.getElementById('cobrosFilterClear');
-    if (clearBtn) clearBtn.style.display = 'none';
-    renderCobrosHistorial();
-}
-
-function renderCobrosHistorial() {
-    const sym    = currentProfile?.currency_symbol || '$';
-    const histDiv = document.getElementById('cobrosHistorial');
-    const from   = document.getElementById('cobrosFilterFrom')?.value || '';
-    const to     = document.getElementById('cobrosFilterTo')?.value   || '';
-
-    const filtered = cobrosAllPayments.filter(p => {
-        const d = p.created_at.slice(0, 10);
-        if (from && d < from) return false;
-        if (to   && d > to)   return false;
-        return true;
-    });
-
-    if (filtered.length === 0) {
-        histDiv.innerHTML = `<p style="text-align:center;color:#888;padding:20px 0;">${(from || to) ? 'Sin cobros en ese período' : 'Sin cobros registrados'}</p>`;
-        return;
-    }
-
-    const totalFiltered = filtered.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
-    const isFiltered = from || to;
-
-    histDiv.innerHTML = filtered.map(p => `
-        <div style="background:#f1f5f9;border-radius:12px;padding:12px 14px;border:1px solid #e2e8f0;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-size:1.1em;font-weight:bold;color:#16a34a;">${sym}${parseFloat(p.amount).toFixed(2)}</span>
-                <span style="font-size:0.75em;color:#64748b;">${new Date(p.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})} ${new Date(p.created_at).toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</span>
-            </div>
-            ${p.notes ? `<p style="margin:4px 0 0;font-size:0.8em;color:#475569;">${p.notes}</p>` : ''}
-        </div>
-    `).join('') + `
-        <div style="background:#e2e8f0;border-radius:12px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-size:0.85em;color:#475569;">${isFiltered ? 'Total en período' : 'Total abonado'}</span>
-            <span style="font-weight:bold;color:#16a34a;">${sym}${totalFiltered.toFixed(2)}</span>
-        </div>
-    `;
 }
 
 // ==================== Mi Balance (vendedor) ====================
@@ -4531,7 +4207,6 @@ Object.assign(window, {
     setGlobalLimit, setIndividualLimit, removeLimitConfig, saveConfigAndReturn, switchLimitTab,
     showPrinterConfig, closePrinterConfig, loadPairedDevices, selectPrinter, printCurrentTicket,
     openPercentageModal, closePercentageModal, saveSellerConfig,
-    showCobrosPage, loadCobros, filterCobrosHistorial, clearCobrosFilter,
     showBalancePage, loadBalancePage, onBalanceFilterChange, clearBalanceFilter,
     onBalanceLotChange, toggleBalanceDetail, toggleBalanceHistory,
     showNotification, closeNotification, showConfirm,
@@ -4581,7 +4256,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Exponer funciones sub_admin en scope global para onclick handlers del HTML
 window.showMisVendedoresPage       = showMisVendedoresPage;
 window.showVentasSubAdminPage      = showVentasSubAdminPage;
-window.showCobrosSubAdminPage      = showCobrosSubAdminPage;
 window.showNumerosSubAdminPage     = showNumerosSubAdminPage;
 window.openCrearVendedorSubAdmin   = openCrearVendedorSubAdmin;
 window.openEditarVendedorSubAdmin  = openEditarVendedorSubAdmin;
@@ -4591,15 +4265,8 @@ window.eliminarVendedorSubAdmin    = eliminarVendedorSubAdmin;
 window.loadVentasSubAdmin          = loadVentasSubAdmin;
 window.onVentasSALotChange         = onVentasSALotChange;
 window.onNumerosSALotChange        = onNumerosSALotChange;
-window.loadCobrosSubAdmin          = loadCobrosSubAdmin;
 window.loadNumerosSubAdmin         = loadNumerosSubAdmin;
 window.verificarGanadoresSA        = verificarGanadoresSA;
-window.verDetalleCobroSubAdmin     = verDetalleCobroSubAdmin;
-window.cobrosSubAdminBack          = cobrosSubAdminBack;
-window.openCobrarSubAdmin          = openCobrarSubAdmin;
-window.closeCobrarSubAdminModal    = closeCobrarSubAdminModal;
-window.guardarCobrarSubAdmin       = guardarCobrarSubAdmin;
-window.eliminarPagoSubAdmin        = eliminarPagoSubAdmin;
 window.onSalesDrawTimeFilter       = onSalesDrawTimeFilter;
 window.onNumDrawTimeFilter         = onNumDrawTimeFilter;
 window.onWinnersDrawTimeFilter     = onWinnersDrawTimeFilter;
