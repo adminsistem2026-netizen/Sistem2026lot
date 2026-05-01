@@ -347,40 +347,41 @@ async function loadTickets(filters = {}) {
     try {
         const isSeller = currentProfile && currentProfile.parent_admin_id;
 
-        // Intentar RPC; si no existe usar query directa como fallback
-        let result = [];
-        const { data: rpcData, error: rpcError } = await db.rpc('get_user_tickets', {
+        const { data: ticketsData, error: ticketsError } = await db.rpc('get_user_tickets', {
             p_seller_id: isSeller ? currentProfile.id : null,
             p_admin_id:  isSeller ? null : (currentProfile?.id || null),
         });
-        if (!rpcError) {
-            result = rpcData || [];
-        } else {
-            // Fallback: query directa a tickets
-            console.warn('get_user_tickets RPC no disponible, usando query directa');
-            const q = isSeller
-                ? db.from('tickets').select('*').eq('seller_id', currentProfile.id).eq('is_cancelled', false).order('created_at', { ascending: false })
-                : db.from('tickets').select('*').eq('admin_id', currentProfile.id).eq('is_cancelled', false).order('created_at', { ascending: false });
-            const { data: fallback } = await q;
-            result = fallback || [];
-        }
+        if (ticketsError) { console.error('loadTickets error:', ticketsError); return []; }
 
+        const result = ticketsData || [];
         if (result.length === 0) return [];
 
-        // Fetch ticket_numbers individualmente por ticket (evita RPCs inexistentes y el bug .in() de InsForge)
-        const numsResults = await Promise.all(
-            result.map(t =>
-                db.from('ticket_numbers')
-                    .select('ticket_id, number, pieces, unit_price, subtotal')
-                    .eq('ticket_id', t.id)
-                    .then(({ data }) => data || [])
-            )
-        );
+        // Intentar RPC bulk; si falla, hacer fetch individual con await
         const numsByTicket = {};
-        numsResults.flat().forEach(n => {
-            if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
-            numsByTicket[n.ticket_id].push(n);
+        const { data: numsData, error: numsError } = await db.rpc('get_ticket_numbers_for_user', {
+            p_seller_id: isSeller ? currentProfile.id : null,
+            p_admin_id:  isSeller ? null : currentProfile?.id || null,
         });
+        if (!numsError && numsData) {
+            numsData.forEach(n => {
+                if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
+                numsByTicket[n.ticket_id].push(n);
+            });
+        } else {
+            // Fallback: fetch individual por ticket usando await
+            for (const t of result) {
+                if (!t.id) continue;
+                const { data: nums } = await db.from('ticket_numbers')
+                    .select('ticket_id, number, pieces, unit_price, subtotal')
+                    .eq('ticket_id', t.id);
+                if (nums) {
+                    nums.forEach(n => {
+                        if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
+                        numsByTicket[n.ticket_id].push(n);
+                    });
+                }
+            }
+        }
 
         return result.map(t => adaptTicket({ ...t, ticket_numbers: numsByTicket[t.id] || [] }));
     } catch (e) {
