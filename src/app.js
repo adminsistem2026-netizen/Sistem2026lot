@@ -363,22 +363,32 @@ async function loadTickets(filters = {}) {
             p_admin_id:  isSeller ? null : currentProfile?.id || null,
         });
         if (!numsError && numsData) {
+            console.log('[DEBUG] numsData length:', numsData.length, '| first row keys:', numsData[0] ? Object.keys(numsData[0]) : 'empty');
+            console.log('[DEBUG] numsData[0]:', numsData[0]);
+            console.log('[DEBUG] result[0].id:', result[0]?.id, '| result[0] keys:', result[0] ? Object.keys(result[0]) : 'empty');
             numsData.forEach(n => {
                 if (!numsByTicket[n.ticket_id]) numsByTicket[n.ticket_id] = [];
                 numsByTicket[n.ticket_id].push(n);
             });
+            const matched = result.filter(t => (numsByTicket[t.id] || []).length > 0).length;
+            console.log('[DEBUG] tickets with matched numbers:', matched, '/', result.length);
         } else {
             // Fallback: fetch individual por ticket
-            // No seleccionamos ticket_id (puede no estar en schema cache de InsForge);
-            // usamos t.id directamente como clave
+            let debugTotal = 0;
             for (const t of result) {
                 if (!t.id) continue;
-                const { data: nums } = await db.from('ticket_numbers')
+                const { data: nums, error: fetchErr } = await db.from('ticket_numbers')
                     .select('number, pieces, unit_price, subtotal')
                     .eq('ticket_id', t.id);
+                if (fetchErr) console.error('ticket_numbers fetch error:', fetchErr, t.id);
                 if (nums && nums.length > 0) {
                     numsByTicket[t.id] = nums.map(n => ({ ...n, ticket_id: t.id }));
+                    debugTotal += nums.length;
                 }
+            }
+            console.warn(`[loadTickets] RPC error: ${numsError?.message || numsError?.code || JSON.stringify(numsError)} | fallback fetched ${debugTotal} numbers for ${result.length} tickets`);
+            if (debugTotal === 0 && result.length > 0) {
+                showNotification(`Sin números: RPC="${numsError?.code||numsError?.message||'err'}" fallback=0/${result.length}`, 'error', 10000);
             }
         }
 
