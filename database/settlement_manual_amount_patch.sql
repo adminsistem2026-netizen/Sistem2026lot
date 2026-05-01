@@ -45,7 +45,9 @@ DECLARE
   v_last_settle  DATE;
   v_prev_pending NUMERIC := 0;
 BEGIN
-  SELECT seller_percentage INTO v_pct FROM profiles WHERE id = p_seller_id;
+  SELECT p.seller_percentage INTO v_pct
+  FROM public.profiles p
+  WHERE p.id = p_seller_id;
   v_pct := COALESCE(v_pct, 0);
 
   IF p_date_from IS NULL THEN
@@ -94,7 +96,7 @@ BEGIN
       AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)
   ),
   sinfo AS (
-    SELECT full_name FROM profiles WHERE id = p_seller_id
+    SELECT p.full_name FROM public.profiles p WHERE p.id = p_seller_id
   )
   SELECT
     p_seller_id,
@@ -225,28 +227,34 @@ DECLARE
   v_new_id        UUID;
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM profiles
-    WHERE id = p_seller_id AND parent_admin_id = p_admin_id
+    SELECT 1
+    FROM public.profiles p
+    WHERE p.id = p_seller_id
+      AND p.parent_admin_id = p_admin_id
   ) THEN
     RAISE EXCEPTION 'El vendedor no pertenece a este administrador';
   END IF;
 
-  SELECT seller_percentage INTO v_pct FROM profiles WHERE id = p_seller_id;
+  SELECT p.seller_percentage INTO v_pct
+  FROM public.profiles p
+  WHERE p.id = p_seller_id;
   v_pct := COALESCE(v_pct, 0);
 
   SELECT period_end, COALESCE(balance_at_settlement - amount, 0)
   INTO v_last_settle, v_prev_pending
-  FROM settlements
-  WHERE seller_id = p_seller_id AND admin_id = p_admin_id
-  ORDER BY created_at DESC
+  FROM public.settlements s
+  WHERE s.seller_id = p_seller_id
+    AND s.admin_id = p_admin_id
+  ORDER BY s.created_at DESC
   LIMIT 1;
 
   IF v_last_settle IS NOT NULL THEN
     v_period_from := v_last_settle + 1;
   ELSE
     SELECT MIN(sale_date) INTO v_period_from
-    FROM tickets
-    WHERE seller_id = p_seller_id AND admin_id = p_admin_id;
+  FROM public.tickets t
+  WHERE t.seller_id = p_seller_id
+    AND t.admin_id = p_admin_id;
     v_period_from := COALESCE(v_period_from, CURRENT_DATE);
   END IF;
 
@@ -331,9 +339,10 @@ BEGIN
     RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
   END IF;
 
-  SELECT parent_admin_id, seller_percentage
+  SELECT p.parent_admin_id, p.seller_percentage
   INTO v_admin_id, v_pct
-  FROM profiles WHERE id = p_seller_id;
+  FROM public.profiles p
+  WHERE p.id = p_seller_id;
 
   v_pct := COALESCE(v_pct, 0);
 
@@ -382,7 +391,7 @@ BEGIN
       AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)
   ),
   sinfo AS (
-    SELECT full_name FROM profiles WHERE id = p_seller_id
+    SELECT p.full_name FROM public.profiles p WHERE p.id = p_seller_id
   )
   SELECT
     p_seller_id,
