@@ -262,9 +262,9 @@ function isDrawTimeBlocked(dt) {
     const drawMinutes = h * 60 + m;
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
     const diff = drawMinutes - nowMinutes;
-    const cutoff = dt.cutoff_minutes_before ?? 1;
+    const cutoff = dt.cutoff_minutes_before ?? null;
     const blockAfter = dt.block_minutes_after ?? 20;
-    if (diff >= 0 && diff <= cutoff) return { blocked: true, reason: `Cierra en ${diff} min` };
+    if (cutoff !== null && diff >= 0 && diff <= cutoff) return { blocked: true, reason: `Cierra en ${diff} min` };
     if (diff < 0 && Math.abs(diff) <= blockAfter) return { blocked: true, reason: `Bloqueado ${blockAfter - Math.abs(diff)} min más` };
     return { blocked: false };
 }
@@ -454,9 +454,10 @@ async function generateTicket() {
     if (!validarHorarioVenta()) {
         if (lotteryObj && lotteryObj.draw_times && lotteryObj.draw_times.length > 0) {
             const _dtObj = getSelectedDrawTimeObj();
-            const _cut = _dtObj?.cutoff_minutes_before ?? 1;
+            const _cut = _dtObj?.cutoff_minutes_before ?? null;
             const _blk = _dtObj?.block_minutes_after ?? 20;
-            showNotification(`No se puede generar el ticket. Ventas bloqueadas ${_cut} min antes y ${_blk} min después del sorteo.`, 'warning');
+            const _msgCut = _cut !== null ? `${_cut} min antes y ` : '';
+            showNotification(`No se puede generar el ticket. Ventas bloqueadas ${_msgCut}${_blk} min después del sorteo.`, 'warning');
             return;
         }
     }
@@ -1602,7 +1603,7 @@ function showConfigPage() {
 // ==================== Mi Balance (vendedor) ====================
 
 let balanceDetailOpen  = false;
-let balanceHistoryOpen = false;
+let balanceHistoryOpen = true;
 let balanceDetailData  = [];
 let balanceHistoryData = [];
 
@@ -1656,18 +1657,29 @@ async function loadBalancePage() {
             p_draw_time_id: drawTimeId,
         };
 
-        const [{ data: balData }, { data: detData }, { data: histData }] = await Promise.all([
+        // Balance y detalle: críticos — si fallan mostramos error
+        const [{ data: balData, error: balErr }, { data: detData }] = await Promise.all([
             db.rpc('get_seller_balance_for_seller',        params),
             db.rpc('get_seller_balance_detail_for_seller', params),
-            db.rpc('get_settlements_history', {
-                p_admin_id:  currentProfile.parent_admin_id,
-                p_seller_id: currentProfile.id,
-            }),
         ]);
+        if (balErr) throw balErr;
+
+        balanceDetailData = detData || [];
+
+        // Historial: separado para que un fallo no bloquee el balance
+        if (currentProfile.parent_admin_id) {
+            try {
+                const { data: histData } = await db.rpc('get_settlements_history', {
+                    p_admin_id:     currentProfile.parent_admin_id,
+                    p_seller_id:    currentProfile.id,
+                    p_lottery_id:   lotteryId   || null,
+                    p_draw_time_id: drawTimeId  || null,
+                });
+                balanceHistoryData = histData || [];
+            } catch (_) { /* historial no crítico */ }
+        }
 
         const bal = balData?.[0];
-        balanceDetailData  = detData  || [];
-        balanceHistoryData = histData || [];
 
         if (bal) {
             const totalSales   = parseFloat(bal.total_sales       || 0);
@@ -1676,6 +1688,7 @@ async function loadBalancePage() {
             const prizes       = parseFloat(bal.total_prizes_paid || 0);
             const balance      = parseFloat(bal.balance           || 0);
             const pct          = parseFloat(bal.commission_pct    || 0);
+            const prevPending  = balance - adminPart + prizes;
 
             document.getElementById('balanceTotalSales').textContent  = `${sym}${totalSales.toFixed(2)}`;
             document.getElementById('balanceComision').textContent    = `${sym}${commission.toFixed(2)}`;
@@ -1683,9 +1696,22 @@ async function loadBalancePage() {
             document.getElementById('balancePremios').textContent     = `${sym}${prizes.toFixed(2)}`;
             document.getElementById('balancePct').textContent         = pct.toFixed(1);
 
-            const valorEl    = document.getElementById('balanceValor');
-            const labelEl    = document.getElementById('balanceLabel');
-            const destEl     = document.getElementById('balanceDestacado');
+            // Saldo pendiente anterior
+            const prevCard = document.getElementById('balancePrevPendingCard');
+            const prevEl   = document.getElementById('balancePrevPending');
+            if (prevCard && prevEl) {
+                if (prevPending !== 0) {
+                    prevCard.style.display = 'block';
+                    prevEl.textContent = `${sym}${Math.abs(prevPending).toFixed(2)}`;
+                    prevEl.style.color = prevPending > 0 ? '#16a34a' : '#e11d48';
+                } else {
+                    prevCard.style.display = 'none';
+                }
+            }
+
+            const valorEl = document.getElementById('balanceValor');
+            const labelEl = document.getElementById('balanceLabel');
+            const destEl  = document.getElementById('balanceDestacado');
 
             if (valorEl) valorEl.textContent = `${sym}${Math.abs(balance).toFixed(2)}`;
             if (labelEl) {
@@ -1699,7 +1725,6 @@ async function loadBalancePage() {
                 else                  { destEl.style.background = '#f8fafc'; destEl.style.borderColor = '#e2e8f0'; if (valorEl) valorEl.style.color = '#64748b'; }
             }
 
-            // Period
             const periodoEl = document.getElementById('balancePeriodo');
             if (periodoEl && bal.period_start && bal.period_end) {
                 const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -1804,9 +1829,12 @@ function renderBalanceDetail() {
 }
 
 function renderBalanceHistory() {
-    const sym   = currentProfile?.currency_symbol || '$';
+    const sym     = currentProfile?.currency_symbol || '$';
     const histDiv = document.getElementById('balanceHistorial');
+    const toggle  = document.getElementById('balanceHistoryToggle');
     if (!histDiv) return;
+
+    if (toggle) toggle.textContent = balanceHistoryOpen ? '▲ Ocultar' : '▼ Ver';
 
     if (balanceHistoryData.length === 0) {
         histDiv.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:0.85em;padding:12px 0;">Sin cortes registrados</p>';
@@ -1815,15 +1843,23 @@ function renderBalanceHistory() {
 
     const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
     histDiv.innerHTML = balanceHistoryData.map(s => {
-        const bal = parseFloat(s.balance_at_settlement || 0);
-        const balColor = bal > 0 ? '#16a34a' : bal < 0 ? '#e11d48' : '#64748b';
+        const bal     = parseFloat(s.balance_at_settlement || 0);
+        const amt     = parseFloat(s.amount || 0);
+        const pending = bal - amt;
+        const balColor     = bal     > 0 ? '#16a34a' : bal     < 0 ? '#e11d48' : '#64748b';
+        const amtColor     = amt     >= 0 ? '#16a34a' : '#e11d48';
+        const pendingColor = pending > 0 ? '#16a34a' : pending < 0 ? '#e11d48' : '#64748b';
         return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:8px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <div style="flex:1;min-width:0;">
                     <p style="margin:0;font-size:0.78em;color:#64748b;">${fmtD(s.period_start)} → ${fmtD(s.period_end)}</p>
-                    <p style="margin:4px 0 0;font-size:0.72em;color:#94a3b8;">Corte: ${new Date(s.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}</p>
-                    ${s.notes ? `<p style="margin:4px 0 0;font-size:0.78em;color:#475569;font-style:italic;">"${s.notes}"</p>` : ''}
-                    <p style="margin:4px 0 0;font-size:0.75em;color:#94a3b8;">Ventas: ${sym}${parseFloat(s.total_sales||0).toFixed(2)} · Premios: ${sym}${parseFloat(s.total_prizes_paid||0).toFixed(2)}</p>
+                    <p style="margin:3px 0 0;font-size:0.72em;color:#94a3b8;">Registrado: ${new Date(s.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}</p>
+                    ${s.notes ? `<p style="margin:3px 0 0;font-size:0.78em;color:#475569;font-style:italic;">"${s.notes}"</p>` : ''}
+                    <div style="margin-top:5px;display:flex;gap:10px;flex-wrap:wrap;">
+                        <span style="font-size:0.75em;color:#94a3b8;">Liquidado: <strong style="color:${amtColor};">${sym}${Math.abs(amt).toFixed(2)}</strong></span>
+                        <span style="font-size:0.75em;color:#94a3b8;">Ventas: <span style="color:#1e293b;">${sym}${parseFloat(s.total_sales||0).toFixed(2)}</span></span>
+                    </div>
+                    ${pending !== 0 ? `<p style="margin:4px 0 0;font-size:0.75em;color:${pendingColor};">Pendiente tras corte: ${sym}${Math.abs(pending).toFixed(2)}</p>` : ''}
                 </div>
                 <div style="text-align:right;flex-shrink:0;">
                     <p style="margin:0;font-size:0.7em;color:#94a3b8;">Balance</p>
@@ -3825,7 +3861,7 @@ function validarHorarioVenta() {
     const dt = getSelectedDrawTimeObj();
     if (!dt?.time_value) return false;
 
-    const cutoff = dt.cutoff_minutes_before ?? 1;
+    const cutoff = dt.cutoff_minutes_before ?? null;
     const blockAfter = dt.block_minutes_after ?? 20;
 
     const ahora = new Date();
@@ -3834,7 +3870,7 @@ function validarHorarioVenta() {
     const horaActualEnMinutos = ahora.getHours() * 60 + ahora.getMinutes();
     const diferencia = horaSorteoEnMinutos - horaActualEnMinutos;
 
-    if (diferencia >= 0 && diferencia <= cutoff) return false;
+    if (cutoff !== null && diferencia >= 0 && diferencia <= cutoff) return false;
     if (diferencia < 0) return Math.abs(diferencia) > blockAfter;
     return true;
 }
@@ -3994,9 +4030,10 @@ function submitNumber() {
 
             if (!validarHorarioVenta()) {
                 const _dt3 = getSelectedDrawTimeObj();
-                const _cut3 = _dt3?.cutoff_minutes_before ?? 1;
+                const _cut3 = _dt3?.cutoff_minutes_before ?? null;
                 const _blk3 = _dt3?.block_minutes_after ?? 20;
-                showNotification(`No se pueden vender números. Ventas bloqueadas ${_cut3} min antes y ${_blk3} min después del sorteo.`, 'warning');
+                const _msgCut3 = _cut3 !== null ? `${_cut3} min antes y ` : '';
+                showNotification(`No se pueden vender números. Ventas bloqueadas ${_msgCut3}${_blk3} min después del sorteo.`, 'warning');
                 return;
             }
 
@@ -4112,9 +4149,10 @@ function addSeguidilla() {
     if (tiempos <= 0) { showNotification('Los tiempos deben ser mayor que 0', 'warning'); return; }
     if (!validarHorarioVenta()) {
         const _dtObj2 = getSelectedDrawTimeObj();
-        const _cut2 = _dtObj2?.cutoff_minutes_before ?? 1;
+        const _cut2 = _dtObj2?.cutoff_minutes_before ?? null;
         const _blk2 = _dtObj2?.block_minutes_after ?? 20;
-        showNotification(`No se pueden agregar numeros. Ventas bloqueadas ${_cut2} min antes y ${_blk2} min despues del sorteo.`, 'warning');
+        const _msgCut2 = _cut2 !== null ? `${_cut2} min antes y ` : '';
+        showNotification(`No se pueden agregar numeros. Ventas bloqueadas ${_msgCut2}${_blk2} min despues del sorteo.`, 'warning');
         return;
     }
 

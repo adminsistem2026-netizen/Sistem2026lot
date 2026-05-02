@@ -17,7 +17,7 @@ const EMPTY_LOTTERY = {
 };
 
 const EMPTY_DRAW_TIME = {
-  time_label: '', time_value: '', cutoff_minutes_before: '1', block_minutes_after: '20',
+  time_label: '', time_value: '', cutoff_minutes_before: '', block_minutes_after: '20',
   custom_price_2_digits: '', custom_price_4_digits: '',
   custom_prize_1st_multiplier: '', custom_prize_2nd_multiplier: '', custom_prize_3rd_multiplier: '',
 };
@@ -286,7 +286,7 @@ export default function ManageLotteries() {
     setDrawLotteryId(lotteryId); setEditDraw(dt);
     setDrawForm({
       time_label: dt.time_label, time_value: dt.time_value,
-      cutoff_minutes_before: String(dt.cutoff_minutes_before), block_minutes_after: String(dt.block_minutes_after),
+      cutoff_minutes_before: dt.cutoff_minutes_before != null ? String(dt.cutoff_minutes_before) : '', block_minutes_after: String(dt.block_minutes_after),
       custom_price_2_digits: dt.custom_price_2_digits != null ? String(dt.custom_price_2_digits) : '',
       custom_price_4_digits: dt.custom_price_4_digits != null ? String(dt.custom_price_4_digits) : '',
       custom_prize_1st_multiplier: dt.custom_prize_1st_multiplier != null ? String(dt.custom_prize_1st_multiplier) : '',
@@ -303,7 +303,7 @@ export default function ManageLotteries() {
       const nf = v => v.trim() === '' ? null : parseFloat(v);
       const payload = {
         lottery_id: drawLotteryId, time_label: drawForm.time_label.trim(), time_value: drawForm.time_value,
-        cutoff_minutes_before: parseInt(drawForm.cutoff_minutes_before) || 1,
+        cutoff_minutes_before: drawForm.cutoff_minutes_before.trim() === '' ? null : (parseInt(drawForm.cutoff_minutes_before) || 0),
         block_minutes_after: parseInt(drawForm.block_minutes_after) || 20,
         custom_price_2_digits: nf(drawForm.custom_price_2_digits), custom_price_4_digits: nf(drawForm.custom_price_4_digits),
         custom_prize_1st_multiplier: nf(drawForm.custom_prize_1st_multiplier), custom_prize_2nd_multiplier: nf(drawForm.custom_prize_2nd_multiplier), custom_prize_3rd_multiplier: nf(drawForm.custom_prize_3rd_multiplier),
@@ -497,7 +497,7 @@ export default function ManageLotteries() {
                                   <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium text-white">{dt.time_label}</p>
                                     <p className="text-xs text-slate-400 mt-0.5">
-                                      Cierre: {dt.cutoff_minutes_before}min antes · Bloqueo: {dt.block_minutes_after}min después
+                                      {dt.cutoff_minutes_before != null ? `Cierre: ${dt.cutoff_minutes_before}min antes · ` : 'Sin cierre previo · '}Bloqueo: {dt.block_minutes_after}min después
                                       {dt.custom_price_2_digits != null && ` · Chance: ${lot.currency_symbol}${dt.custom_price_2_digits}`}
                                       {dt.custom_price_4_digits != null && ` · Billete: ${lot.currency_symbol}${dt.custom_price_4_digits}`}
                                     </p>

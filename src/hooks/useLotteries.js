@@ -64,10 +64,10 @@ export function isDrawTimeBlocked(drawTime) {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   const diff = drawMinutes - nowMinutes; // positivo = faltan X min, negativo = pasó hace X min
 
-  const cutoff = drawTime.cutoff_minutes_before ?? 1;
+  const cutoff = drawTime.cutoff_minutes_before ?? null;
   const blockAfter = drawTime.block_minutes_after ?? 20;
 
-  if (diff >= 0 && diff <= cutoff) {
+  if (cutoff !== null && diff >= 0 && diff <= cutoff) {
     return { blocked: true, reason: `Cierra en ${diff} min` };
   }
   if (diff < 0 && Math.abs(diff) <= blockAfter) {
