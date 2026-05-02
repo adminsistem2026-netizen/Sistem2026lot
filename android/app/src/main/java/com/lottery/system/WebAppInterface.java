@@ -257,7 +257,7 @@ public class WebAppInterface {
         // ── CABECERA DE TABLA ─────────────────────────────────
         // Numero(14) | Cantidad(9) | Subtotal(9) = 32 chars normal
         bos.write(new byte[]{0x1B, 0x45, 0x01});
-        writeStr(bos, padRight("Numero", 14) + padCenter("Cantidad", 9) + padLeft("Subtotal", 9) + "\n");
+        writeStr(bos, padRight("Numero", 14) + padCenter("Cantidad", 8) + padLeft("Subtotal", 10) + "\n");
         bos.write(new byte[]{0x1B, 0x45, 0x00});
         writeStr(bos, "--------------------------------\n");
 
@@ -274,7 +274,7 @@ public class WebAppInterface {
                 bos.write(new byte[]{0x1D, 0x21, 0x10});            // doble ancho para el número
                 writeStr(bos, padRight(num, 7));
                 bos.write(new byte[]{0x1D, 0x21, 0x00});            // normal para cantidad y subtotal
-                writeStr(bos, padCenter(pcs, 9) + padLeft(sub, 9) + "\n");
+                writeStr(bos, padCenter(pcs, 8) + padLeft(sub, 10) + "\n");
                 writeStr(bos, "--------------------------------\n");
             }
         }
@@ -284,7 +284,7 @@ public class WebAppInterface {
         bos.write(new byte[]{0x1D, 0x21, 0x10, 0x1B, 0x45, 0x01}); // doble ancho + bold
         writeStr(bos, padRight("Total", 7));
         bos.write(new byte[]{0x1D, 0x21, 0x00});                    // normal para los valores
-        writeStr(bos, padCenter(totalPiecesStr, 9) + padLeft(currency + total, 9) + "\n");
+        writeStr(bos, padCenter(totalPiecesStr, 8) + padLeft(currency + total, 10) + "\n");
         bos.write(new byte[]{0x1B, 0x45, 0x00});
 
         // ── FOOTER ────────────────────────────────────────────
