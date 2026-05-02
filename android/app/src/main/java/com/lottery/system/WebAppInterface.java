@@ -268,12 +268,10 @@ public class WebAppInterface {
                 String num = "*" + n.optString("number", "") + "*";
                 String pcs = n.optString("pieces", "");
                 String sub = currency + n.optString("subtotal", "");
-                bos.write(new byte[]{0x1D, 0x21, 0x01});                    // doble alto, sin bold
-                writeStr(bos, padRight(num, 12) + padCenter(pcs, 10) + padLeft(sub, 10) + "\n");
-                bos.write(new byte[]{0x1D, 0x21, 0x00});
-                bos.write(new byte[]{0x1B, 0x33, 0x12});                    // line spacing reducido para separador
+                bos.write(new byte[]{0x1D, 0x21, 0x10, 0x1B, 0x45, 0x01}); // doble ancho + bold (igual que cabecera)
+                writeStr(bos, padRight(num, 7) + padCenter(pcs, 3) + padLeft(sub, 6) + "\n");
+                bos.write(new byte[]{0x1D, 0x21, 0x00, 0x1B, 0x45, 0x00});
                 writeStr(bos, "--------------------------------\n");
-                bos.write(new byte[]{0x1B, 0x32});                          // restaurar line spacing
             }
         }
 
