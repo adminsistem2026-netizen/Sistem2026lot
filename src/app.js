@@ -3464,20 +3464,47 @@ function printCurrentTicket() {
     }
 
     const t = currentPreviewTicket;
+
+    // Compute day/date/time from datetime (same logic as showTicketPreview)
+    const d = new Date(t.datetime);
+    let dayName = '', dateStr = t.saleDate || '', timeStr = '';
+    try {
+        if (!isNaN(d)) {
+            const dayRaw = d.toLocaleDateString('es-ES', { weekday: 'long' });
+            dayName = dayRaw.charAt(0).toUpperCase() + dayRaw.slice(1);
+            dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+            timeStr = `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+        }
+    } catch(e) {}
+
+    // Compute unit prices per type
+    const nums = t.numbers || [];
+    const chanceItem = nums.find(n => n.number.length === 2);
+    const paleItem   = nums.find(n => n.number.length === 4);
+    const chancePrice = (chanceItem && parseInt(chanceItem.pieces) > 0)
+        ? (parseFloat(chanceItem.subTotal || 0) / parseInt(chanceItem.pieces)).toFixed(2) : '';
+    const palePrice = (paleItem && parseInt(paleItem.pieces) > 0)
+        ? (parseFloat(paleItem.subTotal || 0) / parseInt(paleItem.pieces)).toFixed(2) : '';
+    const totalPieces = nums.reduce((s, n) => s + parseInt(n.pieces || 0, 10), 0);
+
     const ticketData = {
-        lotteryName: getDisplayName(t.lottery) || t.lottery || '',
-        drawTime: t.drawTime || '',
-        saleDate: t.saleDate || '',
-        datetime: t.datetime || '',
-        ticketId: t.id || '',
-        sellerName: sellerName || '',
-        customerName: t.customerName || '',
-        numbers: (t.numbers || []).map(n => ({
-            number: n.number,
-            pieces: String(n.pieces),
+        lotteryName:   getDisplayName(t.lottery) || t.lottery || '',
+        drawTime:      t.drawTime || '',
+        dayName,
+        dateStr,
+        timeStr,
+        chancePrice,
+        palePrice,
+        totalPieces,
+        ticketId:      t.id || '',
+        sellerName:    sellerName || '',
+        customerName:  t.customerName || '',
+        numbers: nums.map(n => ({
+            number:   n.number,
+            pieces:   String(n.pieces),
             subtotal: parseFloat(n.subTotal || 0).toFixed(2),
         })),
-        total: parseFloat(t.total || 0).toFixed(2),
+        total:         parseFloat(t.total || 0).toFixed(2),
         currencySymbol: t.currencySymbol || '$',
     };
 
