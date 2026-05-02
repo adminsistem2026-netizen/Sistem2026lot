@@ -268,9 +268,11 @@ public class WebAppInterface {
                 String num = "*" + n.optString("number", "") + "*";
                 String pcs = n.optString("pieces", "");
                 String sub = currency + n.optString("subtotal", "");
-                bos.write(new byte[]{0x1D, 0x21, 0x11});                    // doble ancho + doble alto
+                bos.write(new byte[]{0x1B, 0x4D, 0x01});                    // Font B (más pequeña)
+                bos.write(new byte[]{0x1D, 0x21, 0x11, 0x1B, 0x45, 0x01}); // doble tamaño + bold
                 writeStr(bos, padRight(num, 7) + padCenter(pcs, 3) + padLeft(sub, 6) + "\n");
-                bos.write(new byte[]{0x1D, 0x21, 0x00});
+                bos.write(new byte[]{0x1D, 0x21, 0x00, 0x1B, 0x45, 0x00});
+                bos.write(new byte[]{0x1B, 0x4D, 0x00});                    // volver a Font A
                 writeStr(bos, "--------------------------------\n");
             }
         }
