@@ -1638,7 +1638,7 @@
             display: flex;
         }
     </style>
-  <script type="module" crossorigin src="/assets/main-ji5slbSa.js"></script>
+  <script type="module" crossorigin src="/assets/main-CZ1z_JU-.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/dist-B8Z87ca3.js">
 </head>
 
@@ -2360,13 +2360,19 @@
             <p id="balanceComision" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#7c3aed;">$0.00</p>
         </div>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;">
-            <p style="margin:0;font-size:0.7em;color:#64748b;">Premios pagados</p>
+            <p style="margin:0;font-size:0.7em;color:#64748b;">Premios a pagar</p>
             <p id="balancePremios" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#d97706;">$0.00</p>
         </div>
         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;">
             <p style="margin:0;font-size:0.7em;color:#64748b;">Parte del admin</p>
             <p id="balanceAdminPart" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#2563eb;">$0.00</p>
         </div>
+    </div>
+
+    <!-- Saldo pendiente anterior (se oculta si es 0) -->
+    <div id="balancePrevPendingCard" style="display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:12px;margin-bottom:10px;">
+        <p style="margin:0;font-size:0.7em;color:#64748b;">Saldo pendiente anterior</p>
+        <p id="balancePrevPending" style="margin:4px 0 0;font-size:1.2em;font-weight:bold;color:#16a34a;">$0.00</p>
     </div>
 
     <!-- Balance destacado -->
@@ -2404,9 +2410,9 @@
     <div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <p style="margin:0;font-weight:600;font-size:0.9em;color:#1e293b;">Historial de cortes</p>
-            <button onclick="toggleBalanceHistory()" id="balanceHistoryToggle" style="font-size:0.75em;background:#e2e8f0;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#475569;">▼ Ver</button>
+            <button onclick="toggleBalanceHistory()" id="balanceHistoryToggle" style="font-size:0.75em;background:#e2e8f0;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;color:#475569;">▲ Ocultar</button>
         </div>
-        <div id="balanceHistorial" style="display:none;"></div>
+        <div id="balanceHistorial" style="display:block;"></div>
     </div>
 </div>
 
