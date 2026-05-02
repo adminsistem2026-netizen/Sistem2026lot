@@ -14,6 +14,7 @@ const IcBack   = () => <svg className="w-4 h-4" fill="none" stroke="currentColor
 const IcScissors = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 2v4m0 0a2 2 0 100 4 2 2 0 000-4zm0 4l12 6M6 22v-4m0 0a2 2 0 110-4 2 2 0 010 4zm0-4l12-6" /></svg>;
 const IcRefresh = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>;
 const IcChevron = ({ open }) => <svg className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>;
+const IcTrash = () => <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>;
 
 export default function AdminBalance() {
   const { profile } = useAuth();
@@ -54,6 +55,11 @@ export default function AdminBalance() {
   const [settleNotes, setSettleNotes]         = useState('');
   const [settling, setSettling]               = useState(false);
   const [settleError, setSettleError]         = useState('');
+
+  // Delete settlement
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deleting, setDeleting]               = useState(false);
+  const [deleteError, setDeleteError]         = useState('');
 
   // ── Init ──────────────────────────────────────────────────
   useEffect(() => {
@@ -193,6 +199,27 @@ export default function AdminBalance() {
     }
   }
 
+  // ── Delete settlement ─────────────────────────────────────
+  async function handleDeleteSettlement() {
+    if (!confirmDeleteId) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      const { error } = await db
+        .from('settlements')
+        .delete()
+        .eq('id', confirmDeleteId)
+        .eq('admin_id', profile.id);
+      if (error) throw error;
+      setConfirmDeleteId(null);
+      await loadBalance();
+    } catch (err) {
+      setDeleteError(err.message || 'Error al eliminar el corte');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   // ── Filter bar helpers ────────────────────────────────────
   const hasFilters = dateFrom || dateTo || lotteryId || drawTimeId;
   function clearFilters() {
@@ -231,9 +258,10 @@ export default function AdminBalance() {
     return parts.join(' | ');
   }
 
-  const lastSettlement = settlements[0] || null;
-  const previousPending = lastSettlement
-    ? Number(lastSettlement.balance_at_settlement || 0) - Number(lastSettlement.amount || 0)
+  // Derivado del balance RPC para mantenerse sincronizado
+  // aunque settlements esté vacío (filtro de fecha sin corte exacto previo)
+  const previousPending = balance
+    ? Number(balance.balance || 0) - Number(balance.admin_part || 0) + Number(balance.total_prizes_paid || 0)
     : 0;
 
   // ── Totals for "Hoy" tab ─────────────────────────────────
@@ -369,7 +397,7 @@ export default function AdminBalance() {
                   <p className="text-lg font-bold text-blue-400">{fmt(balance.admin_part, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-                  <p className="text-xs text-slate-400 mb-1">Premios pagados</p>
+                  <p className="text-xs text-slate-400 mb-1">Premios a pagar</p>
                   <p className="text-lg font-bold text-amber-400">{fmt(balance.total_prizes_paid, sym)}</p>
                 </div>
                 {previousPending !== 0 && (
@@ -410,7 +438,8 @@ export default function AdminBalance() {
                     setSettleError('');
                     setShowSettleModal(true);
                   }}
-                  className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 rounded-xl transition"
+                  disabled={Number(balance?.balance || 0) === 0}
+                  className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <IcScissors /> Hacer corte
                 </button>
@@ -490,7 +519,7 @@ export default function AdminBalance() {
                             <div className="flex gap-3 mt-1.5 text-xs text-slate-500">
                               <span>Liquidado: <span className={Number(s.amount || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{fmt(s.amount, sym)}</span></span>
                               <span>Ventas: <span className="text-slate-300">{fmt(s.total_sales, sym)}</span></span>
-                              <span>Premios: <span className="text-amber-400">{fmt(s.total_prizes_paid, sym)}</span></span>
+                              <span>Premios a pagar: <span className="text-amber-400">{fmt(s.total_prizes_paid, sym)}</span></span>
                             </div>
                             {Number(s.balance_at_settlement || 0) !== Number(s.amount || 0) && (
                               <p className={`text-xs mt-1 ${balanceColor(Number(s.balance_at_settlement || 0) - Number(s.amount || 0))}`}>
@@ -498,11 +527,20 @@ export default function AdminBalance() {
                               </p>
                             )}
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-xs text-slate-500 mb-0.5">Balance</p>
-                            <p className={`text-base font-bold ${balanceColor(s.balance_at_settlement)}`}>
-                              {fmt(s.balance_at_settlement, sym)}
-                            </p>
+                          <div className="flex flex-col items-end gap-2 shrink-0">
+                            <div className="text-right">
+                              <p className="text-xs text-slate-500 mb-0.5">Balance</p>
+                              <p className={`text-base font-bold ${balanceColor(s.balance_at_settlement)}`}>
+                                {fmt(s.balance_at_settlement, sym)}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => { setDeleteError(''); setConfirmDeleteId(s.id); }}
+                              className="text-slate-600 hover:text-rose-400 transition p-1 rounded-lg hover:bg-rose-400/10"
+                              title="Eliminar corte"
+                            >
+                              <IcTrash />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -638,6 +676,35 @@ export default function AdminBalance() {
         </>
       )}
 
+      {/* ── Delete Settlement Modal ── */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+            <h2 className="text-base font-bold text-white">Eliminar corte</h2>
+            <p className="text-sm text-slate-300">
+              Esta accion no se puede deshacer. El balance del vendedor se recalculara sin este corte.
+            </p>
+            {deleteError && <p className="text-rose-400 text-xs text-center">{deleteError}</p>}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setConfirmDeleteId(null); setDeleteError(''); }}
+                disabled={deleting}
+                className="flex-1 border border-slate-600 text-slate-300 text-sm py-2.5 rounded-xl hover:bg-slate-700 transition disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteSettlement}
+                disabled={deleting}
+                className="flex-1 bg-rose-600 hover:bg-rose-500 text-white text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Settlement Modal ── */}
       {showSettleModal && balance && (
         <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
@@ -667,7 +734,7 @@ export default function AdminBalance() {
                 <span className="text-violet-400">{fmt(balance.total_commission, sym)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Premios pagados</span>
+                <span className="text-slate-400">Premios a pagar</span>
                 <span className="text-amber-400">{fmt(balance.total_prizes_paid, sym)}</span>
               </div>
               <div className="border-t border-slate-700 pt-2 flex justify-between">
