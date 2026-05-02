@@ -268,17 +268,17 @@ public class WebAppInterface {
                 String num = "*" + n.optString("number", "") + "*";
                 String pcs = n.optString("pieces", "");
                 String sub = currency + n.optString("subtotal", "");
-                bos.write(new byte[]{0x1D, 0x21, 0x10, 0x1B, 0x45, 0x01}); // doble ancho + bold (igual que cabecera)
+                bos.write(new byte[]{0x1D, 0x21, 0x10});                    // doble ancho, sin bold
                 writeStr(bos, padRight(num, 7) + padCenter(pcs, 3) + padLeft(sub, 6) + "\n");
-                bos.write(new byte[]{0x1D, 0x21, 0x00, 0x1B, 0x45, 0x00});
+                bos.write(new byte[]{0x1D, 0x21, 0x00});
                 writeStr(bos, "--------------------------------\n");
             }
         }
 
         // ── TOTAL ─────────────────────────────────────────────
         String totalPiecesStr = totalPieces > 0 ? String.valueOf(totalPieces) : "";
-        bos.write(new byte[]{0x1D, 0x21, 0x01, 0x1B, 0x45, 0x01}); // doble altura + bold (total resalta más)
-        writeStr(bos, padRight("Total", 12) + padCenter(totalPiecesStr, 10) + padLeft(currency + total, 10) + "\n");
+        bos.write(new byte[]{0x1D, 0x21, 0x10, 0x1B, 0x45, 0x01}); // doble ancho + bold
+        writeStr(bos, padRight("Total", 7) + padCenter(totalPiecesStr, 3) + padLeft(currency + total, 6) + "\n");
         bos.write(new byte[]{0x1D, 0x21, 0x00, 0x1B, 0x45, 0x00});
 
         // ── FOOTER ────────────────────────────────────────────
