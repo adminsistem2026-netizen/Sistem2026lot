@@ -255,22 +255,26 @@ public class WebAppInterface {
         writeStr(bos, "--------------------------------\n");
 
         // ── CABECERA DE TABLA ─────────────────────────────────
-        // 32 chars: Numero(12) | Cantidad(10) | Subtotal(10)
-        bos.write(new byte[]{0x1B, 0x45, 0x01});                    // bold
-        writeStr(bos, padRight("Numero", 12) + padCenter("Cantidad", 10) + padLeft("Subtotal", 10) + "\n");
-        bos.write(new byte[]{0x1B, 0x45, 0x00});                    // no bold
+        // Numero(14) | Cantidad(9) | Subtotal(9) = 32 chars normal
+        bos.write(new byte[]{0x1B, 0x45, 0x01});
+        writeStr(bos, padRight("Numero", 14) + padCenter("Cantidad", 9) + padLeft("Subtotal", 9) + "\n");
+        bos.write(new byte[]{0x1B, 0x45, 0x00});
         writeStr(bos, "--------------------------------\n");
 
         // ── FILAS DE NÚMEROS ──────────────────────────────────
+        // Numero en doble ancho (7 chars × 2 = 14 físicos)
+        // Cantidad + Subtotal en tamaño normal (9+9 = 18 físicos)
+        // Total físico: 14 + 9 + 9 = 32
         if (numbers != null) {
             for (int i = 0; i < numbers.length(); i++) {
                 JSONObject n = numbers.getJSONObject(i);
                 String num = "*" + n.optString("number", "") + "*";
                 String pcs = n.optString("pieces", "");
                 String sub = currency + n.optString("subtotal", "");
-                bos.write(new byte[]{0x1D, 0x21, 0x10});                    // doble ancho, sin bold
-                writeStr(bos, padRight(num, 7) + padCenter(pcs, 3) + padLeft(sub, 6) + "\n");
-                bos.write(new byte[]{0x1D, 0x21, 0x00});
+                bos.write(new byte[]{0x1D, 0x21, 0x10});            // doble ancho para el número
+                writeStr(bos, padRight(num, 7));
+                bos.write(new byte[]{0x1D, 0x21, 0x00});            // normal para cantidad y subtotal
+                writeStr(bos, padCenter(pcs, 9) + padLeft(sub, 9) + "\n");
                 writeStr(bos, "--------------------------------\n");
             }
         }
@@ -278,8 +282,10 @@ public class WebAppInterface {
         // ── TOTAL ─────────────────────────────────────────────
         String totalPiecesStr = totalPieces > 0 ? String.valueOf(totalPieces) : "";
         bos.write(new byte[]{0x1D, 0x21, 0x10, 0x1B, 0x45, 0x01}); // doble ancho + bold
-        writeStr(bos, padRight("Total", 7) + padCenter(totalPiecesStr, 3) + padLeft(currency + total, 6) + "\n");
-        bos.write(new byte[]{0x1D, 0x21, 0x00, 0x1B, 0x45, 0x00});
+        writeStr(bos, padRight("Total", 7));
+        bos.write(new byte[]{0x1D, 0x21, 0x00});                    // normal para los valores
+        writeStr(bos, padCenter(totalPiecesStr, 9) + padLeft(currency + total, 9) + "\n");
+        bos.write(new byte[]{0x1B, 0x45, 0x00});
 
         // ── FOOTER ────────────────────────────────────────────
         writeStr(bos, "--------------------------------\n");
