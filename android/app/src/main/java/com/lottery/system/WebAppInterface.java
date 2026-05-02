@@ -271,7 +271,9 @@ public class WebAppInterface {
                 bos.write(new byte[]{0x1D, 0x21, 0x01});                    // doble alto, sin bold
                 writeStr(bos, padRight(num, 12) + padCenter(pcs, 10) + padLeft(sub, 10) + "\n");
                 bos.write(new byte[]{0x1D, 0x21, 0x00});
+                bos.write(new byte[]{0x1B, 0x33, 0x12});                    // line spacing reducido para separador
                 writeStr(bos, "--------------------------------\n");
+                bos.write(new byte[]{0x1B, 0x32});                          // restaurar line spacing
             }
         }
 
