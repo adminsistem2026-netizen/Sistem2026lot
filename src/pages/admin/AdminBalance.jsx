@@ -205,11 +205,10 @@ export default function AdminBalance() {
     setDeleting(true);
     setDeleteError('');
     try {
-      const { error } = await db
-        .from('settlements')
-        .delete()
-        .eq('id', confirmDeleteId)
-        .eq('admin_id', profile.id);
+      const { error } = await db.rpc('delete_settlement', {
+        p_settlement_id: confirmDeleteId,
+        p_admin_id: profile.id,
+      });
       if (error) throw error;
       setConfirmDeleteId(null);
       await loadBalance();
