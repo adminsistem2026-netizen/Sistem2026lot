@@ -219,10 +219,8 @@ BEGIN
   daily_prizes AS (
     SELECT wt.draw_date AS dt, COALESCE(SUM(wt.prize_amount), 0) AS total
     FROM winning_tickets wt
-    JOIN tickets t ON t.id = wt.ticket_id
     WHERE wt.seller_id  = p_seller_id
       AND wt.admin_id   = p_admin_id
-      AND t.is_paid     = TRUE
       AND wt.draw_date  BETWEEN v_period_from AND v_period_to
       AND (p_lottery_id   IS NULL OR wt.lottery_id   = p_lottery_id)
       AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)
@@ -414,11 +412,12 @@ BEGIN
 
   v_commission := v_total_sales * v_pct / 100;
   v_admin_part := v_total_sales - v_commission;
-  SELECT COALESCE(balance_at_settlement - amount, 0)
+  SELECT COALESCE(s.balance_at_settlement - s.amount, 0)
   INTO v_amount
-  FROM settlements
-  WHERE seller_id = p_seller_id AND admin_id = p_admin_id
-  ORDER BY created_at DESC
+  FROM public.settlements s
+  WHERE s.seller_id = p_seller_id
+    AND s.admin_id = p_admin_id
+  ORDER BY s.created_at DESC
   LIMIT 1;
 
   v_balance := COALESCE(v_amount, 0) + v_admin_part - v_total_prizes;
@@ -432,7 +431,7 @@ BEGIN
     RAISE EXCEPTION 'El monto del corte debe estar entre % y 0', v_balance;
   END IF;
 
-  INSERT INTO settlements (
+  INSERT INTO public.settlements AS s (
     admin_id, seller_id, amount, balance_at_settlement,
     total_sales, total_commission, total_prizes_paid,
     notes, period_start, period_end, created_by
@@ -440,7 +439,7 @@ BEGIN
     p_admin_id, p_seller_id, v_amount, v_balance,
     v_total_sales, v_commission, v_total_prizes,
     p_notes, v_period_from, v_period_to, p_admin_id
-  ) RETURNING id INTO v_new_id;
+  ) RETURNING s.id INTO v_new_id;
 
   RETURN QUERY
   SELECT v_new_id, v_amount, v_balance, v_total_sales, v_commission, v_total_prizes,
@@ -687,10 +686,8 @@ BEGIN
   daily_prizes AS (
     SELECT wt.draw_date AS dt, COALESCE(SUM(wt.prize_amount), 0) AS total
     FROM winning_tickets wt
-    JOIN tickets t ON t.id = wt.ticket_id
     WHERE wt.seller_id  = p_seller_id
       AND wt.admin_id   = v_admin_id
-      AND t.is_paid     = TRUE
       AND wt.draw_date  BETWEEN v_period_from AND v_period_to
       AND (p_lottery_id   IS NULL OR wt.lottery_id   = p_lottery_id)
       AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)

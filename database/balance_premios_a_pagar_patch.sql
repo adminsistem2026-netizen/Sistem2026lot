@@ -1,30 +1,17 @@
 -- ============================================================
--- PATCH: CORTES MANUALES, PARCIALES Y POR ALCANCE EN BALANCE
--- Aplicar en la base real para activar el nuevo flujo de cortes.
+-- PATCH: PREMIOS A PAGAR EN BALANCE
+-- Cambia el cálculo de premios en todas las funciones de balance:
+-- ANTES: solo se contaban premios con t.is_paid = TRUE (ya cobrados)
+-- AHORA: se cuentan todos los premios registrados en winning_tickets
+--        (desde que existe el resultado, sin esperar el cobro físico)
 --
--- Este patch actualiza:
--- - estructura de `settlements` para soportar loteria/sorteo
--- - `get_seller_balance`
--- - `get_all_sellers_balance`
--- - `create_settlement`
--- - `get_settlements_history`
--- - `get_seller_balance_for_seller`
--- - grants de `create_settlement` y `get_settlements_history`
---
--- Objetivo:
--- permitir cortes globales o filtrados por fecha/loteria/sorteo,
--- registrar monto real liquidado y arrastrar saldo pendiente
--- solo dentro del mismo alcance del corte.
+-- Solo afecta funciones de balance. El resto del sistema no cambia.
 -- ============================================================
 
-ALTER TABLE public.settlements
-  ADD COLUMN IF NOT EXISTS lottery_id UUID REFERENCES public.lotteries(id),
-  ADD COLUMN IF NOT EXISTS draw_time_id UUID REFERENCES public.draw_times(id);
 
-CREATE INDEX IF NOT EXISTS idx_settlements_scope
-  ON public.settlements (admin_id, seller_id, lottery_id, draw_time_id, period_start, period_end, created_at DESC);
-
-
+-- ============================================================
+-- 1. get_seller_balance (con scope lotería/sorteo)
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.get_seller_balance(
   p_seller_id    UUID,
   p_admin_id     UUID,
@@ -83,7 +70,6 @@ BEGIN
         AND t.admin_id = p_admin_id
         AND (p_lottery_id IS NULL OR t.lottery_id = p_lottery_id)
         AND (p_draw_time_id IS NULL OR t.draw_time_id = p_draw_time_id);
-
       v_period_from := COALESCE(v_period_from, CURRENT_DATE - 30);
     END IF;
   ELSE
@@ -146,6 +132,103 @@ END;
 $$;
 
 
+-- ============================================================
+-- 2. get_seller_balance_detail (desglose diario para admin)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_seller_balance_detail(
+  p_seller_id    UUID,
+  p_admin_id     UUID,
+  p_date_from    DATE DEFAULT NULL,
+  p_date_to      DATE DEFAULT NULL,
+  p_lottery_id   UUID DEFAULT NULL,
+  p_draw_time_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+  day              DATE,
+  total_sales      NUMERIC,
+  commission_pct   NUMERIC,
+  total_commission NUMERIC,
+  admin_part       NUMERIC,
+  prizes_paid      NUMERIC,
+  balance_day      NUMERIC
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_pct         NUMERIC;
+  v_period_from DATE;
+  v_period_to   DATE;
+  v_last_settle DATE;
+BEGIN
+  SELECT p.seller_percentage INTO v_pct
+  FROM public.profiles p
+  WHERE p.id = p_seller_id;
+  v_pct := COALESCE(v_pct, 0);
+
+  IF p_date_from IS NULL THEN
+    SELECT period_end INTO v_last_settle
+    FROM public.settlements
+    WHERE seller_id = p_seller_id AND admin_id = p_admin_id
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    IF v_last_settle IS NOT NULL THEN
+      v_period_from := v_last_settle + 1;
+    ELSE
+      SELECT MIN(sale_date) INTO v_period_from
+      FROM public.tickets
+      WHERE seller_id = p_seller_id AND admin_id = p_admin_id;
+      v_period_from := COALESCE(v_period_from, CURRENT_DATE - 30);
+    END IF;
+  ELSE
+    v_period_from := p_date_from;
+  END IF;
+
+  v_period_to := COALESCE(p_date_to, CURRENT_DATE);
+
+  RETURN QUERY
+  WITH daily_sales AS (
+    SELECT t.sale_date AS dt, COALESCE(SUM(tn.subtotal), 0) AS total
+    FROM public.ticket_numbers tn
+    JOIN public.tickets t ON t.id = tn.ticket_id
+    WHERE t.seller_id    = p_seller_id
+      AND t.admin_id     = p_admin_id
+      AND t.is_cancelled = FALSE
+      AND t.sale_date    BETWEEN v_period_from AND v_period_to
+      AND (p_lottery_id   IS NULL OR t.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR t.draw_time_id = p_draw_time_id)
+    GROUP BY t.sale_date
+  ),
+  daily_prizes AS (
+    SELECT wt.draw_date AS dt, COALESCE(SUM(wt.prize_amount), 0) AS total
+    FROM public.winning_tickets wt
+    WHERE wt.seller_id  = p_seller_id
+      AND wt.admin_id   = p_admin_id
+      AND wt.draw_date  BETWEEN v_period_from AND v_period_to
+      AND (p_lottery_id   IS NULL OR wt.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)
+    GROUP BY wt.draw_date
+  )
+  SELECT
+    COALESCE(ds.dt, dp.dt),
+    COALESCE(ds.total, 0),
+    v_pct,
+    COALESCE(ds.total, 0) * v_pct / 100,
+    COALESCE(ds.total, 0) - COALESCE(ds.total, 0) * v_pct / 100,
+    COALESCE(dp.total, 0),
+    (COALESCE(ds.total, 0) - COALESCE(ds.total, 0) * v_pct / 100) - COALESCE(dp.total, 0)
+  FROM daily_sales ds
+  FULL OUTER JOIN daily_prizes dp ON ds.dt = dp.dt
+  ORDER BY COALESCE(ds.dt, dp.dt) DESC;
+END;
+$$;
+
+
+-- ============================================================
+-- 3. get_all_sellers_balance (resumen todos los vendedores)
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.get_all_sellers_balance(
   p_admin_id     UUID,
   p_date_from    DATE DEFAULT NULL,
@@ -229,6 +312,9 @@ AS $$
 $$;
 
 
+-- ============================================================
+-- 4. create_settlement
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.create_settlement(
   p_admin_id     UUID,
   p_seller_id    UUID,
@@ -306,7 +392,6 @@ BEGIN
         AND t.admin_id = p_admin_id
         AND (p_lottery_id IS NULL OR t.lottery_id = p_lottery_id)
         AND (p_draw_time_id IS NULL OR t.draw_time_id = p_draw_time_id);
-
       v_period_from := COALESCE(v_period_from, CURRENT_DATE);
     END IF;
   ELSE
@@ -375,65 +460,9 @@ END;
 $$;
 
 
-CREATE OR REPLACE FUNCTION public.get_settlements_history(
-  p_admin_id     UUID,
-  p_seller_id    UUID DEFAULT NULL,
-  p_date_from    DATE DEFAULT NULL,
-  p_date_to      DATE DEFAULT NULL,
-  p_lottery_id   UUID DEFAULT NULL,
-  p_draw_time_id UUID DEFAULT NULL
-)
-RETURNS TABLE (
-  id                    UUID,
-  seller_id             UUID,
-  seller_name           TEXT,
-  amount                NUMERIC,
-  balance_at_settlement NUMERIC,
-  total_sales           NUMERIC,
-  total_commission      NUMERIC,
-  total_prizes_paid     NUMERIC,
-  notes                 TEXT,
-  period_start          DATE,
-  period_end            DATE,
-  created_at            TIMESTAMPTZ,
-  lottery_id            UUID,
-  draw_time_id          UUID
-)
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT
-    s.id,
-    s.seller_id,
-    p.full_name,
-    s.amount,
-    s.balance_at_settlement,
-    s.total_sales,
-    s.total_commission,
-    s.total_prizes_paid,
-    s.notes,
-    s.period_start,
-    s.period_end,
-    s.created_at,
-    s.lottery_id,
-    s.draw_time_id
-  FROM public.settlements s
-  JOIN public.profiles p ON p.id = s.seller_id
-  WHERE s.admin_id = p_admin_id
-    AND (p_seller_id IS NULL OR s.seller_id = p_seller_id)
-    AND ((p_lottery_id IS NULL AND s.lottery_id IS NULL) OR s.lottery_id = p_lottery_id)
-    AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
-    AND (
-      p_date_from IS NULL OR (
-        s.period_start = p_date_from
-        AND s.period_end = COALESCE(p_date_to, CURRENT_DATE)
-      )
-    )
-  ORDER BY s.created_at DESC;
-$$;
-
-
+-- ============================================================
+-- 5. get_seller_balance_for_seller (vista del vendedor en la app)
+-- ============================================================
 CREATE OR REPLACE FUNCTION public.get_seller_balance_for_seller(
   p_seller_id    UUID,
   p_date_from    DATE DEFAULT NULL,
@@ -498,7 +527,6 @@ BEGIN
         AND t.admin_id = v_admin_id
         AND (p_lottery_id IS NULL OR t.lottery_id = p_lottery_id)
         AND (p_draw_time_id IS NULL OR t.draw_time_id = p_draw_time_id);
-
       v_period_from := COALESCE(v_period_from, CURRENT_DATE - 30);
     END IF;
   ELSE
@@ -561,6 +589,99 @@ END;
 $$;
 
 
-REVOKE EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,TEXT) FROM authenticated;
-GRANT EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,NUMERIC,TEXT,DATE,DATE,UUID,UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_settlements_history(UUID,UUID,DATE,DATE,UUID,UUID) TO authenticated;
+-- ============================================================
+-- 6. get_seller_balance_detail_for_seller (desglose diario en app)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_seller_balance_detail_for_seller(
+  p_seller_id    UUID,
+  p_date_from    DATE DEFAULT NULL,
+  p_date_to      DATE DEFAULT NULL,
+  p_lottery_id   UUID DEFAULT NULL,
+  p_draw_time_id UUID DEFAULT NULL
+)
+RETURNS TABLE (
+  day              DATE,
+  total_sales      NUMERIC,
+  commission_pct   NUMERIC,
+  total_commission NUMERIC,
+  admin_part       NUMERIC,
+  prizes_paid      NUMERIC,
+  balance_day      NUMERIC
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_admin_id    UUID;
+  v_pct         NUMERIC;
+  v_period_from DATE;
+  v_period_to   DATE;
+  v_last_settle DATE;
+BEGIN
+  IF p_seller_id != auth.uid() THEN
+    RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
+  END IF;
+
+  SELECT p.parent_admin_id, p.seller_percentage
+  INTO v_admin_id, v_pct
+  FROM public.profiles p
+  WHERE p.id = p_seller_id;
+  v_pct := COALESCE(v_pct, 0);
+
+  IF p_date_from IS NULL THEN
+    SELECT period_end INTO v_last_settle
+    FROM public.settlements
+    WHERE seller_id = p_seller_id AND admin_id = v_admin_id
+    ORDER BY created_at DESC
+    LIMIT 1;
+
+    IF v_last_settle IS NOT NULL THEN
+      v_period_from := v_last_settle + 1;
+    ELSE
+      SELECT MIN(sale_date) INTO v_period_from
+      FROM public.tickets WHERE seller_id = p_seller_id AND admin_id = v_admin_id;
+      v_period_from := COALESCE(v_period_from, CURRENT_DATE - 30);
+    END IF;
+  ELSE
+    v_period_from := p_date_from;
+  END IF;
+
+  v_period_to := COALESCE(p_date_to, CURRENT_DATE);
+
+  RETURN QUERY
+  WITH daily_sales AS (
+    SELECT t.sale_date AS dt, COALESCE(SUM(tn.subtotal), 0) AS total
+    FROM public.ticket_numbers tn
+    JOIN public.tickets t ON t.id = tn.ticket_id
+    WHERE t.seller_id    = p_seller_id
+      AND t.admin_id     = v_admin_id
+      AND t.is_cancelled = FALSE
+      AND t.sale_date    BETWEEN v_period_from AND v_period_to
+      AND (p_lottery_id   IS NULL OR t.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR t.draw_time_id = p_draw_time_id)
+    GROUP BY t.sale_date
+  ),
+  daily_prizes AS (
+    SELECT wt.draw_date AS dt, COALESCE(SUM(wt.prize_amount), 0) AS total
+    FROM public.winning_tickets wt
+    WHERE wt.seller_id  = p_seller_id
+      AND wt.admin_id   = v_admin_id
+      AND wt.draw_date  BETWEEN v_period_from AND v_period_to
+      AND (p_lottery_id   IS NULL OR wt.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)
+    GROUP BY wt.draw_date
+  )
+  SELECT
+    COALESCE(ds.dt, dp.dt),
+    COALESCE(ds.total, 0),
+    v_pct,
+    COALESCE(ds.total, 0) * v_pct / 100,
+    COALESCE(ds.total, 0) - COALESCE(ds.total, 0) * v_pct / 100,
+    COALESCE(dp.total, 0),
+    (COALESCE(ds.total, 0) - COALESCE(ds.total, 0) * v_pct / 100) - COALESCE(dp.total, 0)
+  FROM daily_sales ds
+  FULL OUTER JOIN daily_prizes dp ON ds.dt = dp.dt
+  ORDER BY COALESCE(ds.dt, dp.dt) DESC;
+END;
+$$;

@@ -4,6 +4,14 @@
 -- Orden: tablas → índices → RLS → seeds
 -- ============================================================
 
+-- NOTA:
+-- Este archivo describe el esquema principal alineado con la
+-- aplicacion actual. Modulos avanzados viven ademas en:
+--   - winning_tickets_migration.sql
+--   - fix_winning_tickets_rls.sql
+--   - fix_is_paid_from_tickets.sql
+--   - balance_settlements_migration.sql
+
 
 -- ============================================================
 -- TABLAS
@@ -14,13 +22,20 @@ CREATE TABLE public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email TEXT NOT NULL,
   full_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'seller')),
+  role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin', 'sub_admin', 'seller')),
   parent_admin_id UUID REFERENCES public.profiles(id),
+  sub_admin_id UUID REFERENCES public.profiles(id),
   seller_percentage DECIMAL(5,2) DEFAULT 13.00,
   is_active BOOLEAN DEFAULT true,
   phone TEXT,
+  expires_at TIMESTAMPTZ,
+  max_sellers INTEGER DEFAULT 5,
   currency_code TEXT DEFAULT 'USD',
   currency_symbol TEXT DEFAULT '$',
+  seller_code TEXT,
+  price_2_digits_override DECIMAL(10,2),
+  price_4_digits_override DECIMAL(10,2),
+  use_global_limits BOOLEAN DEFAULT true,
   printer_name TEXT,
   printer_id TEXT,
   printer_paper_width INTEGER DEFAULT 58,
@@ -43,7 +58,8 @@ CREATE TABLE public.lotteries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   display_name TEXT NOT NULL,
-  lottery_type TEXT NOT NULL CHECK (lottery_type IN ('regular', 'reventado')),
+  lottery_type TEXT NOT NULL CHECK (lottery_type IN ('regular', 'reventado', 'pale', 'nacional')),
+  lottery_modality TEXT,
   base_lottery_id UUID REFERENCES public.lotteries(id),
   is_active BOOLEAN DEFAULT true,
   created_by UUID REFERENCES public.profiles(id),
@@ -55,6 +71,17 @@ CREATE TABLE public.lotteries (
   prize_1st_multiplier DECIMAL(10,2) DEFAULT 11.00,
   prize_2nd_multiplier DECIMAL(10,2) DEFAULT 3.00,
   prize_3rd_multiplier DECIMAL(10,2) DEFAULT 2.00,
+  billete_prize_1st_multiplier DECIMAL(10,2) DEFAULT 2000.00,
+  billete_prize_2nd_multiplier DECIMAL(10,2) DEFAULT 600.00,
+  billete_prize_3rd_multiplier DECIMAL(10,2) DEFAULT 300.00,
+  nat_mult_3match_1 DECIMAL(10,2) DEFAULT 50.00,
+  nat_mult_3match_2 DECIMAL(10,2) DEFAULT 20.00,
+  nat_mult_3match_3 DECIMAL(10,2) DEFAULT 10.00,
+  nat_mult_2first_1 DECIMAL(10,2) DEFAULT 3.00,
+  nat_mult_2last_1 DECIMAL(10,2) DEFAULT 3.00,
+  nat_mult_2last_2 DECIMAL(10,2) DEFAULT 2.00,
+  nat_mult_2last_3 DECIMAL(10,2) DEFAULT 1.00,
+  nat_mult_1last_1 DECIMAL(10,2) DEFAULT 1.00,
   reventado_price_2_digits DECIMAL(10,2) DEFAULT 0.20,
   reventado_price_4_digits DECIMAL(10,2) DEFAULT 1.00,
   reventado_payout_per_block DECIMAL(10,2) DEFAULT 90.00,
@@ -118,7 +145,7 @@ CREATE TABLE public.ticket_numbers (
 CREATE TABLE public.sales_limits (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   admin_id UUID NOT NULL REFERENCES public.profiles(id),
-  lottery_id UUID NOT NULL REFERENCES public.lotteries(id),
+  lottery_id UUID REFERENCES public.lotteries(id),
   draw_time_id UUID REFERENCES public.draw_times(id),
   seller_id UUID REFERENCES public.profiles(id),
   number TEXT,
@@ -133,7 +160,7 @@ CREATE TABLE public.sales_limits (
 CREATE TABLE public.winning_numbers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   lottery_id UUID NOT NULL REFERENCES public.lotteries(id),
-  draw_time_id UUID NOT NULL REFERENCES public.draw_times(id),
+  draw_time_id UUID REFERENCES public.draw_times(id),
   draw_date DATE NOT NULL,
   first_prize TEXT,
   second_prize TEXT,

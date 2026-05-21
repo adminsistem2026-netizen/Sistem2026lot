@@ -34,12 +34,13 @@ export default function ManageLimits() {
     try {
       const [{ data: lots }, { data: dts }, { data: limits }] = await Promise.all([
         db.from('lotteries').select('id, display_name').eq('admin_id', profile.id).order('display_name'),
-        db.from('draw_times').select('id, time_label, lottery_id').eq('admin_id', profile.id),
+        db.from('draw_times').select('id, time_label, lottery_id'),
         db.from('sales_limits').select('*, draw_times(time_label)').eq('admin_id', profile.id),
       ]);
 
       const lotList = lots || [];
-      const dtList = dts || [];
+      const allowedLotteryIds = new Set(lotList.map(l => l.id));
+      const dtList = (dts || []).filter(dt => allowedLotteryIds.has(dt.lottery_id));
       const limitList = limits || [];
 
       setLotteries(lotList);

@@ -263,6 +263,10 @@ export default function AdminBalance() {
     ? Number(balance.balance || 0) - Number(balance.admin_part || 0) + Number(balance.total_prizes_paid || 0)
     : 0;
 
+  const detailTotalSales      = detail.reduce((s, r) => s + Number(r.total_sales      || 0), 0);
+  const detailTotalPrizes     = detail.reduce((s, r) => s + Number(r.prizes_paid      || 0), 0);
+  const detailTotalCommission = detail.reduce((s, r) => s + Number(r.total_commission || 0), 0);
+
   // ── Totals for "Hoy" tab ─────────────────────────────────
   const totals = allSellers.reduce(
     (acc, s) => ({
@@ -385,19 +389,19 @@ export default function AdminBalance() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Total recaudado</p>
-                  <p className="text-lg font-bold text-white">{fmt(balance.total_sales, sym)}</p>
+                  <p className="text-lg font-bold text-white">{fmt(detailTotalSales, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Comisión vendedor ({Number(balance.commission_pct || 0).toFixed(1)}%)</p>
-                  <p className="text-lg font-bold text-violet-400">{fmt(balance.total_commission, sym)}</p>
+                  <p className="text-lg font-bold text-violet-400">{fmt(detailTotalCommission, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Parte del admin</p>
-                  <p className="text-lg font-bold text-blue-400">{fmt(balance.admin_part, sym)}</p>
+                  <p className="text-lg font-bold text-blue-400">{fmt(balance.balance, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Premios a pagar</p>
-                  <p className="text-lg font-bold text-amber-400">{fmt(balance.total_prizes_paid, sym)}</p>
+                  <p className="text-lg font-bold text-amber-400">{fmt(detailTotalPrizes, sym)}</p>
                 </div>
                 {previousPending !== 0 && (
                   <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 col-span-2">
@@ -473,14 +477,40 @@ export default function AdminBalance() {
                             <td colSpan={6} className="px-3 py-6 text-center text-slate-500">Sin movimientos en el período</td>
                           </tr>
                         ) : detail.map((row, i) => (
-                          <tr key={i} className={`border-t border-slate-700/50 ${i % 2 === 0 ? 'bg-slate-900/50' : 'bg-slate-800/30'}`}>
-                            <td className="px-3 py-2.5 text-slate-300 whitespace-nowrap">{fmtDate(row.day)}</td>
-                            <td className="px-3 py-2.5 text-right text-white">{fmt(row.total_sales, sym)}</td>
-                            <td className="px-3 py-2.5 text-right text-violet-400">{fmt(row.total_commission, sym)}</td>
-                            <td className="px-3 py-2.5 text-right text-blue-400">{fmt(row.admin_part, sym)}</td>
-                            <td className="px-3 py-2.5 text-right text-amber-400">{fmt(row.prizes_paid, sym)}</td>
-                            <td className={`px-3 py-2.5 text-right font-semibold ${balanceColor(row.balance_day)}`}>
-                              {fmt(row.balance_day, sym)}
+                          <tr key={i} className={`border-t border-slate-700/50 ${
+                            row.is_settled
+                              ? 'bg-amber-900/10 opacity-70'
+                              : i % 2 === 0 ? 'bg-slate-900/50' : 'bg-slate-800/30'
+                          }`}>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <span className={row.is_settled ? 'line-through text-slate-500' : 'text-slate-300'}>
+                                {fmtDate(row.day)}
+                              </span>
+                              {row.is_settled && (
+                                <span className="ml-1.5 text-[10px] bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded-full font-medium">
+                                  Saldado
+                                </span>
+                              )}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right ${row.is_settled ? 'line-through text-slate-500' : 'text-white'}`}>
+                              {fmt(row.total_sales, sym)}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right ${row.is_settled ? 'line-through text-slate-500' : 'text-violet-400'}`}>
+                              {fmt(row.total_commission, sym)}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right ${row.is_settled ? 'line-through text-slate-500' : 'text-blue-400'}`}>
+                              {fmt(row.admin_part, sym)}
+                            </td>
+                            <td className={`px-3 py-2.5 text-right ${row.is_settled ? 'line-through text-slate-500' : 'text-amber-400'}`}>
+                              {fmt(row.prizes_paid, sym)}
+                            </td>
+                            <td className="px-3 py-2.5 text-right font-semibold">
+                              {row.is_settled
+                                ? Number(row.balance_day) > 0
+                                  ? <span className="text-blue-400">{fmt(row.balance_day, sym)}</span>
+                                  : <span className="text-slate-500 text-[10px]">—</span>
+                                : <span className={balanceColor(row.balance_day)}>{fmt(row.balance_day, sym)}</span>
+                              }
                             </td>
                           </tr>
                         ))}

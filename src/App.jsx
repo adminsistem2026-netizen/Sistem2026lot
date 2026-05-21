@@ -12,6 +12,7 @@ import SellerDashboard from './pages/seller/SellerDashboard';
 import SellerSales from './pages/seller/SellerSales';
 import SellerNumbers from './pages/seller/SellerNumbers';
 import SellerPremios from './pages/seller/SellerPremios';
+import SellerBalance from './pages/seller/SellerBalance';
 
 import AdminLayout from './pages/admin/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -58,6 +59,7 @@ export default function App() {
                 <Route path="numeros" element={<SellerNumbers />} />
                 <Route path="ganadores" element={<SellerVerifyWinners />} />
                 <Route path="premios" element={<SellerPremios />} />
+                <Route path="balance" element={<SellerBalance />} />
               </Route>
 
               {/* Admin */}
