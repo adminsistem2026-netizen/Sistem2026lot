@@ -122,7 +122,7 @@ export default function SellerBalance() {
     : 0;
 
   const detailTotalSales      = detail.reduce((s, r) => s + Number(r.total_sales      || 0), 0);
-  const detailTotalPrizes     = detail.reduce((s, r) => s + Number(r.prizes_paid      || 0), 0);
+  const detailTotalPrizes     = detail.reduce((s, r) => r.is_settled ? s : s + Number(r.prizes_paid || 0), 0);
   const detailTotalCommission = detail.reduce((s, r) => s + Number(r.total_commission || 0), 0);
 
   return (
@@ -281,7 +281,7 @@ export default function SellerBalance() {
                           </span>
                           {row.is_settled && (
                             <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
-                              Saldado
+                              {Number(row.balance_day) > 0 ? 'Abono' : 'Saldado'}
                             </span>
                           )}
                         </td>
