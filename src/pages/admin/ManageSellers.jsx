@@ -11,6 +11,7 @@ const EMPTY_FORM = {
   price_4_digits: '',
   use_global_limits: true,
   is_sub_admin: false,
+  max_sellers: '5',
 };
 
 const inputCls = "w-full bg-slate-900 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition";
@@ -112,6 +113,7 @@ export default function ManageSellers() {
       price_4_digits: seller.price_4_digits_override != null ? String(seller.price_4_digits_override) : '',
       use_global_limits: seller.use_global_limits !== false,
       is_sub_admin: seller.role === 'sub_admin',
+      max_sellers: String(seller.max_sellers ?? 5),
     });
     setError('');
     setShowModal(true);
@@ -135,6 +137,14 @@ export default function ManageSellers() {
       if (!form.price_4_digits || isNaN(parseFloat(form.price_4_digits))) { setError('Precio Billete inválido'); return; }
     }
 
+    if (editSeller && editSeller.role === 'sub_admin' && !form.is_sub_admin) {
+      const ownedSellers = sellers.filter(s => s.sub_admin_id === editSeller.id);
+      if (ownedSellers.length > 0) {
+        setError(`No se puede convertir: tiene ${ownedSellers.length} vendedor(es) asignado(s). Reasígnalos primero.`);
+        return;
+      }
+    }
+
     setSaving(true); setError('');
     const role = form.is_sub_admin ? 'sub_admin' : 'seller';
     try {
@@ -149,10 +159,16 @@ export default function ManageSellers() {
         price_2_digits_override: form.price_override ? parseFloat(form.price_2_digits) : null,
         price_4_digits_override: form.price_override ? parseFloat(form.price_4_digits) : null,
         use_global_limits: form.use_global_limits,
+        ...(form.is_sub_admin && { max_sellers: parseInt(form.max_sellers) || 5 }),
       };
 
       if (editSeller) {
-        const { error: err } = await db.from('profiles').update({ ...baseFields, role }).eq('id', editSeller.id);
+        const updateData = {
+          ...baseFields,
+          role,
+          ...(form.is_sub_admin && { max_sellers: parseInt(form.max_sellers) || 5, sub_admin_id: null }),
+        };
+        const { error: err } = await db.from('profiles').update(updateData).eq('id', editSeller.id);
         if (err) throw err;
         await db.from('profiles').update(extendedFields).eq('id', editSeller.id);
         if (form.password.trim()) {
@@ -376,23 +392,33 @@ export default function ManageSellers() {
               {editSeller ? 'Editar' : 'Nuevo'} {form.is_sub_admin ? 'Sub-Admin' : 'Vendedor'}
             </h2>
 
-            {/* Tipo de cuenta — solo al crear */}
-            {!editSeller && (
-              <>
-                <SectionHeader title="Tipo de cuenta" />
-                <Toggle
-                  checked={form.is_sub_admin}
-                  onChange={v => f('is_sub_admin', v)}
-                  label="Es Sub-Admin"
-                  sub={form.is_sub_admin ? 'Podrá crear y gestionar sus propios vendedores desde la app móvil' : 'Vendedor normal, solo puede vender tickets'}
-                />
-                {form.is_sub_admin && (
+            {/* Tipo de cuenta */}
+            <>
+              <SectionHeader title="Tipo de cuenta" />
+              <Toggle
+                checked={form.is_sub_admin}
+                onChange={v => f('is_sub_admin', v)}
+                label="Es Sub-Admin"
+                sub={form.is_sub_admin ? 'Puede crear y gestionar sus propios vendedores' : 'Vendedor normal, solo puede vender tickets'}
+              />
+              {form.is_sub_admin && (
+                <>
                   <div className="bg-violet-500/10 border border-violet-500/25 rounded-xl px-4 py-2.5">
                     <p className="text-violet-300 text-xs">El sub-admin accede desde la app móvil con funciones extra de gestión.</p>
                   </div>
-                )}
-              </>
-            )}
+                  <div>
+                    <label className={labelCls}>Máximo de vendedores que puede tener</label>
+                    <input
+                      type="number" min="1" max="200"
+                      value={form.max_sellers}
+                      onChange={e => f('max_sellers', e.target.value)}
+                      className={inputCls}
+                      placeholder="5"
+                    />
+                  </div>
+                </>
+              )}
+            </>
 
             {/* Datos básicos */}
             <div className="space-y-3">
