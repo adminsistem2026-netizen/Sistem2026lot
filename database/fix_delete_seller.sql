@@ -6,11 +6,12 @@
 --
 -- Secuencia correcta de borrado:
 --   1. settlements       (seller_id FK)
---   2. winning_tickets   (seller_id FK)
---   3. ticket_numbers    (vía tickets.seller_id)
---   4. tickets           (seller_id FK)
---   5. sales_limits      (seller_id FK, nullable)
---   6. auth.users        (cascada → borra profiles)
+--   2. payments          (seller_id FK)
+--   3. winning_tickets   (seller_id FK)
+--   4. ticket_numbers    (vía tickets.seller_id)
+--   5. tickets           (seller_id FK)
+--   6. sales_limits      (seller_id FK, nullable)
+--   7. profiles          (borrado directo)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.delete_seller(p_seller_id UUID)
@@ -41,7 +42,8 @@ BEGIN
   END IF;
 
   -- Borrar en orden de dependencias FK
-  DELETE FROM public.settlements   WHERE seller_id = p_seller_id;
+  DELETE FROM public.settlements     WHERE seller_id = p_seller_id;
+  DELETE FROM public.payments        WHERE seller_id = p_seller_id;
   DELETE FROM public.winning_tickets WHERE seller_id = p_seller_id;
   DELETE FROM public.ticket_numbers WHERE ticket_id IN (
     SELECT id FROM public.tickets WHERE seller_id = p_seller_id
