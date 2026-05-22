@@ -26,6 +26,7 @@ const inputCls = "w-full bg-slate-900 border border-slate-600 text-white placeho
 
 export default function ManageLotteries() {
   const { profile } = useAuth();
+  const adminId = profile?.parent_admin_id ?? profile?.id;
   const [lotteries, setLotteries] = useState([]);
   const [showInactive, setShowInactive] = useState(false);
   const [currencies, setCurrencies] = useState([]);
@@ -54,7 +55,7 @@ export default function ManageLotteries() {
   async function loadLotteries() {
     setLoading(true);
     const { data } = await db.from('lotteries').select('*')
-      .eq('admin_id', profile.id).order('display_name');
+      .eq('admin_id', adminId).order('display_name');
     // Cargar columnas de billetes via RPC (InsForge no las incluye en select *)
     const { data: bData } = await db.rpc('get_lottery_billete_multipliers');
     const bMap = {};
@@ -76,7 +77,7 @@ export default function ManageLotteries() {
 
   async function loadLimitsForLottery(lotteryId) {
     const { data } = await db.from('sales_limits').select('*')
-      .eq('lottery_id', lotteryId).eq('admin_id', profile.id).is('number', null);
+      .eq('lottery_id', lotteryId).eq('admin_id', adminId).is('number', null);
     if (!data) return;
     const newLimits = {};
     data.forEach(row => {
@@ -205,7 +206,7 @@ export default function ManageLotteries() {
           if (nErr) throw new Error('Error al actualizar config nacional: ' + nErr.message);
         }
       } else {
-        const { data: newLot, error: err } = await db.from('lotteries').insert({ ...payload, admin_id: profile.id, created_by: profile.id }).select('id').single();
+        const { data: newLot, error: err } = await db.from('lotteries').insert({ ...payload, admin_id: adminId, created_by: profile.id }).select('id').single();
         if (err) throw err;
         if (lotteryForm.lottery_type === 'nacional' && newLot?.id) {
           const { error: nErr } = await db.rpc('update_national_config', {
@@ -340,7 +341,7 @@ export default function ManageLotteries() {
       // Delete existing global limits for this scope
       let delQuery = db.from('sales_limits').delete()
         .eq('lottery_id', limitsTarget.lottery_id)
-        .eq('admin_id', profile.id)
+        .eq('admin_id', adminId)
         .is('number', null);
       if (limitsTarget.draw_time_id) delQuery = delQuery.eq('draw_time_id', limitsTarget.draw_time_id);
       else delQuery = delQuery.is('draw_time_id', null);
@@ -352,7 +353,7 @@ export default function ManageLotteries() {
         toInsert.push({
           lottery_id: limitsTarget.lottery_id, draw_time_id: limitsTarget.draw_time_id || null,
           number: null, digit_type: 2,
-          max_pieces: parseInt(limitsForm.limit_2), admin_id: profile.id,
+          max_pieces: parseInt(limitsForm.limit_2), admin_id: adminId,
           is_global: !limitsTarget.draw_time_id,
         });
       }
@@ -360,7 +361,7 @@ export default function ManageLotteries() {
         toInsert.push({
           lottery_id: limitsTarget.lottery_id, draw_time_id: limitsTarget.draw_time_id || null,
           number: null, digit_type: 4,
-          max_pieces: parseInt(limitsForm.limit_4), admin_id: profile.id,
+          max_pieces: parseInt(limitsForm.limit_4), admin_id: adminId,
           is_global: !limitsTarget.draw_time_id,
         });
       }

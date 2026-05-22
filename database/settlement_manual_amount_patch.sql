@@ -347,8 +347,8 @@ BEGIN
 
   v_commission := v_total_sales * v_pct / 100;
   v_admin_part := v_total_sales - v_commission;
-  v_balance := v_prev_pending + v_admin_part - v_total_prizes;
-  v_amount := COALESCE(p_amount, v_balance);
+  v_balance := ROUND(v_prev_pending + v_admin_part - v_total_prizes, 2);
+  v_amount  := ROUND(COALESCE(p_amount, v_balance), 2);
 
   IF v_balance > 0 AND (v_amount < 0 OR v_amount > v_balance) THEN
     RAISE EXCEPTION 'El monto del corte debe estar entre 0 y %', v_balance;
@@ -422,12 +422,12 @@ AS $$
   JOIN public.profiles p ON p.id = s.seller_id
   WHERE s.admin_id = p_admin_id
     AND (p_seller_id IS NULL OR s.seller_id = p_seller_id)
-    AND ((p_lottery_id IS NULL AND s.lottery_id IS NULL) OR s.lottery_id = p_lottery_id)
-    AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+    AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+    AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     AND (
       p_date_from IS NULL OR (
-        s.period_start = p_date_from
-        AND s.period_end = COALESCE(p_date_to, CURRENT_DATE)
+        s.period_start <= COALESCE(p_date_to, CURRENT_DATE)
+        AND s.period_end >= p_date_from
       )
     )
   ORDER BY s.created_at DESC;

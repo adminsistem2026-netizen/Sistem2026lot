@@ -12,6 +12,7 @@ function todayStr() {
 
 export default function ManageResults() {
   const { profile } = useAuth();
+  const adminId = profile?.parent_admin_id ?? profile?.id;
   const [lotteries, setLotteries] = useState([]);
   const [drawTimes, setDrawTimes] = useState([]);
   const [selectedLottery, setSelectedLottery] = useState('');
@@ -40,7 +41,7 @@ export default function ManageResults() {
   }, [selectedLottery, selectedDrawTime, selectedDate]);
 
   async function loadLotteries() {
-    const { data: lots } = await db.from('lotteries').select('id, display_name, lottery_type, lottery_modality, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').eq('admin_id', profile.id).order('display_name');
+    const { data: lots } = await db.from('lotteries').select('id, display_name, lottery_type, lottery_modality, prize_1st_multiplier, prize_2nd_multiplier, prize_3rd_multiplier, billete_prize_1st_multiplier, billete_prize_2nd_multiplier, billete_prize_3rd_multiplier').eq('admin_id', adminId).order('display_name');
     const { data: dts } = await db.from('draw_times').select('id, lottery_id, time_label, custom_prize_1st_multiplier, custom_prize_2nd_multiplier, custom_prize_3rd_multiplier').order('time_value');
     const withDt = (lots || []).map(l => ({ ...l, draw_times: (dts || []).filter(d => d.lottery_id === l.id) }));
     setLotteries(withDt);
@@ -102,7 +103,7 @@ export default function ManageResults() {
     setGenResult(null);
     try {
       const { data, error: e } = await db.rpc('generate_winning_tickets', {
-        p_admin_id:     profile.id,
+        p_admin_id:     adminId,
         p_lottery_id:   lotteryId,
         p_draw_time_id: drawTimeId,
         p_draw_date:    drawDate,

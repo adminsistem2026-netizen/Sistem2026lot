@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
   function redirectByRole(role) {
     if (role === 'super_admin') navigate('/superadmin');
     else if (role === 'admin') navigate('/admin');
+    else if (role === 'operator') navigate('/operator');
     else navigate('/seller');
   }
 

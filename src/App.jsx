@@ -15,6 +15,7 @@ import SellerPremios from './pages/seller/SellerPremios';
 import SellerBalance from './pages/seller/SellerBalance';
 
 import AdminLayout from './pages/admin/AdminLayout';
+import OperatorLayout from './pages/operator/OperatorLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import ManageSellers from './pages/admin/ManageSellers';
 import ManageLotteries from './pages/admin/ManageLotteries';
@@ -78,6 +79,17 @@ export default function App() {
                 <Route path="config" element={<AdminSettings />} />
                 <Route path="balance" element={<AdminBalance />} />
                 <Route path="premios" element={<AdminPremios />} />
+              </Route>
+
+              {/* Operator */}
+              <Route path="/operator" element={
+                <ProtectedRoute allowedRoles={['operator']}>
+                  <OperatorLayout />
+                </ProtectedRoute>
+              }>
+                <Route index element={<Navigate to="loterias" replace />} />
+                <Route path="loterias"   element={<ManageLotteries />} />
+                <Route path="resultados" element={<ManageResults />} />
               </Route>
 
               {/* Super Admin */}
