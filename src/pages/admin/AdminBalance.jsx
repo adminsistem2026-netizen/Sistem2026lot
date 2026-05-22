@@ -86,7 +86,7 @@ export default function AdminBalance() {
     const { data } = await db.from('profiles')
       .select('id, full_name, seller_percentage')
       .eq('parent_admin_id', profile.id)
-      .eq('role', 'seller')
+      .in('role', ['seller', 'sub_admin'])
       .eq('is_active', true)
       .order('full_name');
     setSellers(data || []);
@@ -264,7 +264,7 @@ export default function AdminBalance() {
     : 0;
 
   const detailTotalSales      = detail.reduce((s, r) => s + Number(r.total_sales      || 0), 0);
-  const detailTotalPrizes     = detail.reduce((s, r) => r.is_settled ? s : s + Number(r.prizes_paid || 0), 0);
+  const detailTotalPrizes     = detail.reduce((s, r) => (r.is_settled && Number(r.balance_day || 0) <= 0) ? s : s + Number(r.prizes_paid || 0), 0);
   const detailTotalCommission = detail.reduce((s, r) => s + Number(r.total_commission || 0), 0);
 
   // ── Totals for "Hoy" tab ─────────────────────────────────
