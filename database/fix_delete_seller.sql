@@ -49,8 +49,8 @@ BEGIN
   DELETE FROM public.tickets       WHERE seller_id = p_seller_id;
   DELETE FROM public.sales_limits  WHERE seller_id = p_seller_id;
 
-  -- Borrar usuario auth (cascada borra public.profiles)
-  DELETE FROM auth.users WHERE id = p_seller_id;
+  -- Borrar perfil (elimina el acceso; auth.users queda huérfano pero sin perfil no puede operar)
+  DELETE FROM public.profiles WHERE id = p_seller_id;
 END;
 $$;
 
