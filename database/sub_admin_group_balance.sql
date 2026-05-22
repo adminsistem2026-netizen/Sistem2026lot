@@ -1,9 +1,10 @@
 -- ============================================================
 -- PATCH: BALANCE AGRUPADO PARA SUB_ADMIN
 --
--- Cuando p_seller_id es un sub_admin, los 3 RPCs de balance
--- ahora agregan ventas/premios/comisiones del sub_admin JUNTO
--- CON todos sus vendedores (profiles.sub_admin_id = p_seller_id).
+-- Cuando p_seller_id es un sub_admin, los RPCs agregan ventas y
+-- premios del sub_admin + todos sus vendedores, pero la comisión
+-- se calcula con el porcentaje del sub_admin (el que el admin le
+-- asignó a él), no con los porcentajes individuales de sus sellers.
 --
 -- Para sellers normales el comportamiento es idéntico al anterior:
 -- v_group_ids solo contiene el propio ID del seller.
@@ -48,7 +49,7 @@ DECLARE
   v_prev_pending NUMERIC := 0;
   v_group_ids    UUID[];
 BEGIN
-  -- Porcentaje del cabeza de grupo (sub_admin o seller)
+  -- % del sub_admin (o seller): el que el admin le asignó a él
   SELECT p.seller_percentage INTO v_pct
   FROM public.profiles p
   WHERE p.id = p_seller_id;
@@ -107,12 +108,9 @@ BEGIN
 
   RETURN QUERY
   WITH sales AS (
-    SELECT
-      COALESCE(SUM(tn.subtotal), 0)                                           AS total,
-      COALESCE(SUM(tn.subtotal * COALESCE(sp.seller_percentage, 0) / 100), 0) AS commission
+    SELECT COALESCE(SUM(tn.subtotal), 0) AS total
     FROM public.ticket_numbers tn
-    JOIN public.tickets  t  ON t.id   = tn.ticket_id
-    JOIN public.profiles sp ON sp.id  = t.seller_id
+    JOIN public.tickets t ON t.id = tn.ticket_id
     WHERE t.seller_id     = ANY(v_group_ids)
       AND t.admin_id      = p_admin_id
       AND t.is_cancelled  = FALSE
@@ -153,10 +151,10 @@ BEGIN
     si.full_name,
     v_pct,
     sa.total,
-    sa.commission,
-    sa.total - sa.commission,
+    sa.total * v_pct / 100,
+    sa.total - sa.total * v_pct / 100,
     pr.total,
-    v_prev_pending + (sa.total - sa.commission) - pr.total,
+    v_prev_pending + (sa.total - sa.total * v_pct / 100) - pr.total,
     v_period_from,
     v_period_to
   FROM sales sa, prizes pr, sinfo si;
@@ -252,13 +250,9 @@ BEGIN
       AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
   ),
   daily_sales AS (
-    SELECT
-      t.sale_date                                                              AS dt,
-      COALESCE(SUM(tn.subtotal), 0)                                           AS total,
-      COALESCE(SUM(tn.subtotal * COALESCE(sp.seller_percentage, 0) / 100), 0) AS commission
+    SELECT t.sale_date AS dt, COALESCE(SUM(tn.subtotal), 0) AS total
     FROM public.ticket_numbers tn
-    JOIN public.tickets  t  ON t.id  = tn.ticket_id
-    JOIN public.profiles sp ON sp.id = t.seller_id
+    JOIN public.tickets t ON t.id = tn.ticket_id
     WHERE t.seller_id     = ANY(v_group_ids)
       AND t.admin_id      = p_admin_id
       AND t.is_cancelled  = FALSE
@@ -278,12 +272,12 @@ BEGIN
     GROUP BY wt.draw_date
   )
   SELECT
-    COALESCE(ds.dt, dp.dt)                                                      AS day,
-    COALESCE(ds.total, 0)                                                       AS total_sales,
-    v_pct                                                                       AS commission_pct,
-    COALESCE(ds.commission, 0)                                                  AS total_commission,
-    COALESCE(ds.total, 0) - COALESCE(ds.commission, 0)                         AS admin_part,
-    COALESCE(dp.total, 0)                                                       AS prizes_paid,
+    COALESCE(ds.dt, dp.dt)                                          AS day,
+    COALESCE(ds.total, 0)                                           AS total_sales,
+    v_pct                                                           AS commission_pct,
+    COALESCE(ds.total, 0) * v_pct / 100                            AS total_commission,
+    COALESCE(ds.total, 0) - COALESCE(ds.total, 0) * v_pct / 100   AS admin_part,
+    COALESCE(dp.total, 0)                                           AS prizes_paid,
     CASE
       WHEN EXISTS (
         SELECT 1 FROM settled_periods sp
@@ -293,12 +287,12 @@ BEGIN
         FROM settled_periods sp2
         WHERE COALESCE(ds.dt, dp.dt) = sp2.period_end
       )
-      ELSE (COALESCE(ds.total, 0) - COALESCE(ds.commission, 0)) - COALESCE(dp.total, 0)
-    END                                                                         AS balance_day,
+      ELSE (COALESCE(ds.total, 0) - COALESCE(ds.total, 0) * v_pct / 100) - COALESCE(dp.total, 0)
+    END                                                             AS balance_day,
     EXISTS (
       SELECT 1 FROM settled_periods sp
       WHERE COALESCE(ds.dt, dp.dt) BETWEEN sp.period_start AND sp.period_end
-    )                                                                           AS is_settled
+    )                                                               AS is_settled
   FROM daily_sales ds
   FULL OUTER JOIN daily_prizes dp ON ds.dt = dp.dt
   ORDER BY COALESCE(ds.dt, dp.dt) DESC;
@@ -413,13 +407,9 @@ BEGIN
   END IF;
 
   -- Ventas del grupo excluyendo días ya saldados
-  SELECT
-    COALESCE(SUM(tn.subtotal), 0),
-    COALESCE(SUM(tn.subtotal * COALESCE(sp.seller_percentage, 0) / 100), 0)
-  INTO v_total_sales, v_commission
+  SELECT COALESCE(SUM(tn.subtotal), 0) INTO v_total_sales
   FROM public.ticket_numbers tn
-  JOIN public.tickets  t  ON t.id  = tn.ticket_id
-  JOIN public.profiles sp ON sp.id = t.seller_id
+  JOIN public.tickets t ON t.id = tn.ticket_id
   WHERE t.seller_id    = ANY(v_group_ids)
     AND t.admin_id     = p_admin_id
     AND t.is_cancelled = FALSE
@@ -452,6 +442,7 @@ BEGIN
         AND ((p_draw_time_id IS NULL AND s2.draw_time_id IS NULL) OR s2.draw_time_id = p_draw_time_id)
     );
 
+  v_commission := v_total_sales * v_pct / 100;
   v_admin_part := v_total_sales - v_commission;
   v_balance    := ROUND(v_prev_pending + v_admin_part - v_total_prizes, 2);
   v_amount     := ROUND(COALESCE(p_amount, v_balance), 2);
