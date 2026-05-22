@@ -84,12 +84,18 @@ export default function AdminBalance() {
   // ── Loaders ───────────────────────────────────────────────
   async function loadSellers() {
     const { data } = await db.from('profiles')
-      .select('id, full_name, seller_percentage')
+      .select('id, full_name, seller_percentage, sub_admin_id, role')
       .eq('parent_admin_id', profile.id)
       .in('role', ['seller', 'sub_admin'])
       .eq('is_active', true)
       .order('full_name');
-    setSellers(data || []);
+    const subAdminMap = {};
+    (data || []).filter(s => s.role === 'sub_admin').forEach(sa => { subAdminMap[sa.id] = sa.full_name; });
+    const enriched = (data || []).map(s => ({
+      ...s,
+      display_name: s.sub_admin_id ? `${s.full_name}/${subAdminMap[s.sub_admin_id] || '?'}` : s.full_name,
+    }));
+    setSellers(enriched);
   }
 
   async function loadLotteries() {
@@ -263,6 +269,9 @@ export default function AdminBalance() {
     ? Number(balance.balance || 0) - Number(balance.admin_part || 0) + Number(balance.total_prizes_paid || 0)
     : 0;
 
+  const selectedSeller = sellers.find(s => s.id === selectedSellerId);
+  const canSettle      = selectedSeller && !selectedSeller.sub_admin_id;
+
   const detailTotalSales      = detail.reduce((s, r) => s + Number(r.total_sales      || 0), 0);
   const detailTotalPrizes     = detail.reduce((s, r) => (r.is_settled && Number(r.balance_day || 0) <= 0) ? s : s + Number(r.prizes_paid || 0), 0);
   const detailTotalCommission = detail.reduce((s, r) => s + Number(r.total_commission || 0), 0);
@@ -321,7 +330,7 @@ export default function AdminBalance() {
             >
               <option value="">— Seleccionar vendedor —</option>
               {sellers.map(s => (
-                <option key={s.id} value={s.id}>{s.full_name}</option>
+                <option key={s.id} value={s.id}>{s.display_name}</option>
               ))}
             </select>
           </div>
@@ -441,12 +450,17 @@ export default function AdminBalance() {
                     setSettleError('');
                     setShowSettleModal(true);
                   }}
-                  disabled={Number(balance?.balance || 0) === 0}
+                  disabled={!canSettle || Number(balance?.balance || 0) === 0}
                   className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <IcScissors /> Hacer corte
                 </button>
               </div>
+              {selectedSeller?.sub_admin_id && (
+                <p className="text-xs text-slate-500 text-center -mt-1">
+                  Corte grupal — selecciona a {sellers.find(s => s.id === selectedSeller.sub_admin_id)?.full_name || 'su sub_admin'}
+                </p>
+              )}
 
               {/* Daily breakdown */}
               <div>
