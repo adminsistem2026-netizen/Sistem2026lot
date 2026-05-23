@@ -74,8 +74,8 @@ BEGIN
     FROM public.settlements s
     WHERE s.seller_id = p_seller_id
       AND s.admin_id  = p_sub_admin_id
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     ORDER BY s.created_at DESC
     LIMIT 1;
 
@@ -101,8 +101,8 @@ BEGIN
     WHERE s.seller_id   = p_seller_id
       AND s.admin_id    = p_sub_admin_id
       AND s.period_end  BETWEEN v_period_from AND v_period_to
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id);
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id);
     v_prev_pending := COALESCE(v_prev_pending, 0);
   END IF;
 
@@ -122,8 +122,8 @@ BEGIN
         WHERE s2.seller_id = p_seller_id
           AND s2.admin_id  = p_sub_admin_id
           AND t.sale_date  BETWEEN s2.period_start AND s2.period_end
-          AND ((p_lottery_id   IS NULL AND s2.lottery_id   IS NULL) OR s2.lottery_id   = p_lottery_id)
-          AND ((p_draw_time_id IS NULL AND s2.draw_time_id IS NULL) OR s2.draw_time_id = p_draw_time_id)
+          AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+          AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
   ),
   prizes AS (
@@ -139,8 +139,8 @@ BEGIN
         WHERE s2.seller_id = p_seller_id
           AND s2.admin_id  = p_sub_admin_id
           AND wt.draw_date BETWEEN s2.period_start AND s2.period_end
-          AND ((p_lottery_id   IS NULL AND s2.lottery_id   IS NULL) OR s2.lottery_id   = p_lottery_id)
-          AND ((p_draw_time_id IS NULL AND s2.draw_time_id IS NULL) OR s2.draw_time_id = p_draw_time_id)
+          AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+          AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
   ),
   sinfo AS (
@@ -217,8 +217,8 @@ BEGIN
     FROM public.settlements s
     WHERE s.seller_id = p_seller_id
       AND s.admin_id  = p_sub_admin_id
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     ORDER BY s.created_at DESC
     LIMIT 1;
 
@@ -248,8 +248,8 @@ BEGIN
       AND s.admin_id      = p_sub_admin_id
       AND s.period_start <= v_period_to
       AND s.period_end   >= v_period_from
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
   ),
   daily_sales AS (
     SELECT t.sale_date AS dt, COALESCE(SUM(tn.subtotal), 0) AS total
@@ -371,8 +371,8 @@ BEGIN
     FROM public.settlements s
     WHERE s.seller_id = p_seller_id
       AND s.admin_id  = p_sub_admin_id
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     ORDER BY s.created_at DESC
     LIMIT 1;
 
@@ -399,8 +399,8 @@ BEGIN
       AND s.admin_id     = p_sub_admin_id
       AND s.period_start >= v_period_from
       AND s.period_end   <= v_period_to
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id);
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id);
     v_prev_pending := COALESCE(v_prev_pending, 0);
   END IF;
 
@@ -418,8 +418,8 @@ BEGIN
       WHERE s2.seller_id = p_seller_id
         AND s2.admin_id  = p_sub_admin_id
         AND t.sale_date  BETWEEN s2.period_start AND s2.period_end
-        AND ((p_lottery_id   IS NULL AND s2.lottery_id   IS NULL) OR s2.lottery_id   = p_lottery_id)
-        AND ((p_draw_time_id IS NULL AND s2.draw_time_id IS NULL) OR s2.draw_time_id = p_draw_time_id)
+        AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+        AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
     );
 
   SELECT COALESCE(SUM(wt.prize_amount), 0) INTO v_total_prizes
@@ -434,8 +434,8 @@ BEGIN
       WHERE s2.seller_id = p_seller_id
         AND s2.admin_id  = p_sub_admin_id
         AND wt.draw_date BETWEEN s2.period_start AND s2.period_end
-        AND ((p_lottery_id   IS NULL AND s2.lottery_id   IS NULL) OR s2.lottery_id   = p_lottery_id)
-        AND ((p_draw_time_id IS NULL AND s2.draw_time_id IS NULL) OR s2.draw_time_id = p_draw_time_id)
+        AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+        AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
     );
 
   v_commission := v_total_sales * v_pct / 100;
