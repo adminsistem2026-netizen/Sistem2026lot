@@ -19,6 +19,7 @@ const IcTrash = () => <svg className="w-4 h-4" fill="none" stroke="currentColor"
 export default function AdminBalance() {
   const { profile } = useAuth();
   const sym = profile?.currency_symbol || '$';
+  console.log('[DEBUG currency]', { currency_code: profile?.currency_code, currency_symbol: profile?.currency_symbol, sym });
 
   const [activeTab, setActiveTab] = useState('vendedor');
 
