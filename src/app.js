@@ -11,6 +11,7 @@ const db = client.database;
 // ==================== Global State ====================
 let currentUser = null;
 let currentProfile = null;
+let _offlineQueueCount = 0;
 let lotteries = []; // [{id, name, code, draw_times:[{id, time_label}]}]
 let drawTimesMap = {}; // {lotteryCode: [{id, time_label}]}
 
@@ -471,6 +472,49 @@ async function generateTicket() {
     const dateStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
     const ticketNumber = `TK-${dateStr}-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
 
+    const numberRows = numbers.map(n => ({
+        number:      n.number,
+        digit_count: n.number.length,
+        pieces:      n.pieces,
+        unit_price:  n.pieces > 0 ? parseFloat((n.subTotal / n.pieces).toFixed(4)) : 0,
+        subtotal:    n.subTotal,
+    }));
+    const _rpcParams = {
+        p_ticket_number:   ticketNumber,
+        p_seller_id:       currentProfile ? currentProfile.id : currentUser?.id || null,
+        p_admin_id:        currentProfile?.parent_admin_id || currentProfile?.id || currentUser?.id || null,
+        p_lottery_id:      lotteryObj ? lotteryObj.id : null,
+        p_draw_time_id:    drawTimeObj ? drawTimeObj.id : null,
+        p_customer_name:   customerName || null,
+        p_total_amount:    totalAmount,
+        p_currency_symbol: currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$',
+        p_sale_date:       dateStr,
+        p_numbers:         numberRows,
+    };
+    const _localTicket = {
+        id: null,
+        dbId: null,
+        ticketNumber: ticketNumber,
+        datetime: new Date().toISOString(),
+        lottery: lotteryType,
+        lotteryName: lotteryObj?.display_name || lotteryType,
+        drawTime: drawTimeLabel,
+        numbers: JSON.parse(JSON.stringify(numbers)),
+        total: totalAmount,
+        paid: false,
+        customerName: customerName,
+        currencySymbol: currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$',
+    };
+
+    // Fast-path: sin conexión detectada → guardar offline sin intentar la red
+    if (!navigator.onLine) {
+        _saveOfflineEntry(_rpcParams);
+        showTicketPreview(_localTicket);
+        resetForm();
+        showNotification('Sin conexión — ticket guardado localmente', 'warning', 5000);
+        return;
+    }
+
     showLoading();
     try {
         // Refrescar totales globales para capturar ventas de otros vendedores
@@ -485,63 +529,45 @@ async function generateTicket() {
             updateCurrentSales(num.number, num.pieces, true);
         }
 
-        // Guardar ticket + números en una sola transacción atómica via RPC
-        const numberRows = numbers.map(n => ({
-            number:      n.number,
-            digit_count: n.number.length,
-            pieces:      n.pieces,
-            unit_price:  n.pieces > 0 ? parseFloat((n.subTotal / n.pieces).toFixed(4)) : 0,
-            subtotal:    n.subTotal,
-        }));
-
-        const { data: rpcData, error: ticketError } = await db.rpc('save_ticket', {
-            p_ticket_number:   ticketNumber,
-            p_seller_id:       currentProfile ? currentProfile.id : currentUser?.id || null,
-            p_admin_id:        currentProfile?.parent_admin_id || currentProfile?.id || currentUser?.id || null,
-            p_lottery_id:      lotteryObj ? lotteryObj.id : null,
-            p_draw_time_id:    drawTimeObj ? drawTimeObj.id : null,
-            p_customer_name:   customerName || null,
-            p_total_amount:    totalAmount,
-            p_currency_symbol: currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$',
-            p_sale_date:       dateStr,
-            p_numbers:         numberRows,
-        });
+        const { data: rpcData, error: ticketError } = await db.rpc('save_ticket', _rpcParams);
         if (ticketError) {
             console.error('Insert ticket error:', ticketError);
+            const _em = (ticketError.message || '').toLowerCase();
+            if (_em.includes('failed to fetch') || _em.includes('networkerror') || ticketError instanceof TypeError) {
+                _saveOfflineEntry(_rpcParams);
+                showTicketPreview(_localTicket);
+                resetForm();
+                showNotification('Sin conexión — ticket guardado localmente', 'warning', 5000);
+                return;
+            }
             showNotification('Error al guardar el ticket: ' + (ticketError.message || JSON.stringify(ticketError)), 'error', 6000);
             return;
         }
 
         const ticketId = rpcData || null;
+        _localTicket.id = ticketId;
+        _localTicket.dbId = ticketId;
 
         // Guardar customer_name directamente por si el RPC no lo persiste
         if (customerName && ticketId) {
             await db.from('tickets').update({ customer_name: customerName }).eq('id', ticketId);
         }
 
-        // Build local ticket object for preview
-        const ticket = {
-            id: ticketId,
-            dbId: ticketId,
-            ticketNumber: ticketNumber,
-            datetime: new Date().toISOString(),
-            lottery: lotteryType,
-            lotteryName: lotteryObj?.display_name || lotteryType,
-            drawTime: drawTimeLabel,
-            numbers: JSON.parse(JSON.stringify(numbers)),
-            total: totalAmount,
-            paid: false,
-            customerName: customerName,
-            currencySymbol: currentProfile?.currency_symbol || lotteryObj?.currency_symbol || '$',
-        };
-
         calculateCurrentSales();
-        showTicketPreview(ticket);
+        showTicketPreview(_localTicket);
         resetForm();
 
     } catch (err) {
         console.error('generateTicket error:', err);
-        showNotification('Ha ocurrido un error al generar el ticket. Por favor, intente nuevamente.');
+        const _em = (err?.message || '').toLowerCase();
+        if (_em.includes('failed to fetch') || _em.includes('networkerror') || err instanceof TypeError) {
+            _saveOfflineEntry(_rpcParams);
+            showTicketPreview(_localTicket);
+            resetForm();
+            showNotification('Sin conexión — ticket guardado localmente', 'warning', 5000);
+        } else {
+            showNotification('Ha ocurrido un error al generar el ticket. Por favor, intente nuevamente.');
+        }
     } finally {
         hideLoading();
     }
@@ -798,11 +824,99 @@ async function initApp() {
             }
         });
     }
+
+    // Detectar conexión / desconexión
+    window.addEventListener('offline', () => {
+        _updateOfflineBanner();
+        showNotification('Sin conexión — las ventas se guardarán localmente', 'warning', 5000);
+    });
+    window.addEventListener('online', async () => {
+        const pending = _readQueue();
+        if (pending.length > 0) {
+            _updateOfflineBanner();
+            const { synced, failed } = await syncOfflineQueue();
+            if (synced > 0) showNotification(`${synced} venta${synced !== 1 ? 's' : ''} sincronizada${synced !== 1 ? 's' : ''} correctamente`, 'success');
+            if (failed > 0) showNotification(`${failed} venta${failed !== 1 ? 's' : ''} no se pudieron sincronizar`, 'error');
+        }
+        _updateOfflineBanner();
+    });
+    // Cargar conteo inicial de cola (tickets guardados en sesión anterior)
+    _offlineQueueCount = _readQueue().length;
+    _updateOfflineBanner();
 }
 
 function updateDateTime() {
     const el = document.getElementById('datetime');
     if (el) el.textContent = new Date().toLocaleString();
+}
+
+// ==================== Offline Queue ====================
+function _getQueueKey() {
+    return 'offline_queue_' + (currentProfile?.id || currentUser?.id || 'x');
+}
+function _readQueue() {
+    try { return JSON.parse(localStorage.getItem(_getQueueKey()) || '[]'); } catch { return []; }
+}
+function _writeQueue(q) {
+    localStorage.setItem(_getQueueKey(), JSON.stringify(q));
+    _offlineQueueCount = q.length;
+    _updateOfflineBanner();
+}
+function _saveOfflineEntry(entry) {
+    const q = _readQueue();
+    q.push({ ...entry, _offline_id: Date.now() + '-' + Math.random().toString(36).slice(2), _queued_at: new Date().toISOString() });
+    _writeQueue(q);
+}
+function _updateOfflineBanner() {
+    let b = document.getElementById('_offline_banner');
+    if (!b) {
+        b = document.createElement('div');
+        b.id = '_offline_banner';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:8px 16px;text-align:center;font-weight:600;font-size:14px;transition:background .3s;';
+        document.body.prepend(b);
+    }
+    if (!navigator.onLine) {
+        b.style.display = 'block';
+        b.style.background = '#ef4444';
+        b.style.color = '#fff';
+        const c = _offlineQueueCount;
+        b.textContent = 'Sin conexión' + (c > 0 ? ` — ${c} venta${c !== 1 ? 's' : ''} guardada${c !== 1 ? 's' : ''} localmente` : '');
+    } else if (_offlineQueueCount > 0) {
+        b.style.display = 'block';
+        b.style.background = '#facc15';
+        b.style.color = '#713f12';
+        b.textContent = `Sincronizando ${_offlineQueueCount} venta${_offlineQueueCount !== 1 ? 's' : ''}...`;
+    } else {
+        b.style.display = 'none';
+    }
+}
+async function syncOfflineQueue() {
+    const q = _readQueue();
+    if (!q.length) return { synced: 0, failed: 0 };
+    let synced = 0, failed = 0;
+    const remaining = [];
+    for (const entry of q) {
+        try {
+            const { data: ex } = await db.from('tickets').select('id').eq('ticket_number', entry.p_ticket_number).maybeSingle();
+            if (ex) { synced++; continue; }
+            const { error } = await db.rpc('save_ticket', {
+                p_ticket_number:   entry.p_ticket_number,
+                p_seller_id:       entry.p_seller_id,
+                p_admin_id:        entry.p_admin_id,
+                p_lottery_id:      entry.p_lottery_id,
+                p_draw_time_id:    entry.p_draw_time_id,
+                p_customer_name:   entry.p_customer_name,
+                p_total_amount:    entry.p_total_amount,
+                p_currency_symbol: entry.p_currency_symbol,
+                p_sale_date:       entry.p_sale_date,
+                p_numbers:         entry.p_numbers,
+            });
+            if (error) throw error;
+            synced++;
+        } catch { remaining.push(entry); failed++; }
+    }
+    _writeQueue(remaining);
+    return { synced, failed };
 }
 
 // ==================== Sub-Admin ====================
@@ -935,6 +1049,26 @@ async function guardarVendedorSubAdmin() {
     if (!editingSubAdminSeller && !email) { errEl.textContent = 'El correo es obligatorio'; errEl.style.display = 'block'; return; }
     if (!editingSubAdminSeller && !pass) { errEl.textContent = 'La contraseña es obligatoria'; errEl.style.display = 'block'; return; }
     if (isNaN(pct) || pct < 0 || pct > 100) { errEl.textContent = 'Porcentaje inválido (0-100)'; errEl.style.display = 'block'; return; }
+
+    // Validar límites solo al crear (no al editar)
+    if (!editingSubAdminSeller) {
+        const myMax = currentProfile.max_sellers ?? 5;
+        if (subAdminSellers.length >= myMax) {
+            errEl.textContent = `Límite alcanzado: tu cuenta permite un máximo de ${myMax} vendedor(es).`;
+            errEl.style.display = 'block';
+            return;
+        }
+        const adminId = currentProfile.parent_admin_id;
+        const [{ data: adminP }, { data: allSellers }] = await Promise.all([
+            db.from('profiles').select('max_sellers').eq('id', adminId).single(),
+            db.from('profiles').select('id').eq('parent_admin_id', adminId).eq('role', 'seller'),
+        ]);
+        if ((allSellers || []).length >= (adminP?.max_sellers ?? 5)) {
+            errEl.textContent = `Límite del plan alcanzado: no se pueden crear más vendedores en esta cuenta.`;
+            errEl.style.display = 'block';
+            return;
+        }
+    }
 
     btn.disabled = true;
     btn.textContent = 'Guardando...';
@@ -1682,18 +1816,21 @@ async function loadBalancePage() {
         const bal = balData?.[0];
 
         if (bal) {
-            const totalSales   = parseFloat(bal.total_sales       || 0);
-            const commission   = parseFloat(bal.total_commission  || 0);
             const adminPart    = parseFloat(bal.admin_part        || 0);
             const prizes       = parseFloat(bal.total_prizes_paid || 0);
             const balance      = parseFloat(bal.balance           || 0);
             const pct          = parseFloat(bal.commission_pct    || 0);
             const prevPending  = balance - adminPart + prizes;
 
-            document.getElementById('balanceTotalSales').textContent  = `${sym}${totalSales.toFixed(2)}`;
-            document.getElementById('balanceComision').textContent    = `${sym}${commission.toFixed(2)}`;
-            document.getElementById('balanceAdminPart').textContent   = `${sym}${adminPart.toFixed(2)}`;
-            document.getElementById('balancePremios').textContent     = `${sym}${prizes.toFixed(2)}`;
+            // Totales desde detalle diario (igual que React admin/seller)
+            const detailTotalSales      = (detData || []).reduce((s, r) => s + parseFloat(r.total_sales      || 0), 0);
+            const detailTotalCommission = (detData || []).reduce((s, r) => s + parseFloat(r.total_commission || 0), 0);
+            const detailTotalPrizes     = (detData || []).reduce((s, r) => (r.is_settled && parseFloat(r.balance_day || 0) <= 0) ? s : s + parseFloat(r.prizes_paid || 0), 0);
+
+            document.getElementById('balanceTotalSales').textContent  = `${sym}${detailTotalSales.toFixed(2)}`;
+            document.getElementById('balanceComision').textContent    = `${sym}${detailTotalCommission.toFixed(2)}`;
+            document.getElementById('balanceAdminPart').textContent   = `${sym}${balance.toFixed(2)}`;
+            document.getElementById('balancePremios').textContent     = `${sym}${detailTotalPrizes.toFixed(2)}`;
             document.getElementById('balancePct').textContent         = pct.toFixed(1);
 
             // Saldo pendiente anterior
@@ -1816,14 +1953,26 @@ function renderBalanceDetail() {
 
     const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
     body.innerHTML = balanceDetailData.map((row, i) => {
-        const bal = parseFloat(row.balance_day || 0);
-        const balColor = bal > 0 ? '#16a34a' : bal < 0 ? '#e11d48' : '#64748b';
-        return `<tr style="background:${i % 2 === 0 ? '#f8fafc' : 'white'};border-bottom:1px solid #f1f5f9;">
-            <td style="padding:7px 6px;white-space:nowrap;color:#475569;">${fmtD(row.day)}</td>
-            <td style="padding:7px 6px;text-align:right;color:#1e293b;">${sym}${parseFloat(row.total_sales||0).toFixed(2)}</td>
-            <td style="padding:7px 6px;text-align:right;color:#7c3aed;">${sym}${parseFloat(row.total_commission||0).toFixed(2)}</td>
-            <td style="padding:7px 6px;text-align:right;color:#d97706;">${sym}${parseFloat(row.prizes_paid||0).toFixed(2)}</td>
-            <td style="padding:7px 6px;text-align:right;font-weight:600;color:${balColor};">${sym}${Math.abs(bal).toFixed(2)}</td>
+        const bal     = parseFloat(row.balance_day || 0);
+        const settled = !!row.is_settled;
+        const rowBg   = settled
+            ? 'background:rgba(254,243,199,0.45);opacity:0.85;'
+            : `background:${i % 2 === 0 ? '#f8fafc' : 'white'};`;
+        const strike  = settled ? 'text-decoration:line-through;color:#9ca3af;' : '';
+        const badge   = settled
+            ? `<span style="margin-left:4px;font-size:9px;background:#fef3c7;color:#b45309;padding:1px 4px;border-radius:999px;font-weight:600;">${bal > 0 ? 'Abo' : 'Sal'}</span>`
+            : '';
+        const balCell = settled
+            ? (bal > 0
+                ? `<span style="color:#2563eb;font-weight:600;">${sym}${bal.toFixed(2)}</span>`
+                : `<span style="color:#9ca3af;font-size:11px;">—</span>`)
+            : `<span style="color:${bal > 0 ? '#16a34a' : bal < 0 ? '#e11d48' : '#64748b'};font-weight:600;">${sym}${Math.abs(bal).toFixed(2)}</span>`;
+        return `<tr style="${rowBg}border-bottom:1px solid #f1f5f9;">
+            <td style="padding:7px 6px;white-space:nowrap;${settled ? 'text-decoration:line-through;color:#9ca3af;' : 'color:#475569;'}">${fmtD(row.day)}${badge}</td>
+            <td style="padding:7px 6px;text-align:right;${strike || 'color:#1e293b;'}">${sym}${parseFloat(row.total_sales||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;${strike || 'color:#7c3aed;'}">${sym}${parseFloat(row.total_commission||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;${strike || 'color:#d97706;'}">${sym}${parseFloat(row.prizes_paid||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;">${balCell}</td>
         </tr>`;
     }).join('');
 }
@@ -2081,9 +2230,11 @@ async function showTicketPreview(ticket) {
         ? (parseFloat(chanceItem.subTotal || 0) / parseInt(chanceItem.pieces)).toFixed(2) : null;
     const palePrice = (paleItem && parseInt(paleItem.pieces) > 0)
         ? (parseFloat(paleItem.subTotal || 0) / parseInt(paleItem.pieces)).toFixed(2) : null;
+    const ticketLotteryObj = lotteries.find(l => l.id === ticket.lottery) || null;
+    const billeteLabel = (ticketLotteryObj?.lottery_type === 'pale') ? 'Pale' : 'Billete';
     const pricesLine = [
         chancePrice && parseFloat(chancePrice) > 0 ? `Chance ${chancePrice}` : '',
-        palePrice   && parseFloat(palePrice)   > 0 ? `Pale ${palePrice}`     : '',
+        palePrice   && parseFloat(palePrice)   > 0 ? `${billeteLabel} ${palePrice}` : '',
     ].filter(Boolean).join('&nbsp;&nbsp;');
 
     const totalPieces = nums.reduce((s, n) => s + parseInt(n.pieces || 0, 10), 0);
@@ -3188,6 +3339,119 @@ const PRIZE_POS_LABELS = { '1st': '1er', '2nd': '2do', '3rd': '3er' };
 
 // Datos crudos del último fetch (para re-filtrar sin ir al servidor)
 let _premiosAllRows = [];
+let _premiosScannedId = null;   // ticket_num del ticket escaneado (null = sin escaneo activo)
+let _premiosScanStream = null;
+let _premiosScanRaf    = null;
+
+function openPremiosScanner() {
+    _premiosScannedId = null;
+    document.getElementById('premiosScanBanner').style.display = 'none';
+    const overlay = document.getElementById('premiosScannerOverlay');
+    overlay.style.display = 'flex';
+
+    const statusEl = document.getElementById('premiosScanStatus');
+    statusEl.textContent = 'Iniciando cámara...';
+
+    if (!('BarcodeDetector' in window)) {
+        statusEl.textContent = 'Escáner QR no disponible en este dispositivo.';
+        return;
+    }
+
+    const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+    const video    = document.getElementById('premiosScannerVideo');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } } })
+        .then(stream => {
+            _premiosScanStream = stream;
+            video.srcObject = stream;
+            video.play();
+            statusEl.textContent = 'Apunta al código QR del ticket';
+            function tick() {
+                if (video.readyState < 2) { _premiosScanRaf = requestAnimationFrame(tick); return; }
+                detector.detect(video)
+                    .then(codes => {
+                        if (codes.length > 0) {
+                            _stopPremiosScanner();
+                            handlePremiosQRResult(codes[0].rawValue);
+                        } else {
+                            _premiosScanRaf = requestAnimationFrame(tick);
+                        }
+                    })
+                    .catch(() => { _premiosScanRaf = requestAnimationFrame(tick); });
+            }
+            _premiosScanRaf = requestAnimationFrame(tick);
+        })
+        .catch(e => {
+            statusEl.textContent = e.name === 'NotAllowedError'
+                ? 'Permiso de cámara denegado. Autoriza el acceso en ajustes.'
+                : 'No se pudo iniciar la cámara.';
+        });
+}
+
+function _stopPremiosScanner() {
+    if (_premiosScanRaf)    cancelAnimationFrame(_premiosScanRaf);
+    if (_premiosScanStream) _premiosScanStream.getTracks().forEach(t => t.stop());
+    _premiosScanStream = null;
+    _premiosScanRaf    = null;
+}
+
+function closePremiosScanner() {
+    _stopPremiosScanner();
+    document.getElementById('premiosScannerOverlay').style.display = 'none';
+}
+
+function handlePremiosQRResult(value) {
+    closePremiosScanner();
+    const trimmed = value.trim();
+    const sym = currentProfile?.currency_symbol || '$';
+
+    // Buscar en los datos cargados por ticket_num (TK-XXXX) o por ticket_id (UUID)
+    const matchRow = _premiosAllRows.find(
+        r => (r.ticket_num && r.ticket_num.toLowerCase() === trimmed.toLowerCase()) ||
+             (r.ticket_id  && r.ticket_id.toLowerCase()  === trimmed.toLowerCase())
+    );
+
+    const banner = document.getElementById('premiosScanBanner');
+    if (matchRow) {
+        _premiosScannedId = matchRow.ticket_id;
+        const total = _premiosAllRows
+            .filter(r => r.ticket_id === matchRow.ticket_id)
+            .reduce((s, r) => s + parseFloat(r.prize_amount || 0), 0);
+        banner.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:12px 14px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">✅</span>
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:#166534;">¡Ticket Ganador!</div>
+                    <div style="font-family:monospace;font-size:11px;color:#555;">${matchRow.ticket_num || trimmed}</div>
+                    <div style="font-size:12px;color:#15803d;font-weight:600;margin-top:2px;">Premio: ${sym}${total.toFixed(2)}</div>
+                </div>
+            </div>
+            <button onclick="clearPremiosScan()" style="background:none;border:1px solid #d1d5db;border-radius:5px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#9ca3af;cursor:pointer;font-weight:700;flex-shrink:0;align-self:flex-start;margin-left:8px;padding:0;">×</button>
+        </div>`;
+    } else {
+        _premiosScannedId = null;
+        banner.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;background:#fffbeb;border:1px solid #fbbf24;border-radius:10px;padding:12px 14px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-size:20px;">⚠️</span>
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:#92400e;">No encontrado en este período</div>
+                    <div style="font-family:monospace;font-size:11px;color:#555;">${trimmed}</div>
+                </div>
+            </div>
+            <button onclick="clearPremiosScan()" style="background:none;border:1px solid #d1d5db;border-radius:5px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#9ca3af;cursor:pointer;font-weight:700;flex-shrink:0;align-self:flex-start;margin-left:8px;padding:0;">×</button>
+        </div>`;
+    }
+    banner.style.display = 'block';
+    renderPremiosFiltered();
+}
+
+function clearPremiosScan() {
+    _premiosScannedId = null;
+    document.getElementById('premiosScanBanner').style.display = 'none';
+    renderPremiosFiltered();
+}
 
 function onPremiosLotteryChange() {
     const lotId   = document.getElementById('premiosFilterLottery')?.value || '';
@@ -3259,9 +3523,20 @@ function renderPremiosFiltered() {
     </div>
     <div style="display:flex;flex-direction:column;gap:8px;">`;
 
-    Object.values(grouped).forEach(row => {
-        const isPaid = row.is_paid;
-        const total  = row.matches.reduce((s, m) => s + parseFloat(m.prize_amount || 0), 0);
+    // Ticket escaneado primero, resto igual
+    const groupedArr = Object.values(grouped);
+    if (_premiosScannedId) {
+        groupedArr.sort((a, b) => {
+            if (a.ticket_id === _premiosScannedId) return -1;
+            if (b.ticket_id === _premiosScannedId) return  1;
+            return 0;
+        });
+    }
+
+    groupedArr.forEach(row => {
+        const isPaid      = row.is_paid;
+        const total       = row.matches.reduce((s, m) => s + parseFloat(m.prize_amount || 0), 0);
+        const isHighlight = _premiosScannedId && row.ticket_id === _premiosScannedId;
 
         const matchRows = row.matches.map(m =>
             `<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#555;padding:4px 0;border-top:1px solid #f3f4f6;">
@@ -3282,8 +3557,11 @@ function renderPremiosFiltered() {
             : '';
         const sellerHtml = isSubAdminView && row.seller_name ? ` · ${row.seller_name}` : '';
 
+        const cardBorder = isHighlight
+            ? '2px solid #22c55e;box-shadow:0 0 0 3px rgba(34,197,94,0.25);'
+            : `1px solid ${isPaid ? '#86efac' : '#fde68a'};`;
         html += `
-        <div style="background:#fff;border:1px solid ${isPaid ? '#86efac' : '#fde68a'};border-radius:10px;padding:12px;${isPaid ? 'opacity:0.75' : ''}">
+        <div style="background:#fff;border:${cardBorder}border-radius:10px;padding:12px;${isPaid && !isHighlight ? 'opacity:0.75' : ''}">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                 <div>
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
@@ -3314,6 +3592,9 @@ function renderPremiosFiltered() {
 async function loadSellerWinningTickets() {
     const sectionEl = document.getElementById('dbPremiosSection');
     if (!sectionEl || !currentProfile) return;
+    _premiosScannedId = null;
+    const banner = document.getElementById('premiosScanBanner');
+    if (banner) banner.style.display = 'none';
 
     const filterDate   = document.getElementById('premiosFilterDate')?.value   || getTodayStr();
     const filterLotId  = document.getElementById('premiosFilterLottery')?.value || null;
@@ -4338,3 +4619,7 @@ window.onWinnersDrawTimeFilter     = onWinnersDrawTimeFilter;
 window.onPremiosLotteryChange      = onPremiosLotteryChange;
 window.renderPremiosFiltered       = renderPremiosFiltered;
 window.paySellerTicket             = paySellerTicket;
+window.openPremiosScanner          = openPremiosScanner;
+window.closePremiosScanner         = closePremiosScanner;
+window.handlePremiosQRResult       = handlePremiosQRResult;
+window.clearPremiosScan            = clearPremiosScan;
