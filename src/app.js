@@ -1942,10 +1942,7 @@ function makeCorteSubAdmin() {
                 p_lottery_id:   lotteryId,
                 p_draw_time_id: drawTimeId,
             };
-            console.log('[corte] llamando create_settlement_by_subadmin con params:', JSON.stringify(rpcParams));
-            const { data: rpcData, error } = await db.rpc('create_settlement_by_subadmin', rpcParams);
-            console.log('[corte] respuesta data:', JSON.stringify(rpcData));
-            console.log('[corte] respuesta error:', JSON.stringify(error));
+            const { error } = await db.rpc('create_settlement_by_subadmin', rpcParams);
             if (error) throw error;
 
             await loadBalanceSA();

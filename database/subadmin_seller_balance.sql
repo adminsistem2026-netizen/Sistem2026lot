@@ -49,20 +49,20 @@ BEGIN
   END IF;
 
   -- Obtener el admin principal del sub_admin
-  SELECT parent_admin_id INTO v_admin_id
-  FROM public.profiles WHERE id = p_sub_admin_id;
+  SELECT p.parent_admin_id INTO v_admin_id
+  FROM public.profiles p WHERE p.id = p_sub_admin_id;
 
   -- Validar que el vendedor pertenece a este sub_admin
   IF NOT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = p_seller_id AND sub_admin_id = p_sub_admin_id
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = p_seller_id AND p.sub_admin_id = p_sub_admin_id
   ) THEN
     RAISE EXCEPTION 'El vendedor no pertenece a este sub-admin';
   END IF;
 
   -- % que el sub_admin le asignó al vendedor
-  SELECT seller_percentage INTO v_pct
-  FROM public.profiles WHERE id = p_seller_id;
+  SELECT p.seller_percentage INTO v_pct
+  FROM public.profiles p WHERE p.id = p_seller_id;
   v_pct := COALESCE(v_pct, 0);
 
   v_period_to := COALESCE(p_date_to, CURRENT_DATE);
@@ -198,18 +198,18 @@ BEGIN
     RAISE EXCEPTION 'No autorizado';
   END IF;
 
-  SELECT parent_admin_id INTO v_admin_id
-  FROM public.profiles WHERE id = p_sub_admin_id;
+  SELECT p.parent_admin_id INTO v_admin_id
+  FROM public.profiles p WHERE p.id = p_sub_admin_id;
 
   IF NOT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = p_seller_id AND sub_admin_id = p_sub_admin_id
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = p_seller_id AND p.sub_admin_id = p_sub_admin_id
   ) THEN
     RAISE EXCEPTION 'El vendedor no pertenece a este sub-admin';
   END IF;
 
-  SELECT seller_percentage INTO v_pct
-  FROM public.profiles WHERE id = p_seller_id;
+  SELECT p.seller_percentage INTO v_pct
+  FROM public.profiles p WHERE p.id = p_seller_id;
   v_pct := COALESCE(v_pct, 0);
 
   IF p_date_from IS NULL THEN
@@ -349,18 +349,18 @@ BEGIN
     RAISE EXCEPTION 'No autorizado';
   END IF;
 
-  SELECT parent_admin_id INTO v_admin_id
-  FROM public.profiles WHERE id = p_sub_admin_id;
+  SELECT p.parent_admin_id INTO v_admin_id
+  FROM public.profiles p WHERE p.id = p_sub_admin_id;
 
   IF NOT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = p_seller_id AND sub_admin_id = p_sub_admin_id
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = p_seller_id AND p.sub_admin_id = p_sub_admin_id
   ) THEN
     RAISE EXCEPTION 'El vendedor no pertenece a este sub-admin';
   END IF;
 
-  SELECT seller_percentage INTO v_pct
-  FROM public.profiles WHERE id = p_seller_id;
+  SELECT p.seller_percentage INTO v_pct
+  FROM public.profiles p WHERE p.id = p_seller_id;
   v_pct := COALESCE(v_pct, 0);
 
   v_period_to := COALESCE(p_date_to, CURRENT_DATE);
@@ -503,8 +503,8 @@ BEGIN
   END IF;
 
   IF NOT EXISTS (
-    SELECT 1 FROM public.profiles
-    WHERE id = p_seller_id AND sub_admin_id = p_sub_admin_id
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = p_seller_id AND p.sub_admin_id = p_sub_admin_id
   ) THEN
     RAISE EXCEPTION 'El vendedor no pertenece a este sub-admin';
   END IF;
