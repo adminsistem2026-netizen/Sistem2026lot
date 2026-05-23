@@ -191,6 +191,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_admin_id     UUID;
+  v_sub_admin_id UUID;
   v_pct          NUMERIC;
   v_period_from  DATE;
   v_period_to    DATE;
@@ -201,8 +202,8 @@ BEGIN
     RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
   END IF;
 
-  SELECT p.parent_admin_id, p.seller_percentage
-  INTO v_admin_id, v_pct
+  SELECT p.parent_admin_id, p.seller_percentage, p.sub_admin_id
+  INTO v_admin_id, v_pct, v_sub_admin_id
   FROM public.profiles p
   WHERE p.id = p_seller_id;
 
@@ -214,9 +215,9 @@ BEGIN
     INTO v_last_settle, v_prev_pending
     FROM public.settlements s
     WHERE s.seller_id = p_seller_id
-      AND s.admin_id  = v_admin_id
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (s.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s.admin_id = v_sub_admin_id))
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     ORDER BY s.created_at DESC
     LIMIT 1;
 
@@ -240,10 +241,10 @@ BEGIN
     INTO v_prev_pending
     FROM public.settlements s
     WHERE s.seller_id    = p_seller_id
-      AND s.admin_id     = v_admin_id
+      AND (s.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s.admin_id = v_sub_admin_id))
       AND s.period_end BETWEEN v_period_from AND v_period_to
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id);
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id);
     v_prev_pending := COALESCE(v_prev_pending, 0);
   END IF;
 
@@ -261,10 +262,10 @@ BEGIN
       AND NOT EXISTS (
         SELECT 1 FROM public.settlements s2
         WHERE s2.seller_id = p_seller_id
-          AND s2.admin_id  = v_admin_id
+          AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
           AND t.sale_date  BETWEEN s2.period_start AND s2.period_end
-          AND ((p_lottery_id   IS NULL AND s2.lottery_id   IS NULL) OR s2.lottery_id   = p_lottery_id)
-          AND ((p_draw_time_id IS NULL AND s2.draw_time_id IS NULL) OR s2.draw_time_id = p_draw_time_id)
+          AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+          AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
   ),
   prizes AS (
@@ -278,10 +279,10 @@ BEGIN
       AND NOT EXISTS (
         SELECT 1 FROM public.settlements s2
         WHERE s2.seller_id = p_seller_id
-          AND s2.admin_id  = v_admin_id
+          AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
           AND wt.draw_date BETWEEN s2.period_start AND s2.period_end
-          AND ((p_lottery_id   IS NULL AND s2.lottery_id   IS NULL) OR s2.lottery_id   = p_lottery_id)
-          AND ((p_draw_time_id IS NULL AND s2.draw_time_id IS NULL) OR s2.draw_time_id = p_draw_time_id)
+          AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+          AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
   ),
   sinfo AS (
@@ -460,18 +461,19 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_admin_id    UUID;
-  v_pct         NUMERIC;
-  v_period_from DATE;
-  v_period_to   DATE;
-  v_last_settle DATE;
+  v_admin_id     UUID;
+  v_sub_admin_id UUID;
+  v_pct          NUMERIC;
+  v_period_from  DATE;
+  v_period_to    DATE;
+  v_last_settle  DATE;
 BEGIN
   IF p_seller_id != auth.uid() THEN
     RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
   END IF;
 
-  SELECT p.parent_admin_id, p.seller_percentage
-  INTO v_admin_id, v_pct
+  SELECT p.parent_admin_id, p.seller_percentage, p.sub_admin_id
+  INTO v_admin_id, v_pct, v_sub_admin_id
   FROM public.profiles p
   WHERE p.id = p_seller_id;
 
@@ -481,9 +483,9 @@ BEGIN
     SELECT s.period_end INTO v_last_settle
     FROM public.settlements s
     WHERE s.seller_id = p_seller_id
-      AND s.admin_id  = v_admin_id
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (s.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s.admin_id = v_sub_admin_id))
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     ORDER BY s.created_at DESC
     LIMIT 1;
 
@@ -510,11 +512,11 @@ BEGIN
            COALESCE(s.balance_at_settlement - s.amount, 0) AS residual
     FROM public.settlements s
     WHERE s.seller_id      = p_seller_id
-      AND s.admin_id       = v_admin_id
+      AND (s.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s.admin_id = v_sub_admin_id))
       AND s.period_start  <= v_period_to
       AND s.period_end    >= v_period_from
-      AND ((p_lottery_id   IS NULL AND s.lottery_id   IS NULL) OR s.lottery_id   = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
   ),
   daily_sales AS (
     SELECT t.sale_date AS dt, COALESCE(SUM(tn.subtotal), 0) AS total

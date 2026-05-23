@@ -420,7 +420,11 @@ AS $$
     s.draw_time_id
   FROM public.settlements s
   JOIN public.profiles p ON p.id = s.seller_id
-  WHERE s.admin_id = p_admin_id
+  WHERE (s.admin_id = p_admin_id
+     OR (p_seller_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM public.profiles pr
+       WHERE pr.id = p_seller_id AND pr.sub_admin_id = s.admin_id
+     )))
     AND (p_seller_id IS NULL OR s.seller_id = p_seller_id)
     AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
     AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
