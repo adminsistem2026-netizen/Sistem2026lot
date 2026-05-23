@@ -26,6 +26,11 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
   const paleNum   = numbers.find(n => n.number.length === 4);
   const chancePrice = chanceNum ? unitPriceOf(chanceNum) : null;
   const palePrice   = paleNum   ? unitPriceOf(paleNum)   : null;
+  const lotteryName = (ticket.lottery_display_name || '').toLowerCase();
+  const isBilleteLottery = ['panama', 'nacional', 'pana', 'panameña']
+    .some(k => lotteryName.includes(k));
+  const hasPaleInName = lotteryName.includes('pale') || lotteryName.includes('palé');
+  const paleLabel = (isBilleteLottery && !hasPaleInName) ? 'Billete' : 'Pale';
   const totalPieces = numbers.reduce((s, n) => s + Number(n.pieces), 0);
 
   async function captureTicket() {
@@ -179,7 +184,7 @@ export default function TicketPreview({ ticket, onClose, onMarkPaid, onCancel, o
                 <div style={{ marginTop: '2px' }}>
                   {chancePrice > 0 && `Chance ${chancePrice.toFixed(2)}`}
                   {chancePrice > 0 && palePrice > 0 && '  '}
-                  {palePrice > 0 && `Pale ${palePrice.toFixed(2)}`}
+                  {palePrice > 0 && `${paleLabel} ${palePrice.toFixed(2)}`}
                 </div>
               )}
             </div>

@@ -9,11 +9,14 @@ const EMPTY_FORM = {
   phone: '',
   expires_at: '',
   max_sellers: 5,
+  currency_code:   'USD',
+  currency_symbol: '$',
 };
 
 export default function ManageAdmins() {
   const [admins, setAdmins] = useState([]);
   const [sellerCounts, setSellerCounts] = useState({}); // { admin_id: count }
+  const [currencies, setCurrencies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editAdmin, setEditAdmin] = useState(null);
@@ -42,7 +45,15 @@ export default function ManageAdmins() {
     setLoading(false);
   }
 
-  useEffect(() => { loadAdmins(); }, []);
+  useEffect(() => {
+    loadAdmins();
+    // Cargar monedas disponibles desde system_config
+    db.from('system_config')
+      .select('config_value')
+      .eq('config_key', 'available_currencies')
+      .single()
+      .then(({ data }) => { if (data) setCurrencies(data.config_value); });
+  }, []);
 
   function openCreate() {
     setEditAdmin(null);
@@ -60,9 +71,16 @@ export default function ManageAdmins() {
       phone: admin.phone || '',
       expires_at: admin.expires_at ? admin.expires_at.split('T')[0] : '',
       max_sellers: admin.max_sellers ?? 5,
+      currency_code:   admin.currency_code   || 'USD',
+      currency_symbol: admin.currency_symbol || '$',
     });
     setError('');
     setShowModal(true);
+  }
+
+  function onCurrencyChange(code) {
+    const cur = currencies.find(c => c.code === code);
+    if (cur) setForm(f => ({ ...f, currency_code: cur.code, currency_symbol: cur.symbol }));
   }
 
   async function handleSave() {
@@ -101,6 +119,12 @@ export default function ManageAdmins() {
         });
         if (updateError) throw updateError;
 
+        // Actualizar moneda del admin por separado
+        await db.from('profiles').update({
+          currency_code:   form.currency_code,
+          currency_symbol: form.currency_symbol,
+        }).eq('id', editAdmin.id);
+
         if (form.password.trim()) {
           const { error: pwError } = await db.rpc('change_user_password', {
             p_user_id:     editAdmin.id,
@@ -112,13 +136,15 @@ export default function ManageAdmins() {
         const response = await createAuthUser(form.email.trim(), form.password, form.full_name.trim());
 
         const { error: profileError } = await db.rpc('setup_new_user', {
-          p_user_id:     response.user.id,
-          p_role:        'admin',
-          p_full_name:   form.full_name.trim(),
-          p_phone:       form.phone.trim() || null,
-          p_expires_at:  expiresIso,
-          p_max_sellers: maxSellers,
-          p_email:       form.email.trim(),
+          p_user_id:       response.user.id,
+          p_role:          'admin',
+          p_full_name:     form.full_name.trim(),
+          p_phone:         form.phone.trim() || null,
+          p_expires_at:    expiresIso,
+          p_max_sellers:   maxSellers,
+          p_email:         form.email.trim(),
+          p_currency_code:   form.currency_code,
+          p_currency_symbol: form.currency_symbol,
         });
         if (profileError) throw profileError;
       }
@@ -363,6 +389,22 @@ export default function ManageAdmins() {
                 />
                 <p className="text-xs text-gray-400 mt-1">Cantidad máxima de vendedores que puede crear este admin</p>
               </div>
+
+              {currencies.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Moneda de trabajo</label>
+                  <select
+                    value={form.currency_code}
+                    onChange={e => onCurrencyChange(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
+                  >
+                    {currencies.map(c => (
+                      <option key={c.code} value={c.code}>{c.symbol} — {c.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">La moneda que heredarán sus vendedores y loterías</p>
+                </div>
+              )}
             </div>
 
             {error && <p className="text-red-500 text-xs text-center">{error}</p>}

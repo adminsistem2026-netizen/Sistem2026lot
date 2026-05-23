@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { db } from '../../lib/insforge';
 import { useAuth } from '../../contexts/AuthContext';
 import { today } from '../../lib/helpers';
+import QRScannerModal from '../../components/common/QRScannerModal';
 
 const MATCH_LABELS = {
   chance:           '2 últ. (chance)',
@@ -38,6 +39,9 @@ export default function SellerPremios() {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
 
+  const [showScanner, setShowScanner]     = useState(false);
+  const [scannedTicket, setScannedTicket] = useState(null);
+
   const sym = profile?.currency_symbol || '$';
 
   useEffect(() => {
@@ -55,6 +59,7 @@ export default function SellerPremios() {
     if (!profile?.id) return;
     setLoading(true);
     setError('');
+    setScannedTicket(null);
     try {
       const { data, error: e } = await db.rpc('get_seller_winning_tickets', {
         p_seller_id:    profile.id,
@@ -95,6 +100,12 @@ export default function SellerPremios() {
     }));
   }, [rows]);
 
+  const displayList = useMemo(() => {
+    if (!scannedTicket?.found) return grouped;
+    const rest = grouped.filter(g => g.ticket_id !== scannedTicket.data.ticket_id);
+    return [scannedTicket.data, ...rest];
+  }, [grouped, scannedTicket]);
+
   const summary = useMemo(() => {
     const pending = grouped.filter(g => !g.is_paid);
     const paid    = grouped.filter(g => g.is_paid);
@@ -107,19 +118,62 @@ export default function SellerPremios() {
     };
   }, [grouped]);
 
+  function handleQRResult(value) {
+    setShowScanner(false);
+    const match = grouped.find(
+      g => g.ticket_number.toLowerCase() === value.trim().toLowerCase()
+    );
+    setScannedTicket({ found: !!match, ticket_number: value.trim(), data: match || null });
+  }
+
   return (
     <div className="space-y-3">
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-bold text-gray-800">MIS PREMIOS</h2>
-        <button
-          onClick={fetchData}
-          disabled={loading}
-          className="text-xs text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-lg active:bg-gray-50 font-semibold disabled:opacity-50"
-        >
-          ↺ Actualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setScannedTicket(null); setShowScanner(true); }}
+            className="text-xs text-white bg-gradient-to-br from-[#8e9eab] to-[#6c7b7f] border border-transparent px-3 py-1.5 rounded-lg active:opacity-80 font-semibold shadow"
+          >
+            📷 Escanear
+          </button>
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="text-xs text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-lg active:bg-gray-50 font-semibold disabled:opacity-50"
+          >
+            ↺ Actualizar
+          </button>
+        </div>
       </div>
+
+      {scannedTicket && (
+        <div className={`flex items-center justify-between rounded-xl px-4 py-3 border ${
+          scannedTicket.found
+            ? 'bg-green-50 border-green-300'
+            : 'bg-yellow-50 border-yellow-300'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{scannedTicket.found ? '✅' : '⚠️'}</span>
+            <div>
+              <p className={`text-sm font-bold ${scannedTicket.found ? 'text-green-800' : 'text-yellow-800'}`}>
+                {scannedTicket.found ? '¡Ticket Ganador!' : 'No encontrado en este período'}
+              </p>
+              <p className="font-mono text-xs text-gray-500">{scannedTicket.ticket_number}</p>
+              {scannedTicket.found && (
+                <p className="text-xs text-green-700 font-semibold mt-0.5">
+                  Premio: {fmtAmt(scannedTicket.data.total_prize, sym)}
+                </p>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={() => setScannedTicket(null)}
+            className="text-gray-400 text-xl font-bold px-1 active:text-gray-600"
+          >×</button>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2.5">
@@ -133,7 +187,7 @@ export default function SellerPremios() {
           <input
             type="date"
             value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
+            onChange={e => { setDateFrom(e.target.value); setScannedTicket(null); }}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
           />
         </div>
@@ -142,7 +196,7 @@ export default function SellerPremios() {
           <input
             type="date"
             value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
+            onChange={e => { setDateTo(e.target.value); setScannedTicket(null); }}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
           />
         </div>
@@ -150,7 +204,7 @@ export default function SellerPremios() {
 
       <select
         value={lotteryId}
-        onChange={e => setLotteryId(e.target.value)}
+        onChange={e => { setLotteryId(e.target.value); setScannedTicket(null); }}
         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
       >
         <option value="">Todas las loterías</option>
@@ -163,7 +217,7 @@ export default function SellerPremios() {
         {[['', 'Todos'], ['pending', 'Pendientes'], ['paid', 'Cobrados']].map(([val, lbl]) => (
           <button
             key={val}
-            onClick={() => setStatus(val)}
+            onClick={() => { setStatus(val); setScannedTicket(null); }}
             className={`flex-1 text-xs py-2 rounded-lg border transition font-medium ${
               status === val
                 ? 'bg-gradient-to-br from-[#8e9eab] to-[#6c7b7f] text-white border-transparent'
@@ -194,18 +248,23 @@ export default function SellerPremios() {
 
       {loading ? (
         <p className="text-center text-gray-400 py-10">Cargando...</p>
-      ) : grouped.length === 0 ? (
+      ) : displayList.length === 0 ? (
         <p className="text-center text-gray-400 py-10">
           No hay tickets ganadores para este período
         </p>
       ) : (
         <div className="space-y-2">
-          {grouped.map(row => {
-            const isPaid = row.is_paid;
+          {displayList.map(row => {
+            const isPaid      = row.is_paid;
+            const isHighlight = scannedTicket?.found && row.ticket_id === scannedTicket.data.ticket_id;
             return (
               <div
                 key={row.ticket_id}
-                className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3"
+                className={`bg-white rounded-xl border shadow-sm px-4 py-3 ${
+                  isHighlight
+                    ? 'border-green-400 ring-2 ring-green-300 shadow-green-100'
+                    : 'border-gray-200'
+                }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
@@ -279,6 +338,13 @@ export default function SellerPremios() {
             );
           })}
         </div>
+      )}
+
+      {showScanner && (
+        <QRScannerModal
+          onResult={handleQRResult}
+          onClose={() => setShowScanner(false)}
+        />
       )}
 
     </div>

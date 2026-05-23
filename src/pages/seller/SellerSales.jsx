@@ -33,6 +33,7 @@ export default function SellerSales() {
       const enriched = data.map(t => ({
         ...t,
         lottery_display_name: lotteries.find(l => l.id === t.lottery_id)?.display_name || '—',
+        lottery_type: lotteries.find(l => l.id === t.lottery_id)?.lottery_type || 'regular',
         draw_time_label: Object.values(drawTimes).flat().find(dt => dt.id === t.draw_time_id)?.time_label || '—',
         numbers: t.ticket_numbers || [],
       }));

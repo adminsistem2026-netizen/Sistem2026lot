@@ -1877,10 +1877,54 @@ function renderBalanceSAHistory() {
                 <div style="text-align:right;flex-shrink:0;">
                     <p style="margin:0;font-size:0.7em;color:#94a3b8;">Balance</p>
                     <p style="margin:2px 0 0;font-size:1.1em;font-weight:bold;color:${balColor};">${sym}${Math.abs(bal).toFixed(2)}</p>
+                    <button onclick="deleteCorteSubAdmin('${s.id}')" title="Eliminar corte"
+                        style="margin-top:6px;background:none;border:none;cursor:pointer;color:#94a3b8;padding:3px;border-radius:6px;line-height:1;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                    </button>
                 </div>
             </div>
         </div>`;
     }).join('');
+}
+
+let balanceSADeleteTargetId = null;
+
+function deleteCorteSubAdmin(settlementId) {
+    balanceSADeleteTargetId = settlementId;
+    const modal      = document.getElementById('balanceSADeleteModal');
+    const errorEl    = document.getElementById('balanceSADeleteError');
+    const confirmBtn = document.getElementById('balanceSADeleteConfirm');
+    if (errorEl)     { errorEl.style.display = 'none'; errorEl.textContent = ''; }
+    if (confirmBtn)  { confirmBtn.disabled = false; confirmBtn.onclick = confirmDeleteCorteSubAdmin; }
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeBalanceSADeleteModal() {
+    const modal = document.getElementById('balanceSADeleteModal');
+    if (modal) modal.style.display = 'none';
+    balanceSADeleteTargetId = null;
+}
+
+async function confirmDeleteCorteSubAdmin() {
+    if (!balanceSADeleteTargetId) return;
+    const confirmBtn = document.getElementById('balanceSADeleteConfirm');
+    const errorEl    = document.getElementById('balanceSADeleteError');
+    if (confirmBtn) confirmBtn.disabled = true;
+    try {
+        const { error } = await db.rpc('delete_settlement_by_subadmin', {
+            p_settlement_id: balanceSADeleteTargetId,
+            p_sub_admin_id:  currentProfile.id,
+        });
+        if (error) throw error;
+        closeBalanceSADeleteModal();
+        await loadBalanceSA();
+    } catch (err) {
+        if (errorEl) {
+            errorEl.textContent = err.message || 'Error al eliminar el corte';
+            errorEl.style.display = 'block';
+        }
+        if (confirmBtn) confirmBtn.disabled = false;
+    }
 }
 
 function makeCorteSubAdmin() {
@@ -3156,8 +3200,9 @@ function displaySalesSummary(type) {
             ? totals.totalTiempos.toFixed(1)
             : totals.totalTiempos.toString();
 
+        const sym = currentProfile?.currency_symbol || '$';
         document.getElementById(piezasId).textContent  = totalDisplay;
-        document.getElementById(colonesId).textContent = '$' + totals.totalColones.toFixed(2);
+        document.getElementById(colonesId).textContent = sym + totals.totalColones.toFixed(2);
 
         updateCombinedSummary();
         if (isChance) showWinningNumbersSection();
@@ -3165,9 +3210,10 @@ function displaySalesSummary(type) {
 }
 
 function updateCombinedSummary() {
+    const sym = currentProfile?.currency_symbol || '$';
     const parseAmt = id => {
         const el = document.getElementById(id);
-        return el ? parseFloat(el.textContent.replace('$', '') || 0) : 0;
+        return el ? parseFloat(el.textContent.replace(/[^0-9.-]/g, '') || 0) : 0;
     };
     const chanceAmt  = parseAmt('totalColones');
     const billeteAmt = parseAmt('totalBilleteColones');
@@ -3179,12 +3225,12 @@ function updateCombinedSummary() {
     const box = document.getElementById('combinedSummaryBox');
     if (!box) return;
     box.style.display = 'block';
-    document.getElementById('combinedChanceColones').textContent  = '$' + chanceAmt.toFixed(2);
-    document.getElementById('combinedBilleteColones').textContent = '$' + billeteAmt.toFixed(2);
-    document.getElementById('combinedTotal').textContent          = '$' + total.toFixed(2);
-    document.getElementById('combinedSellerAmt').textContent      = '$' + sellerAmt.toFixed(2);
+    document.getElementById('combinedChanceColones').textContent  = sym + chanceAmt.toFixed(2);
+    document.getElementById('combinedBilleteColones').textContent = sym + billeteAmt.toFixed(2);
+    document.getElementById('combinedTotal').textContent          = sym + total.toFixed(2);
+    document.getElementById('combinedSellerAmt').textContent      = sym + sellerAmt.toFixed(2);
     document.getElementById('combinedSellerLabel').textContent    = `${sellerName} (${sellerPercentage}%)`;
-    document.getElementById('combinedAdminAmt').textContent       = '$' + adminAmt.toFixed(2);
+    document.getElementById('combinedAdminAmt').textContent       = sym + adminAmt.toFixed(2);
     document.getElementById('combinedAdminLabel').textContent     = `Admin (${100 - sellerPercentage}%)`;
 }
 
@@ -3194,6 +3240,7 @@ function addPercentageBreakdown(summaryBox, totalAmount) {
     const existingButton = summaryBox.querySelector('.percentage-config-button');
     if (existingButton) existingButton.remove();
 
+    const sym = currentProfile?.currency_symbol || '$';
     const sellerAmount = (totalAmount * sellerPercentage) / 100;
     const adminAmount = totalAmount - sellerAmount;
 
@@ -3201,11 +3248,11 @@ function addPercentageBreakdown(summaryBox, totalAmount) {
     breakdown.className = 'percentage-breakdown';
     breakdown.innerHTML = `
     <div class="percentage-item seller">
-        <div class="percentage-value">$${sellerAmount.toFixed(2)}</div>
+        <div class="percentage-value">${sym}${sellerAmount.toFixed(2)}</div>
         <div class="percentage-label">${sellerName} (${sellerPercentage}%)</div>
     </div>
     <div class="percentage-item admin">
-        <div class="percentage-value">$${adminAmount.toFixed(2)}</div>
+        <div class="percentage-value">${sym}${adminAmount.toFixed(2)}</div>
         <div class="percentage-label">Admin (${(100 - sellerPercentage)}%)</div>
     </div>
     `;
@@ -5027,6 +5074,8 @@ window.toggleBalanceSADetail       = toggleBalanceSADetail;
 window.toggleBalanceSAHistory      = toggleBalanceSAHistory;
 window.makeCorteSubAdmin           = makeCorteSubAdmin;
 window.closeBalanceSACorteModal    = closeBalanceSACorteModal;
+window.deleteCorteSubAdmin         = deleteCorteSubAdmin;
+window.closeBalanceSADeleteModal   = closeBalanceSADeleteModal;
 window.onSalesDrawTimeFilter       = onSalesDrawTimeFilter;
 window.onNumDrawTimeFilter         = onNumDrawTimeFilter;
 window.onWinnersDrawTimeFilter     = onWinnersDrawTimeFilter;

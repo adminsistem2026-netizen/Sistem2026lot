@@ -1,25 +1,17 @@
 -- ============================================================
 -- FIX: EXCLUSIÓN DE DÍAS YA SALDADOS EN FILTRO DE FECHA
 --
--- Problema: en modo de filtro de fecha, si se hace un corte
--- para el día 14 (period_start=14, period_end=14) y luego se
--- consulta el rango 14-21, el día 14 se recalculaba porque el
--- código anterior solo descontaba v_total_settled cuando el
--- corte coincidía EXACTAMENTE con el rango consultado.
+-- FUNCIONES QUE ESTE ARCHIVO DEFINE (FUENTE DE VERDAD):
+--   ✓ get_seller_balance                 (vista del admin)
+--   ✓ get_seller_balance_detail          (detalle diario del admin)
+--   ✓ create_settlement                  (crear corte del admin)
+--   ✓ get_seller_balance_for_seller      (vista del vendedor)
+--   ✓ get_seller_balance_detail_for_seller
 --
--- Corrección:
---   - En los CTE de ventas y premios, agregar NOT EXISTS para
---     excluir cualquier día que caiga dentro de cualquier
---     período de corte existente (sin importar el rango que
---     se consulte).
---   - RPCs de detalle: agregar campo is_settled (BOOLEAN) y
---     balance_day = 0 para días saldados (montos históricos
---     visibles pero no suman al total pendiente).
---
--- Afecta: get_seller_balance, get_seller_balance_for_seller,
---         get_seller_balance_detail,
---         get_seller_balance_detail_for_seller,
---         create_settlement
+-- ⚠ NUNCA redefinir estas funciones en otro archivo SQL.
+--   Si se necesita modificarlas, hacerlo AQUÍ.
+--   settlement_manual_amount_patch.sql NO debe contener
+--   get_seller_balance ni create_settlement.
 -- ============================================================
 
 
@@ -225,6 +217,7 @@ BEGIN
 
     IF v_last_settle IS NOT NULL THEN
       v_period_from := v_last_settle + 1;
+      v_period_from := LEAST(v_period_from, CURRENT_DATE);
     ELSE
       SELECT MIN(t.sale_date) INTO v_period_from
       FROM public.tickets t
@@ -263,7 +256,8 @@ BEGIN
         SELECT 1 FROM public.settlements s2
         WHERE s2.seller_id = p_seller_id
           AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
-          AND t.sale_date  BETWEEN s2.period_start AND s2.period_end
+          AND t.sale_date >= s2.period_start
+          AND t.sale_date <= LEAST(s2.period_end, CURRENT_DATE - 1)
           AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
           AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
@@ -280,7 +274,8 @@ BEGIN
         SELECT 1 FROM public.settlements s2
         WHERE s2.seller_id = p_seller_id
           AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
-          AND wt.draw_date BETWEEN s2.period_start AND s2.period_end
+          AND wt.draw_date >= s2.period_start
+          AND wt.draw_date <= LEAST(s2.period_end, CURRENT_DATE - 1)
           AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
           AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
@@ -491,6 +486,7 @@ BEGIN
 
     IF v_last_settle IS NOT NULL THEN
       v_period_from := v_last_settle + 1;
+      v_period_from := LEAST(v_period_from, CURRENT_DATE);
     ELSE
       SELECT MIN(t.sale_date) INTO v_period_from
       FROM public.tickets t
@@ -508,7 +504,7 @@ BEGIN
 
   RETURN QUERY
   WITH settled_periods AS (
-    SELECT s.period_start, s.period_end,
+    SELECT s.period_start, LEAST(s.period_end, CURRENT_DATE - 1) AS period_end,
            COALESCE(s.balance_at_settlement - s.amount, 0) AS residual
     FROM public.settlements s
     WHERE s.seller_id      = p_seller_id

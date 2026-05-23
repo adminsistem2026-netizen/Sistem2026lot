@@ -60,6 +60,7 @@ export function useTickets() {
       return {
         ...ticket,
         lottery_display_name: lottery.display_name,
+        lottery_type: lottery.lottery_type,
         draw_time_label: drawTime.time_label,
         currency_symbol: lottery.currency_symbol,
         numbers: JSON.parse(JSON.stringify(numbers)),

@@ -1,10 +1,18 @@
 -- ============================================================
 -- BALANCE Y CORTES DEL SUB_ADMIN CON SUS VENDEDORES
 --
--- El sub_admin puede ver el balance de cada uno de sus vendedores
--- y hacer cortes independientes con ellos.
--- Los settlements aquí tienen admin_id = sub_admin_id, lo que los
--- aísla de los settlements del admin principal (admin_id = admin_id).
+-- FUNCIONES QUE ESTE ARCHIVO DEFINE (FUENTE DE VERDAD):
+--   ✓ get_seller_balance_for_subadmin
+--   ✓ get_seller_balance_detail_for_subadmin
+--   ✓ create_settlement_by_subadmin
+--   ✓ get_settlements_history_for_subadmin
+--   ✓ delete_settlement_by_subadmin
+--
+-- ⚠ NUNCA redefinir estas funciones en otro archivo SQL.
+--   Si se necesita modificarlas, hacerlo AQUÍ.
+--
+-- Los settlements tienen admin_id = sub_admin_id, lo que los
+-- aísla de los del admin principal (admin_id = admin_id).
 -- ============================================================
 
 
@@ -83,6 +91,7 @@ BEGIN
 
     IF v_last_settle IS NOT NULL THEN
       v_period_from := v_last_settle + 1;
+      v_period_from := LEAST(v_period_from, CURRENT_DATE);
     ELSE
       SELECT MIN(t.sale_date) INTO v_period_from
       FROM public.tickets t
@@ -121,7 +130,8 @@ BEGIN
         SELECT 1 FROM public.settlements s2
         WHERE s2.seller_id = p_seller_id
           AND s2.admin_id  = p_sub_admin_id
-          AND t.sale_date  BETWEEN s2.period_start AND s2.period_end
+          AND t.sale_date >= s2.period_start
+          AND t.sale_date <= LEAST(s2.period_end, CURRENT_DATE - 1)
           AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
           AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
@@ -138,7 +148,8 @@ BEGIN
         SELECT 1 FROM public.settlements s2
         WHERE s2.seller_id = p_seller_id
           AND s2.admin_id  = p_sub_admin_id
-          AND wt.draw_date BETWEEN s2.period_start AND s2.period_end
+          AND wt.draw_date >= s2.period_start
+          AND wt.draw_date <= LEAST(s2.period_end, CURRENT_DATE - 1)
           AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
           AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
@@ -224,6 +235,7 @@ BEGIN
 
     IF v_last_settle IS NOT NULL THEN
       v_period_from := v_last_settle + 1;
+      v_period_from := LEAST(v_period_from, CURRENT_DATE);
     ELSE
       SELECT MIN(t.sale_date) INTO v_period_from
       FROM public.tickets t
@@ -241,7 +253,7 @@ BEGIN
 
   RETURN QUERY
   WITH settled_periods AS (
-    SELECT s.period_start, s.period_end,
+    SELECT s.period_start, LEAST(s.period_end, CURRENT_DATE - 1) AS period_end,
            COALESCE(s.balance_at_settlement - s.amount, 0) AS residual
     FROM public.settlements s
     WHERE s.seller_id     = p_seller_id
@@ -363,7 +375,7 @@ BEGIN
   FROM public.profiles p WHERE p.id = p_seller_id;
   v_pct := COALESCE(v_pct, 0);
 
-  v_period_to := COALESCE(p_date_to, CURRENT_DATE);
+  v_period_to := COALESCE(p_date_to, CURRENT_DATE - 1);
 
   IF p_date_from IS NULL THEN
     SELECT s.period_end, COALESCE(s.balance_at_settlement - s.amount, 0)
@@ -402,6 +414,10 @@ BEGIN
       AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
       AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id);
     v_prev_pending := COALESCE(v_prev_pending, 0);
+  END IF;
+
+  IF v_period_from > v_period_to THEN
+    v_period_to := v_period_from;
   END IF;
 
   SELECT COALESCE(SUM(tn.subtotal), 0) INTO v_total_sales
@@ -533,9 +549,40 @@ $$;
 
 
 -- ============================================================
+-- 5. delete_settlement_by_subadmin
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.delete_settlement_by_subadmin(
+  p_settlement_id UUID,
+  p_sub_admin_id  UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() != p_sub_admin_id THEN
+    RAISE EXCEPTION 'No autorizado';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM public.settlements
+    WHERE id = p_settlement_id AND admin_id = p_sub_admin_id
+  ) THEN
+    RAISE EXCEPTION 'Corte no encontrado o no tienes permiso para eliminarlo';
+  END IF;
+
+  DELETE FROM public.settlements
+  WHERE id = p_settlement_id AND admin_id = p_sub_admin_id;
+END;
+$$;
+
+
+-- ============================================================
 -- Grants
 -- ============================================================
 GRANT EXECUTE ON FUNCTION public.get_seller_balance_for_subadmin(UUID,UUID,DATE,DATE,UUID,UUID)        TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_seller_balance_detail_for_subadmin(UUID,UUID,DATE,DATE,UUID,UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_settlement_by_subadmin(UUID,UUID,NUMERIC,TEXT,DATE,DATE,UUID,UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_settlements_history_for_subadmin(UUID,UUID)                       TO authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_settlement_by_subadmin(UUID,UUID)                              TO authenticated;

@@ -165,7 +165,11 @@ export default function SellerDashboard() {
       setNumbers([]);
       setCustomerName('');
       // Keep lottery and draw time selected
-    } catch (e) { showToast(e.message, 'error'); }
+    } catch (e) {
+      const msg = (e?.message || '').toLowerCase();
+      const esErrorRed = msg.includes('failed to fetch') || msg.includes('networkerror') || e instanceof TypeError;
+      showToast(esErrorRed ? 'Error de conexión de datos' : e.message, 'error');
+    }
   }
 
   async function handleMarkPaid(ticket) {

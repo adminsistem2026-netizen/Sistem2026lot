@@ -2707,6 +2707,19 @@
     </div>
 </div>
 
+<!-- Modal eliminar corte sub_admin -->
+<div id="balanceSADeleteModal" class="custom-modal" style="display:none;">
+    <div class="custom-modal-content">
+        <h3 style="margin:0 0 8px;">Eliminar corte</h3>
+        <p style="color:#64748b;font-size:0.85em;margin:0 0 18px;">¿Estás seguro de que deseas eliminar este corte? Esta acción no se puede deshacer.</p>
+        <div class="modal-buttons">
+            <button id="balanceSADeleteConfirm" class="modal-btn confirm" style="background:#e11d48;">Eliminar</button>
+            <button onclick="closeBalanceSADeleteModal()" class="modal-btn cancel">Cancelar</button>
+        </div>
+        <p id="balanceSADeleteError" style="color:#e11d48;font-size:0.8em;margin-top:8px;display:none;text-align:center;"></p>
+    </div>
+</div>
+
 </body>
 
 <script type="module" src="/src/app.js"></script>
