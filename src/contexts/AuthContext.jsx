@@ -64,6 +64,17 @@ export function AuthProvider({ children }) {
     navigate('/login');
   }
 
+  // Recargar el perfil fresco desde la BD (útil si se cambió moneda u otros datos)
+  async function refreshProfile() {
+    if (!user) return;
+    try {
+      const profileData = await loadProfile(user.id);
+      setProfile(profileData);
+    } catch (err) {
+      console.error('Error recargando perfil:', err);
+    }
+  }
+
   // Restaurar sesión al cargar la app
   useEffect(() => {
     async function restoreSession() {
@@ -100,7 +111,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, profile, loading, login, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

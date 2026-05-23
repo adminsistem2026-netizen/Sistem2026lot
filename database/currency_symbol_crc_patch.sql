@@ -1,11 +1,9 @@
 -- ============================================================
--- PARCHE AMPLIADO: Corrige símbolos Y nombres de moneda
+-- PARCHE DEFINITIVO: Corrige símbolo y nombres de moneda
 --
--- 1. Corrige available_currencies en system_config:
---    - Agrega nombres a todas las monedas conocidas
---    - Corrige símbolo CRC: $Col → ₡
--- 2. Actualiza profiles donde currency_code = 'CRC'
--- 3. Actualiza lotteries donde currency_code = 'CRC'
+-- 1. Corrige system_config.available_currencies (nombres + símbolo ₡)
+-- 2. Corrige profiles con símbolo incorrecto (busca por símbolo, no código)
+-- 3. Corrige lotteries con símbolo incorrecto
 --
 -- ⚠ Ejecutar UNA SOLA VEZ en el SQL Editor de InsForge.
 -- ============================================================
@@ -32,14 +30,14 @@ SET config_value = (
 )
 WHERE config_key = 'available_currencies';
 
--- 2. Corregir symbol en profiles (app móvil)
+-- 2. Corregir profiles: busca por símbolo (cubre $Col, col, Col, $col, etc.)
 UPDATE public.profiles
-SET currency_symbol = '₡'
-WHERE currency_code = 'CRC'
-  AND (currency_symbol IS NULL OR currency_symbol <> '₡');
+SET currency_symbol = '₡',
+    currency_code   = 'CRC'
+WHERE currency_symbol ILIKE '%col%';
 
--- 3. Corregir symbol en lotteries
+-- 3. Corregir lotteries: misma lógica
 UPDATE public.lotteries
-SET currency_symbol = '₡'
-WHERE currency_code = 'CRC'
-  AND (currency_symbol IS NULL OR currency_symbol <> '₡');
+SET currency_symbol = '₡',
+    currency_code   = 'CRC'
+WHERE currency_symbol ILIKE '%col%';
