@@ -463,6 +463,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_admin_id     UUID;
+  v_sub_admin_id UUID;
   v_pct          NUMERIC;
   v_period_from  DATE;
   v_period_to    DATE;
@@ -473,21 +474,22 @@ BEGIN
     RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
   END IF;
 
-  SELECT p.parent_admin_id, p.seller_percentage
-  INTO v_admin_id, v_pct
+  SELECT p.parent_admin_id, p.seller_percentage, p.sub_admin_id
+  INTO v_admin_id, v_pct, v_sub_admin_id
   FROM public.profiles p
   WHERE p.id = p_seller_id;
 
   v_pct := COALESCE(v_pct, 0);
+  v_period_to := COALESCE(p_date_to, CURRENT_DATE);
 
   IF p_date_from IS NULL THEN
     SELECT s.period_end, COALESCE(s.balance_at_settlement - s.amount, 0)
     INTO v_last_settle, v_prev_pending
     FROM public.settlements s
     WHERE s.seller_id = p_seller_id
-      AND s.admin_id = v_admin_id
-      AND ((p_lottery_id IS NULL AND s.lottery_id IS NULL) OR s.lottery_id = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
+      AND (s.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s.admin_id = v_sub_admin_id))
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     ORDER BY s.created_at DESC
     LIMIT 1;
 
@@ -499,52 +501,61 @@ BEGIN
       SELECT MIN(t.sale_date) INTO v_period_from
       FROM public.tickets t
       WHERE t.seller_id = p_seller_id
-        AND t.admin_id = v_admin_id
-        AND (p_lottery_id IS NULL OR t.lottery_id = p_lottery_id)
+        AND t.admin_id  = v_admin_id
+        AND (p_lottery_id   IS NULL OR t.lottery_id   = p_lottery_id)
         AND (p_draw_time_id IS NULL OR t.draw_time_id = p_draw_time_id);
-
       v_period_from := COALESCE(v_period_from, CURRENT_DATE - 30);
     END IF;
+
   ELSE
     v_period_from := p_date_from;
-
-    SELECT COALESCE(s.balance_at_settlement - s.amount, 0)
+    SELECT COALESCE(SUM(s.balance_at_settlement - s.amount), 0)
     INTO v_prev_pending
     FROM public.settlements s
-    WHERE s.seller_id = p_seller_id
-      AND s.admin_id = v_admin_id
-      AND s.period_start = p_date_from
-      AND s.period_end = COALESCE(p_date_to, CURRENT_DATE)
-      AND ((p_lottery_id IS NULL AND s.lottery_id IS NULL) OR s.lottery_id = p_lottery_id)
-      AND ((p_draw_time_id IS NULL AND s.draw_time_id IS NULL) OR s.draw_time_id = p_draw_time_id)
-    ORDER BY s.created_at DESC
-    LIMIT 1;
-
+    WHERE s.seller_id    = p_seller_id
+      AND (s.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s.admin_id = v_sub_admin_id))
+      AND s.period_end BETWEEN v_period_from AND v_period_to
+      AND (p_lottery_id   IS NULL OR s.lottery_id   = p_lottery_id)
+      AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id);
     v_prev_pending := COALESCE(v_prev_pending, 0);
   END IF;
-
-  v_period_to := COALESCE(p_date_to, CURRENT_DATE);
 
   RETURN QUERY
   WITH sales AS (
     SELECT COALESCE(SUM(tn.subtotal), 0) AS total
     FROM public.ticket_numbers tn
     JOIN public.tickets t ON t.id = tn.ticket_id
-    WHERE t.seller_id = p_seller_id
-      AND t.admin_id = v_admin_id
-      AND t.is_cancelled = FALSE
-      AND t.sale_date BETWEEN v_period_from AND v_period_to
-      AND (p_lottery_id IS NULL OR t.lottery_id = p_lottery_id)
+    WHERE t.seller_id     = p_seller_id
+      AND t.admin_id      = v_admin_id
+      AND t.is_cancelled  = FALSE
+      AND t.sale_date     BETWEEN v_period_from AND v_period_to
+      AND (p_lottery_id   IS NULL OR t.lottery_id   = p_lottery_id)
       AND (p_draw_time_id IS NULL OR t.draw_time_id = p_draw_time_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM public.settlements s2
+        WHERE s2.seller_id = p_seller_id
+          AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
+          AND t.sale_date  BETWEEN s2.period_start AND s2.period_end
+          AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+          AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
+      )
   ),
   prizes AS (
     SELECT COALESCE(SUM(wt.prize_amount), 0) AS total
     FROM public.winning_tickets wt
-    WHERE wt.seller_id = p_seller_id
-      AND wt.admin_id = v_admin_id
-      AND wt.draw_date BETWEEN v_period_from AND v_period_to
-      AND (p_lottery_id IS NULL OR wt.lottery_id = p_lottery_id)
+    WHERE wt.seller_id  = p_seller_id
+      AND wt.admin_id   = v_admin_id
+      AND wt.draw_date  BETWEEN v_period_from AND v_period_to
+      AND (p_lottery_id   IS NULL OR wt.lottery_id   = p_lottery_id)
       AND (p_draw_time_id IS NULL OR wt.draw_time_id = p_draw_time_id)
+      AND NOT EXISTS (
+        SELECT 1 FROM public.settlements s2
+        WHERE s2.seller_id = p_seller_id
+          AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
+          AND wt.draw_date BETWEEN s2.period_start AND s2.period_end
+          AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
+          AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
+      )
   ),
   sinfo AS (
     SELECT p.full_name FROM public.profiles p WHERE p.id = p_seller_id
