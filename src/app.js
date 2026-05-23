@@ -2646,7 +2646,8 @@ function resetForm() {
     document.getElementById('quickInput').value = '';
     numbers = [];
     document.getElementById('numbersTableBody').innerHTML = '';
-    document.getElementById('totalValue').innerText = 'VALOR DE TICKET: 0.00$';
+    const sym = currentProfile?.currency_symbol || '$';
+    document.getElementById('totalValue').innerText = `VALOR DE TICKET: ${sym}0.00`;
 }
 
 async function showTicketPreview(ticket) {
