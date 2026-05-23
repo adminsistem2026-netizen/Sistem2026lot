@@ -1561,10 +1561,417 @@ function verificarGanadoresSA() {
         ${summaryHtml}`;
 }
 
+// ==================== Balance Vendedores (sub_admin) ====================
+
+let balanceSADetailOpen     = false;
+let balanceSAHistoryOpen    = true;
+let balanceSADetailData     = [];
+let balanceSAHistoryData    = [];
+let balanceSACurrentBalance = 0;
+
+function showBalanceSAPage() {
+    closeMenu();
+    hideAllPages();
+    document.getElementById('balanceSAPage').style.display = 'block';
+    // Poblar dropdown de vendedores
+    const sel = document.getElementById('balanceSAVendedor');
+    if (sel) {
+        sel.innerHTML = '<option value="">— Selecciona un vendedor —</option>';
+        subAdminSellers.forEach(s => {
+            const o = document.createElement('option');
+            o.value = s.id; o.textContent = s.full_name;
+            sel.appendChild(o);
+        });
+    }
+    // Poblar loterías
+    const lotSel = document.getElementById('balanceSALoteria');
+    if (lotSel) {
+        lotSel.innerHTML = '<option value="">Todas las loterías</option>';
+        lotteries.forEach(l => {
+            const o = document.createElement('option');
+            o.value = l.id; o.textContent = l.name || l.display_name || l.code;
+            lotSel.appendChild(o);
+        });
+    }
+    const horSel = document.getElementById('balanceSAHorario');
+    if (horSel) horSel.innerHTML = '<option value="">Todos los sorteos</option>';
+    // No cargar si no hay vendedor seleccionado aún
+    resetBalanceSAUI();
+}
+
+function resetBalanceSAUI() {
+    const sym = currentProfile?.currency_symbol || '$';
+    ['balanceSATotalSales','balanceSAComision','balanceSAAdminPart','balanceSAPremios'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = `${sym}0.00`;
+    });
+    const valorEl = document.getElementById('balanceSAValor');
+    if (valorEl) { valorEl.textContent = `${sym}0.00`; valorEl.style.color = '#64748b'; }
+    const labelEl = document.getElementById('balanceSALabel');
+    if (labelEl) labelEl.textContent = 'Sin vendedor seleccionado';
+    const destEl = document.getElementById('balanceSADestacado');
+    if (destEl) { destEl.style.background = '#f8fafc'; destEl.style.borderColor = '#e2e8f0'; }
+    const prevCard = document.getElementById('balanceSAPrevPendingCard');
+    if (prevCard) prevCard.style.display = 'none';
+    const periodoEl = document.getElementById('balanceSAPeriodo');
+    if (periodoEl) periodoEl.textContent = '';
+    const corteBtn = document.getElementById('balanceSACorteBtn');
+    if (corteBtn) corteBtn.disabled = true;
+    balanceSADetailData = [];
+    balanceSAHistoryData = [];
+    renderBalanceSADetail();
+    renderBalanceSAHistory();
+}
+
+function onBalanceSAVendedorChange() {
+    const sellerId = document.getElementById('balanceSAVendedor')?.value;
+    if (!sellerId) { resetBalanceSAUI(); return; }
+    loadBalanceSA();
+}
+
+async function loadBalanceSA() {
+    const sellerId = document.getElementById('balanceSAVendedor')?.value;
+    if (!currentProfile?.id || !sellerId) return;
+    const sym = currentProfile?.currency_symbol || '$';
+
+    const from      = document.getElementById('balanceSAFilterFrom')?.value || null;
+    const to        = document.getElementById('balanceSAFilterTo')?.value   || null;
+    const lotteryId = document.getElementById('balanceSALoteria')?.value    || null;
+    const drawTimeId= document.getElementById('balanceSAHorario')?.value    || null;
+
+    const clearBtn = document.getElementById('balanceSAFilterClear');
+    if (clearBtn) clearBtn.style.display = (from || to || lotteryId || drawTimeId) ? 'block' : 'none';
+
+    ['balanceSATotalSales','balanceSAComision','balanceSAAdminPart','balanceSAPremios','balanceSAValor'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'Cargando...';
+    });
+
+    try {
+        const params = {
+            p_sub_admin_id: currentProfile.id,
+            p_seller_id:    sellerId,
+            p_date_from:    from,
+            p_date_to:      to,
+            p_lottery_id:   lotteryId,
+            p_draw_time_id: drawTimeId,
+        };
+
+        const [{ data: balData, error: balErr }, { data: detData }] = await Promise.all([
+            db.rpc('get_seller_balance_for_subadmin',        params),
+            db.rpc('get_seller_balance_detail_for_subadmin', params),
+        ]);
+        if (balErr) throw balErr;
+
+        balanceSADetailData = detData || [];
+
+        try {
+            const { data: histData } = await db.rpc('get_settlements_history_for_subadmin', {
+                p_sub_admin_id: currentProfile.id,
+                p_seller_id:    sellerId,
+            });
+            balanceSAHistoryData = histData || [];
+        } catch (_) { balanceSAHistoryData = []; }
+
+        const bal = balData?.[0];
+        const corteBtn = document.getElementById('balanceSACorteBtn');
+
+        if (bal) {
+            const adminPart   = parseFloat(bal.admin_part        || 0);
+            const prizes      = parseFloat(bal.total_prizes_paid || 0);
+            const balance     = parseFloat(bal.balance           || 0);
+            balanceSACurrentBalance = balance;
+            const pct         = parseFloat(bal.commission_pct    || 0);
+            const prevPending = balance - adminPart + prizes;
+
+            const detailTotalSales      = balanceSADetailData.reduce((s, r) => s + parseFloat(r.total_sales      || 0), 0);
+            const detailTotalCommission = balanceSADetailData.reduce((s, r) => s + parseFloat(r.total_commission || 0), 0);
+            const detailTotalPrizes     = balanceSADetailData.reduce((s, r) => (r.is_settled && parseFloat(r.balance_day || 0) <= 0) ? s : s + parseFloat(r.prizes_paid || 0), 0);
+
+            document.getElementById('balanceSATotalSales').textContent = `${sym}${detailTotalSales.toFixed(2)}`;
+            document.getElementById('balanceSAComision').textContent   = `${sym}${detailTotalCommission.toFixed(2)}`;
+            document.getElementById('balanceSAAdminPart').textContent  = `${sym}${Math.abs(adminPart - prizes).toFixed(2)}`;
+            document.getElementById('balanceSAPremios').textContent    = `${sym}${detailTotalPrizes.toFixed(2)}`;
+            document.getElementById('balanceSAPct').textContent        = pct.toFixed(1);
+
+            const prevCard = document.getElementById('balanceSAPrevPendingCard');
+            const prevEl   = document.getElementById('balanceSAPrevPending');
+            if (prevCard && prevEl) {
+                if (prevPending !== 0) {
+                    prevCard.style.display = 'block';
+                    prevEl.textContent = `${sym}${Math.abs(prevPending).toFixed(2)}`;
+                    prevEl.style.color = prevPending > 0 ? '#16a34a' : '#e11d48';
+                } else {
+                    prevCard.style.display = 'none';
+                }
+            }
+
+            const valorEl = document.getElementById('balanceSAValor');
+            const labelEl = document.getElementById('balanceSALabel');
+            const destEl  = document.getElementById('balanceSADestacado');
+
+            if (valorEl) valorEl.textContent = `${sym}${Math.abs(balance).toFixed(2)}`;
+            if (labelEl) {
+                if (balance > 0)      labelEl.textContent = 'El vendedor te debe';
+                else if (balance < 0) labelEl.textContent = 'Le debes al vendedor';
+                else                  labelEl.textContent = 'Sin deuda pendiente';
+            }
+            if (destEl) {
+                if (balance > 0)      { destEl.style.background = '#f0fdf4'; destEl.style.borderColor = '#bbf7d0'; if (valorEl) valorEl.style.color = '#16a34a'; }
+                else if (balance < 0) { destEl.style.background = '#fff1f2'; destEl.style.borderColor = '#fecdd3'; if (valorEl) valorEl.style.color = '#e11d48'; }
+                else                  { destEl.style.background = '#f8fafc'; destEl.style.borderColor = '#e2e8f0'; if (valorEl) valorEl.style.color = '#64748b'; }
+            }
+
+            const periodoEl = document.getElementById('balanceSAPeriodo');
+            if (periodoEl && bal.period_start && bal.period_end) {
+                const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+                periodoEl.textContent = `Período: ${fmtD(bal.period_start)} → ${fmtD(bal.period_end)}`;
+            }
+
+            if (corteBtn) corteBtn.disabled = balance === 0;
+        } else {
+            ['balanceSATotalSales','balanceSAComision','balanceSAAdminPart','balanceSAPremios'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = `${sym}0.00`;
+            });
+            const valorEl = document.getElementById('balanceSAValor');
+            if (valorEl) valorEl.textContent = `${sym}0.00`;
+            if (corteBtn) corteBtn.disabled = true;
+        }
+
+        renderBalanceSADetail();
+        renderBalanceSAHistory();
+    } catch (e) {
+        console.error('loadBalanceSA error:', e);
+        const valorEl = document.getElementById('balanceSAValor');
+        if (valorEl) valorEl.textContent = 'Error';
+    }
+}
+
+function onBalanceSAFilterChange() {
+    const from = document.getElementById('balanceSAFilterFrom')?.value || '';
+    const to   = document.getElementById('balanceSAFilterTo')?.value   || '';
+    const clearBtn = document.getElementById('balanceSAFilterClear');
+    if (clearBtn) clearBtn.style.display = (from || to) ? 'block' : 'none';
+    const sellerId = document.getElementById('balanceSAVendedor')?.value;
+    if (sellerId) loadBalanceSA();
+}
+
+function clearBalanceSAFilter() {
+    const fromEl = document.getElementById('balanceSAFilterFrom');
+    const toEl   = document.getElementById('balanceSAFilterTo');
+    const lotSel = document.getElementById('balanceSALoteria');
+    const horSel = document.getElementById('balanceSAHorario');
+    if (fromEl) fromEl.value = '';
+    if (toEl)   toEl.value   = '';
+    if (lotSel) lotSel.value = '';
+    if (horSel) horSel.innerHTML = '<option value="">Todos los sorteos</option>';
+    const clearBtn = document.getElementById('balanceSAFilterClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+    const sellerId = document.getElementById('balanceSAVendedor')?.value;
+    if (sellerId) loadBalanceSA();
+}
+
+function onBalanceSALotChange() {
+    const lotId  = document.getElementById('balanceSALoteria')?.value || null;
+    const horSel = document.getElementById('balanceSAHorario');
+    if (!horSel) return;
+    horSel.innerHTML = '<option value="">Todos los sorteos</option>';
+    if (lotId) {
+        const lot = lotteries.find(l => l.id === lotId);
+        (lot?.draw_times || []).forEach(dt => {
+            const o = document.createElement('option');
+            o.value = dt.id; o.textContent = dt.time_label;
+            horSel.appendChild(o);
+        });
+    }
+    const sellerId = document.getElementById('balanceSAVendedor')?.value;
+    if (sellerId) loadBalanceSA();
+}
+
+function toggleBalanceSADetail() {
+    balanceSADetailOpen = !balanceSADetailOpen;
+    const el     = document.getElementById('balanceSADetalle');
+    const toggle = document.getElementById('balanceSADetailToggle');
+    if (el)     el.style.display   = balanceSADetailOpen ? 'block' : 'none';
+    if (toggle) toggle.textContent = balanceSADetailOpen ? '▲ Ocultar' : '▼ Ver';
+}
+
+function toggleBalanceSAHistory() {
+    balanceSAHistoryOpen = !balanceSAHistoryOpen;
+    const el     = document.getElementById('balanceSAHistorial');
+    const toggle = document.getElementById('balanceSAHistoryToggle');
+    if (el)     el.style.display   = balanceSAHistoryOpen ? 'block' : 'none';
+    if (toggle) toggle.textContent = balanceSAHistoryOpen ? '▲ Ocultar' : '▼ Ver';
+}
+
+function renderBalanceSADetail() {
+    const sym  = currentProfile?.currency_symbol || '$';
+    const body = document.getElementById('balanceSADetalleBody');
+    if (!body) return;
+
+    if (balanceSADetailData.length === 0) {
+        body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:14px;color:#94a3b8;">Sin movimientos en el período</td></tr>';
+        return;
+    }
+
+    const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
+    body.innerHTML = balanceSADetailData.map((row, i) => {
+        const bal     = parseFloat(row.balance_day || 0);
+        const settled = !!row.is_settled;
+        const rowBg   = settled
+            ? 'background:rgba(254,243,199,0.45);opacity:0.85;'
+            : `background:${i % 2 === 0 ? '#f8fafc' : 'white'};`;
+        const strike  = settled ? 'text-decoration:line-through;color:#9ca3af;' : '';
+        const badge   = settled
+            ? `<span style="margin-left:4px;font-size:9px;background:#fef3c7;color:#b45309;padding:1px 4px;border-radius:999px;font-weight:600;">${bal > 0 ? 'Abo' : 'Sal'}</span>`
+            : '';
+        const balCell = settled
+            ? (bal > 0
+                ? `<span style="color:#2563eb;font-weight:600;">${sym}${bal.toFixed(2)}</span>`
+                : `<span style="color:#9ca3af;font-size:11px;">—</span>`)
+            : `<span style="color:${bal > 0 ? '#16a34a' : bal < 0 ? '#e11d48' : '#64748b'};font-weight:600;">${sym}${Math.abs(bal).toFixed(2)}</span>`;
+        return `<tr style="${rowBg}border-bottom:1px solid #f1f5f9;">
+            <td style="padding:7px 6px;white-space:nowrap;${settled ? 'text-decoration:line-through;color:#9ca3af;' : 'color:#475569;'}">${fmtD(row.day)}${badge}</td>
+            <td style="padding:7px 6px;text-align:right;${strike || 'color:#1e293b;'}">${sym}${parseFloat(row.total_sales||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;${strike || 'color:#7c3aed;'}">${sym}${parseFloat(row.total_commission||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;${strike || 'color:#d97706;'}">${sym}${parseFloat(row.prizes_paid||0).toFixed(2)}</td>
+            <td style="padding:7px 6px;text-align:right;">${balCell}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderBalanceSAHistory() {
+    const sym     = currentProfile?.currency_symbol || '$';
+    const histDiv = document.getElementById('balanceSAHistorial');
+    const toggle  = document.getElementById('balanceSAHistoryToggle');
+    if (!histDiv) return;
+
+    if (toggle) toggle.textContent = balanceSAHistoryOpen ? '▲ Ocultar' : '▼ Ver';
+
+    if (balanceSAHistoryData.length === 0) {
+        histDiv.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:0.85em;padding:12px 0;">Sin cortes registrados</p>';
+        return;
+    }
+
+    const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+    histDiv.innerHTML = balanceSAHistoryData.map(s => {
+        const bal     = parseFloat(s.balance_at_settlement || 0);
+        const amt     = parseFloat(s.amount || 0);
+        const pending = bal - amt;
+        const balColor     = bal     > 0 ? '#16a34a' : bal     < 0 ? '#e11d48' : '#64748b';
+        const amtColor     = amt     >= 0 ? '#16a34a' : '#e11d48';
+        const pendingColor = pending > 0 ? '#16a34a' : pending < 0 ? '#e11d48' : '#64748b';
+        return `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <div style="flex:1;min-width:0;">
+                    <p style="margin:0;font-size:0.78em;color:#64748b;">${fmtD(s.period_start)} → ${fmtD(s.period_end)}</p>
+                    <p style="margin:3px 0 0;font-size:0.72em;color:#94a3b8;">Registrado: ${new Date(s.created_at).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})}</p>
+                    ${s.notes ? `<p style="margin:3px 0 0;font-size:0.78em;color:#475569;font-style:italic;">"${s.notes}"</p>` : ''}
+                    <div style="margin-top:5px;display:flex;gap:10px;flex-wrap:wrap;">
+                        <span style="font-size:0.75em;color:#94a3b8;">Liquidado: <strong style="color:${amtColor};">${sym}${Math.abs(amt).toFixed(2)}</strong></span>
+                        <span style="font-size:0.75em;color:#94a3b8;">Ventas: <span style="color:#1e293b;">${sym}${parseFloat(s.total_sales||0).toFixed(2)}</span></span>
+                    </div>
+                    ${pending !== 0 ? `<p style="margin:4px 0 0;font-size:0.75em;color:${pendingColor};">Pendiente tras corte: ${sym}${Math.abs(pending).toFixed(2)}</p>` : ''}
+                </div>
+                <div style="text-align:right;flex-shrink:0;">
+                    <p style="margin:0;font-size:0.7em;color:#94a3b8;">Balance</p>
+                    <p style="margin:2px 0 0;font-size:1.1em;font-weight:bold;color:${balColor};">${sym}${Math.abs(bal).toFixed(2)}</p>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function makeCorteSubAdmin() {
+    const sellerId   = document.getElementById('balanceSAVendedor')?.value;
+    const sellerName = subAdminSellers.find(s => s.id === sellerId)?.full_name || '';
+    if (!sellerId || balanceSACurrentBalance === 0) return;
+
+    const sym    = currentProfile?.currency_symbol || '$';
+    const absbal = Math.abs(balanceSACurrentBalance);
+
+    const modal      = document.getElementById('balanceSACorteModal');
+    const vendedorEl = document.getElementById('balanceSACorteVendedor');
+    const amountEl   = document.getElementById('balanceSACorteAmount');
+    const notaEl     = document.getElementById('balanceSACorteNota');
+    const errorEl    = document.getElementById('balanceSACorteError');
+    const confirmBtn = document.getElementById('balanceSACorteConfirm');
+
+    if (vendedorEl) vendedorEl.textContent = `Vendedor: ${sellerName} — Balance: ${sym}${absbal.toFixed(2)}`;
+    if (amountEl)   { amountEl.value = absbal.toFixed(2); amountEl.max = absbal; }
+    if (notaEl)     notaEl.value = '';
+    if (errorEl)    { errorEl.textContent = ''; errorEl.style.display = 'none'; }
+    if (modal)      modal.style.display = 'flex';
+
+    const onConfirm = async () => {
+        if (errorEl) { errorEl.textContent = ''; errorEl.style.display = 'none'; }
+        const rawAmt  = parseFloat(amountEl?.value || 0);
+        if (isNaN(rawAmt) || rawAmt <= 0) {
+            if (errorEl) { errorEl.textContent = 'Ingresa un monto mayor a 0'; errorEl.style.display = 'block'; }
+            return;
+        }
+        if (rawAmt > absbal + 0.01) {
+            if (errorEl) { errorEl.textContent = `El monto no puede superar ${sym}${absbal.toFixed(2)}`; errorEl.style.display = 'block'; }
+            return;
+        }
+
+        confirmBtn.removeEventListener('click', onConfirm);
+        if (modal) modal.style.display = 'none';
+
+        const finalAmount = balanceSACurrentBalance < 0 ? -rawAmt : rawAmt;
+        const notes       = notaEl?.value?.trim() || null;
+
+        try {
+            if (confirmBtn) confirmBtn.disabled = true;
+            const corteBtn = document.getElementById('balanceSACorteBtn');
+            if (corteBtn) corteBtn.disabled = true;
+
+            const lotteryId  = document.getElementById('balanceSALoteria')?.value   || null;
+            const drawTimeId = document.getElementById('balanceSAHorario')?.value   || null;
+            const from       = document.getElementById('balanceSAFilterFrom')?.value || null;
+            const to         = document.getElementById('balanceSAFilterTo')?.value   || null;
+
+            const rpcParams = {
+                p_sub_admin_id: currentProfile.id,
+                p_seller_id:    sellerId,
+                p_amount:       finalAmount,
+                p_notes:        notes,
+                p_date_from:    from,
+                p_date_to:      to,
+                p_lottery_id:   lotteryId,
+                p_draw_time_id: drawTimeId,
+            };
+            console.log('[corte] llamando create_settlement_by_subadmin con params:', JSON.stringify(rpcParams));
+            const { data: rpcData, error } = await db.rpc('create_settlement_by_subadmin', rpcParams);
+            console.log('[corte] respuesta data:', JSON.stringify(rpcData));
+            console.log('[corte] respuesta error:', JSON.stringify(error));
+            if (error) throw error;
+
+            await loadBalanceSA();
+        } catch (e) {
+            console.error('makeCorteSubAdmin error:', e);
+            alert('Error al hacer el corte: ' + (e.message || e));
+            const corteBtn = document.getElementById('balanceSACorteBtn');
+            if (corteBtn) corteBtn.disabled = false;
+        } finally {
+            if (confirmBtn) confirmBtn.disabled = false;
+        }
+    };
+
+    confirmBtn.addEventListener('click', onConfirm, { once: true });
+}
+
+function closeBalanceSACorteModal() {
+    const modal = document.getElementById('balanceSACorteModal');
+    if (modal) modal.style.display = 'none';
+}
+
 // ==================== Page navigation ====================
 function hideAllPages() {
     ['loginPage','mainPage','salesPage','numberSalesPage','verifyWinnersPage','configPage','cobrosPage',
-     'balancePage','misVendedoresPage','ventasSubAdminPage','cobrosSubAdminPage','numerosSubAdminPage'].forEach(id => {
+     'balancePage','misVendedoresPage','ventasSubAdminPage','cobrosSubAdminPage','numerosSubAdminPage',
+     'balanceSAPage'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
@@ -4613,6 +5020,16 @@ window.onVentasSALotChange         = onVentasSALotChange;
 window.onNumerosSALotChange        = onNumerosSALotChange;
 window.loadNumerosSubAdmin         = loadNumerosSubAdmin;
 window.verificarGanadoresSA        = verificarGanadoresSA;
+window.showBalanceSAPage           = showBalanceSAPage;
+window.onBalanceSAVendedorChange   = onBalanceSAVendedorChange;
+window.loadBalanceSA               = loadBalanceSA;
+window.onBalanceSAFilterChange     = onBalanceSAFilterChange;
+window.clearBalanceSAFilter        = clearBalanceSAFilter;
+window.onBalanceSALotChange        = onBalanceSALotChange;
+window.toggleBalanceSADetail       = toggleBalanceSADetail;
+window.toggleBalanceSAHistory      = toggleBalanceSAHistory;
+window.makeCorteSubAdmin           = makeCorteSubAdmin;
+window.closeBalanceSACorteModal    = closeBalanceSACorteModal;
 window.onSalesDrawTimeFilter       = onSalesDrawTimeFilter;
 window.onNumDrawTimeFilter         = onNumDrawTimeFilter;
 window.onWinnersDrawTimeFilter     = onWinnersDrawTimeFilter;
