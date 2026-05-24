@@ -142,7 +142,7 @@ BEGIN
         WHERE s2.seller_id = p_seller_id
           AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
           AND t.sale_date >= s2.period_start
-          AND t.sale_date <= LEAST(s2.period_end, CURRENT_DATE - 1)
+          AND t.sale_date <= s2.period_end
           AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
           AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
@@ -161,7 +161,7 @@ BEGIN
         WHERE s2.seller_id = p_seller_id
           AND (s2.admin_id = v_admin_id OR (v_sub_admin_id IS NOT NULL AND s2.admin_id = v_sub_admin_id))
           AND wt.draw_date >= s2.period_start
-          AND wt.draw_date <= LEAST(s2.period_end, CURRENT_DATE - 1)
+          AND wt.draw_date <= s2.period_end
           AND (p_lottery_id   IS NULL OR s2.lottery_id   = p_lottery_id)
           AND (p_draw_time_id IS NULL OR s2.draw_time_id = p_draw_time_id)
       )
@@ -279,7 +279,7 @@ BEGIN
   RETURN QUERY
   WITH settled_periods AS (
     -- Cortes del admin al sub_admin (no cambia aunque se vea el grupo)
-    SELECT s.period_start, LEAST(s.period_end, CURRENT_DATE - 1) AS period_end,
+    SELECT s.period_start, s.period_end,
            COALESCE(s.balance_at_settlement - s.amount, 0) AS residual
     FROM public.settlements s
     WHERE s.seller_id      = p_seller_id
