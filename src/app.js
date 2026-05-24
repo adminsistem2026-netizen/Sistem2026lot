@@ -2671,6 +2671,7 @@ async function showTicketPreview(ticket) {
     const lotteryLabel = getDisplayName(ticket.lottery) || ticket.lottery || '';
     const drawLabel    = ticket.drawTime || '';
     const currency     = currentProfile?.currency_symbol || ticket.currencySymbol || '$';
+    const showCantidad = currency !== '₡';
     const nums         = ticket.numbers || [];
 
     // Unit price per tipo (subTotal / pieces)
@@ -2731,7 +2732,7 @@ async function showTicketPreview(ticket) {
         <thead>
           <tr style="border-bottom:1.5px solid #000;">
             <th style="padding:8px 14px;text-align:left;font-weight:600;font-size:15px;">Numero</th>
-            <th style="padding:8px 14px;text-align:center;font-weight:600;font-size:15px;">Cantidad</th>
+            ${showCantidad ? '<th style="padding:8px 14px;text-align:center;font-weight:600;font-size:15px;">Cantidad</th>' : ''}
             <th style="padding:8px 14px;text-align:right;font-weight:600;font-size:15px;">Subtotal</th>
           </tr>
         </thead>
@@ -2739,7 +2740,7 @@ async function showTicketPreview(ticket) {
           ${nums.map(n => `
             <tr style="border-bottom:1px solid #e5e5e5;">
               <td style="padding:6px 14px;text-align:left;font-weight:bold;font-size:18px;">*${n.number}*</td>
-              <td style="padding:6px 14px;text-align:center;font-weight:bold;font-size:18px;">${n.pieces}</td>
+              ${showCantidad ? `<td style="padding:6px 14px;text-align:center;font-weight:bold;font-size:18px;">${n.pieces}</td>` : ''}
               <td style="padding:6px 14px;text-align:right;font-weight:bold;font-size:18px;">${parseFloat(n.subTotal||0).toFixed(2)}</td>
             </tr>
           `).join('')}
@@ -2747,7 +2748,7 @@ async function showTicketPreview(ticket) {
         <tfoot>
           <tr style="border-top:2.5px solid #000;">
             <td style="padding:8px 14px;font-weight:bold;font-size:17px;">Total</td>
-            <td style="padding:8px 14px;text-align:center;font-weight:bold;font-size:17px;">${totalPieces}</td>
+            ${showCantidad ? `<td style="padding:8px 14px;text-align:center;font-weight:bold;font-size:17px;">${totalPieces}</td>` : ''}
             <td style="padding:8px 14px;text-align:right;font-weight:bold;font-size:17px;">${currency}${parseFloat(ticket.total||0).toFixed(2)}</td>
           </tr>
         </tfoot>
