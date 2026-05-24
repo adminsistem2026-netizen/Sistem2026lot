@@ -1685,9 +1685,9 @@ async function loadBalanceSA() {
             const pct         = parseFloat(bal.commission_pct    || 0);
             const prevPending = balance - adminPart + prizes;
 
-            const detailTotalSales      = balanceSADetailData.reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_sales      || 0), 0);
-            const detailTotalCommission = balanceSADetailData.reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_commission || 0), 0);
-            const detailTotalPrizes     = balanceSADetailData.reduce((s, r) => r.is_settled ? s : s + parseFloat(r.prizes_paid      || 0), 0);
+            const detailTotalSales      = parseFloat(bal.total_sales       || 0);
+            const detailTotalCommission = parseFloat(bal.total_commission  || 0);
+            const detailTotalPrizes     = parseFloat(bal.total_prizes_paid || 0);
 
             document.getElementById('balanceSATotalSales').textContent = `${sym}${detailTotalSales.toFixed(2)}`;
             document.getElementById('balanceSAComision').textContent   = `${sym}${detailTotalCommission.toFixed(2)}`;
@@ -2280,10 +2280,10 @@ async function loadBalancePage() {
             const pct          = parseFloat(bal.commission_pct    || 0);
             const prevPending  = balance - adminPart + prizes;
 
-            // Totales desde detalle diario — solo filas activas (is_settled=FALSE)
-            const detailTotalSales      = (detData || []).reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_sales      || 0), 0);
-            const detailTotalCommission = (detData || []).reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_commission || 0), 0);
-            const detailTotalPrizes     = (detData || []).reduce((s, r) => r.is_settled ? s : s + parseFloat(r.prizes_paid      || 0), 0);
+            // Totales del período activo — directo del RPC (excluye días liquidados)
+            const detailTotalSales      = parseFloat(bal.total_sales       || 0);
+            const detailTotalCommission = parseFloat(bal.total_commission  || 0);
+            const detailTotalPrizes     = parseFloat(bal.total_prizes_paid || 0);
 
             document.getElementById('balanceTotalSales').textContent  = `${sym}${detailTotalSales.toFixed(2)}`;
             document.getElementById('balanceComision').textContent    = `${sym}${detailTotalCommission.toFixed(2)}`;
