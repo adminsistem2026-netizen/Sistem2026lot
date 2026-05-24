@@ -275,9 +275,9 @@ export default function AdminBalance() {
   const selectedSeller = sellers.find(s => s.id === selectedSellerId);
   const canSettle      = selectedSeller && !selectedSeller.sub_admin_id;
 
-  const detailTotalSales      = detail.reduce((s, r) => s + Number(r.total_sales      || 0), 0);
-  const detailTotalPrizes     = detail.reduce((s, r) => (r.is_settled && Number(r.balance_day || 0) <= 0) ? s : s + Number(r.prizes_paid || 0), 0);
-  const detailTotalCommission = detail.reduce((s, r) => s + Number(r.total_commission || 0), 0);
+  const detailTotalSales      = detail.reduce((s, r) => (r.is_settled && Number(r.balance_day || 0) <= 0) ? s : s + Number(r.total_sales      || 0), 0);
+  const detailTotalPrizes     = detail.reduce((s, r) => (r.is_settled && Number(r.balance_day || 0) <= 0) ? s : s + Number(r.prizes_paid      || 0), 0);
+  const detailTotalCommission = detail.reduce((s, r) => (r.is_settled && Number(r.balance_day || 0) <= 0) ? s : s + Number(r.total_commission || 0), 0);
 
   // ── Totals for "Hoy" tab ─────────────────────────────────
   const totals = allSellers.reduce(
