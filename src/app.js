@@ -2670,7 +2670,7 @@ async function showTicketPreview(ticket) {
 
     const lotteryLabel = getDisplayName(ticket.lottery) || ticket.lottery || '';
     const drawLabel    = ticket.drawTime || '';
-    const currency     = ticket.currencySymbol || '$';
+    const currency     = currentProfile?.currency_symbol || ticket.currencySymbol || '$';
     const nums         = ticket.numbers || [];
 
     // Unit price per tipo (subTotal / pieces)
@@ -2941,7 +2941,7 @@ async function displayTickets(ticketsToShow = null) {
                 <p><strong>Lotería:</strong> ${ticket.lottery || ''}</p>
                 ${ticket.drawTime ? `<p><strong>Sorteo:</strong> ${ticket.drawTime}</p>` : ''}
                 ${ticket.customerName ? `<p><strong>Cliente:</strong> ${ticket.customerName}</p>` : ''}
-                <p><strong>Total:</strong> ${ticket.currencySymbol || currentProfile?.currency_symbol || '$'}${total}</p>
+                <p><strong>Total:</strong> ${currentProfile?.currency_symbol || ticket.currencySymbol || '$'}${total}</p>
                 <p><strong>Estado:</strong> ${ticket.paid ? '<span style="display:inline-block;background:#f57c00;color:#fff;font-weight:700;font-size:13px;padding:2px 10px;border-radius:20px;letter-spacing:1px;">✓ COBRADO</span>' : 'Pendiente'}</p>
                 <div class="ticket-actions">
                     <button onclick="viewTicket('${ticket.id}')">Ver</button>
