@@ -2189,11 +2189,19 @@ let balanceDetailOpen  = false;
 let balanceHistoryOpen = true;
 let balanceDetailData  = [];
 let balanceHistoryData = [];
+let balanceGroupMode   = false;
 
 function showBalancePage() {
     closeMenu();
     hideAllPages();
     document.getElementById('balancePage').style.display = 'block';
+    // Mostrar switch de grupo solo para sub_admin; resetear al abrir
+    const switchRow = document.getElementById('balanceGroupSwitchRow');
+    if (switchRow) switchRow.style.display = isSubAdmin() ? 'flex' : 'none';
+    balanceGroupMode = false;
+    const sw = document.getElementById('balanceGroupSwitch');
+    if (sw) sw.checked = false;
+    updateGroupSwitchStyle(false);
     // Poblar selector de loterías
     const lotSel = document.getElementById('balanceLoteria');
     if (lotSel) {
@@ -2233,11 +2241,12 @@ async function loadBalancePage() {
 
     try {
         const params = {
-            p_seller_id:    currentProfile.id,
-            p_date_from:    from,
-            p_date_to:      to,
-            p_lottery_id:   lotteryId,
-            p_draw_time_id: drawTimeId,
+            p_seller_id:     currentProfile.id,
+            p_date_from:     from,
+            p_date_to:       to,
+            p_lottery_id:    lotteryId,
+            p_draw_time_id:  drawTimeId,
+            p_include_group: isSubAdmin() && balanceGroupMode,
         };
 
         // Balance y detalle: críticos — si fallan mostramos error
@@ -2301,8 +2310,8 @@ async function loadBalancePage() {
 
             if (valorEl) valorEl.textContent = `${sym}${Math.abs(balance).toFixed(2)}`;
             if (labelEl) {
-                if (balance > 0)      labelEl.textContent = 'Debo al administrador';
-                else if (balance < 0) labelEl.textContent = 'El admin me debe';
+                if (balance > 0)      labelEl.textContent = balanceGroupMode ? 'Debo al admin (grupo)' : 'Debo al administrador';
+                else if (balance < 0) labelEl.textContent = balanceGroupMode ? 'El admin me debe (grupo)' : 'El admin me debe';
                 else                  labelEl.textContent = 'Sin deuda pendiente';
             }
             if (destEl) {
@@ -2372,6 +2381,19 @@ function onBalanceLotChange() {
         });
     }
     loadBalancePage();
+}
+
+function onBalanceGroupSwitchChange() {
+    balanceGroupMode = document.getElementById('balanceGroupSwitch')?.checked || false;
+    updateGroupSwitchStyle(balanceGroupMode);
+    loadBalancePage();
+}
+
+function updateGroupSwitchStyle(on) {
+    const track = document.getElementById('balanceGroupSwitchTrack');
+    const knob  = document.getElementById('balanceGroupSwitchKnob');
+    if (track) track.style.background = on ? '#4f46e5' : '#cbd5e1';
+    if (knob)  knob.style.transform   = on ? 'translateX(18px)' : 'translateX(0)';
 }
 
 function toggleBalanceDetail() {
@@ -5012,6 +5034,7 @@ Object.assign(window, {
     openPercentageModal, closePercentageModal, saveSellerConfig,
     showBalancePage, loadBalancePage, onBalanceFilterChange, clearBalanceFilter,
     onBalanceLotChange, toggleBalanceDetail, toggleBalanceHistory,
+    onBalanceGroupSwitchChange, updateGroupSwitchStyle,
     showNotification, closeNotification, showConfirm,
     showKeyboard, hideKeyboard, addDigit, deleteDigit, submitNumber,
     toggleMenu, openMenu, closeMenu,
