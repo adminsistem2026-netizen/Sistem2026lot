@@ -4242,7 +4242,8 @@ function printCurrentTicket() {
             subtotal: parseFloat(n.subTotal || 0).toFixed(2),
         })),
         total:         parseFloat(t.total || 0).toFixed(2),
-        currencySymbol: t.currencySymbol || '$',
+        currencySymbol: currentProfile?.currency_symbol || t.currencySymbol || '$',
+        showCantidad:  (currentProfile?.currency_symbol || t.currencySymbol || '$') !== '₡',
     };
 
     showLoading();
