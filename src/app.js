@@ -1685,13 +1685,13 @@ async function loadBalanceSA() {
             const pct         = parseFloat(bal.commission_pct    || 0);
             const prevPending = balance - adminPart + prizes;
 
-            const detailTotalSales      = balanceSADetailData.reduce((s, r) => s + parseFloat(r.total_sales      || 0), 0);
-            const detailTotalCommission = balanceSADetailData.reduce((s, r) => s + parseFloat(r.total_commission || 0), 0);
-            const detailTotalPrizes     = balanceSADetailData.reduce((s, r) => (r.is_settled && parseFloat(r.balance_day || 0) <= 0) ? s : s + parseFloat(r.prizes_paid || 0), 0);
+            const detailTotalSales      = balanceSADetailData.reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_sales      || 0), 0);
+            const detailTotalCommission = balanceSADetailData.reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_commission || 0), 0);
+            const detailTotalPrizes     = balanceSADetailData.reduce((s, r) => r.is_settled ? s : s + parseFloat(r.prizes_paid      || 0), 0);
 
             document.getElementById('balanceSATotalSales').textContent = `${sym}${detailTotalSales.toFixed(2)}`;
             document.getElementById('balanceSAComision').textContent   = `${sym}${detailTotalCommission.toFixed(2)}`;
-            document.getElementById('balanceSAAdminPart').textContent  = `${sym}${Math.abs(adminPart - prizes).toFixed(2)}`;
+            document.getElementById('balanceSAAdminPart').textContent  = `${sym}${Math.abs(balance).toFixed(2)}`;
             document.getElementById('balanceSAPremios').textContent    = `${sym}${detailTotalPrizes.toFixed(2)}`;
             document.getElementById('balanceSAPct').textContent        = pct.toFixed(1);
 
