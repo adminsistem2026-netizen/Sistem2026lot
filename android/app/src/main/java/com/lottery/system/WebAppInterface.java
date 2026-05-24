@@ -217,7 +217,7 @@ public class WebAppInterface {
         String sellerName   = t.optString("sellerName", "");
         String customerName = t.optString("customerName", "");
         String total        = t.optString("total", "0.00");
-        String currency     = t.optString("currencySymbol", "$");
+        String currency     = sanitizeForPrinter(t.optString("currencySymbol", "$"));
         String dayName      = t.optString("dayName", "");
         String dateStr      = t.optString("dateStr", "");
         String timeStr      = t.optString("timeStr", "");
