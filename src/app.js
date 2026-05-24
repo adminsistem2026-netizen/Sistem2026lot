@@ -2890,7 +2890,8 @@ function showSalesByDate(dateString) {
         const totalAmount = activeTickets.reduce((sum, ticket) => sum + ticket.total, 0);
         document.getElementById('currentSalesDate').textContent = dateString;
         document.getElementById('totalTickets').textContent = activeTickets.length;
-        document.getElementById('totalSales').textContent = totalAmount.toFixed(2);
+        const sym = currentProfile?.currency_symbol || '$';
+        document.getElementById('totalSales').textContent = sym + totalAmount.toFixed(2);
         displayTickets(dayTickets);
     });
 }
@@ -2912,7 +2913,8 @@ function initSalesTotals() {
         const totalAmount = activeDay.reduce((sum, t) => sum + t.total, 0);
         document.getElementById('currentSalesDate').textContent = selectedDate.toLocaleDateString('es-ES');
         document.getElementById('totalTickets').textContent = activeDay.length;
-        document.getElementById('totalSales').textContent = totalAmount.toFixed(2);
+        const sym = currentProfile?.currency_symbol || '$';
+        document.getElementById('totalSales').textContent = sym + totalAmount.toFixed(2);
     });
 }
 
@@ -2939,7 +2941,7 @@ async function displayTickets(ticketsToShow = null) {
                 <p><strong>Lotería:</strong> ${ticket.lottery || ''}</p>
                 ${ticket.drawTime ? `<p><strong>Sorteo:</strong> ${ticket.drawTime}</p>` : ''}
                 ${ticket.customerName ? `<p><strong>Cliente:</strong> ${ticket.customerName}</p>` : ''}
-                <p><strong>Total:</strong> ${total}</p>
+                <p><strong>Total:</strong> ${ticket.currencySymbol || currentProfile?.currency_symbol || '$'}${total}</p>
                 <p><strong>Estado:</strong> ${ticket.paid ? '<span style="display:inline-block;background:#f57c00;color:#fff;font-weight:700;font-size:13px;padding:2px 10px;border-radius:20px;letter-spacing:1px;">✓ COBRADO</span>' : 'Pendiente'}</p>
                 <div class="ticket-actions">
                     <button onclick="viewTicket('${ticket.id}')">Ver</button>
