@@ -338,6 +338,16 @@ export default function AdminBalance() {
             </select>
           </div>
 
+          {/* Banner informativo: sub_admin agrupa a sus vendedores */}
+          {selectedSeller?.role === 'sub_admin' && (
+            <div className="flex items-start gap-2 bg-indigo-950/60 border border-indigo-500/40 rounded-xl px-3 py-2.5">
+              <span className="text-indigo-400 text-sm leading-none mt-0.5">ⓘ</span>
+              <p className="text-xs text-indigo-300 leading-relaxed">
+                <span className="font-semibold">Sub-admin</span> — el balance incluye las ventas propias de {selectedSeller.full_name} más las de todos sus vendedores. El corte cubre al grupo completo.
+              </p>
+            </div>
+          )}
+
           {/* Filters */}
           {selectedSellerId && (
             <div className="space-y-2">
@@ -456,7 +466,8 @@ export default function AdminBalance() {
                   disabled={!canSettle || Number(balance?.balance || 0) === 0}
                   className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <IcScissors /> Hacer corte
+                  <IcScissors />
+                  {selectedSeller?.role === 'sub_admin' ? 'Hacer corte al grupo' : 'Hacer corte'}
                 </button>
               </div>
               {selectedSeller?.sub_admin_id && (
@@ -763,9 +774,16 @@ export default function AdminBalance() {
                 <span className="text-slate-400">Alcance</span>
                 <span className="text-white text-xs text-right">{currentScopeLabel()}</span>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-slate-400">Vendedor</span>
-                <span className="text-white font-medium">{balance.seller_name}</span>
+                <span className="text-white font-medium flex items-center gap-1.5">
+                  {balance.seller_name}
+                  {selectedSeller?.role === 'sub_admin' && (
+                    <span className="text-[10px] bg-indigo-900/50 text-indigo-300 px-1.5 py-0.5 rounded-full font-semibold">
+                      Grupo
+                    </span>
+                  )}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Período</span>
