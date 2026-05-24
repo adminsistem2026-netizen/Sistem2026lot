@@ -345,6 +345,7 @@ function adaptTicket(t) {
         cancelled: t.is_cancelled || false,
         customerName: t.customer_name || '',
         seller_id: t.seller_id,
+        currencySymbol: t.currency_symbol || '$',
     };
 }
 
