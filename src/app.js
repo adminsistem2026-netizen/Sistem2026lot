@@ -2280,10 +2280,10 @@ async function loadBalancePage() {
             const pct          = parseFloat(bal.commission_pct    || 0);
             const prevPending  = balance - adminPart + prizes;
 
-            // Totales desde detalle diario (igual que React admin/seller)
-            const detailTotalSales      = (detData || []).reduce((s, r) => s + parseFloat(r.total_sales      || 0), 0);
-            const detailTotalCommission = (detData || []).reduce((s, r) => s + parseFloat(r.total_commission || 0), 0);
-            const detailTotalPrizes     = (detData || []).reduce((s, r) => (r.is_settled && parseFloat(r.balance_day || 0) <= 0) ? s : s + parseFloat(r.prizes_paid || 0), 0);
+            // Totales desde detalle diario — solo filas activas (is_settled=FALSE)
+            const detailTotalSales      = (detData || []).reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_sales      || 0), 0);
+            const detailTotalCommission = (detData || []).reduce((s, r) => r.is_settled ? s : s + parseFloat(r.total_commission || 0), 0);
+            const detailTotalPrizes     = (detData || []).reduce((s, r) => r.is_settled ? s : s + parseFloat(r.prizes_paid      || 0), 0);
 
             document.getElementById('balanceTotalSales').textContent  = `${sym}${detailTotalSales.toFixed(2)}`;
             document.getElementById('balanceComision').textContent    = `${sym}${detailTotalCommission.toFixed(2)}`;
