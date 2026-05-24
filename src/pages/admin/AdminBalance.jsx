@@ -171,7 +171,7 @@ export default function AdminBalance() {
   async function handleSettle() {
     const rawAmount = parseFloat(settleAmount);
     const currentBalance = Number(balance?.balance || 0);
-    const maxAmount = Math.abs(currentBalance);
+    const maxAmount = parseFloat(Math.abs(currentBalance).toFixed(2));
 
     if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
       setSettleError('Ingresa un monto valido mayor que 0');
