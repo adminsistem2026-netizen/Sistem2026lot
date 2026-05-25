@@ -30,6 +30,10 @@ let currentSales = { chances: {}, billetes: {} };
 let sellerPercentage = 13;
 let sellerName = 'XXXXX';
 
+// Offset entre hora real del servidor y Date.now() del cliente.
+// Se sincroniza al iniciar y cada 60s para ignorar el reloj del celular.
+let _serverTimeOffset = 0;
+
 let activeTab = 'tiempos';
 let menuOpen = false;
 let currentActiveInput = null;
@@ -241,16 +245,12 @@ function populateLotteryDropdowns() {
 
 // ==================== Draw times helpers ====================
 
-// Helper: hora actual siempre en zona Panamá (UTC-5, sin DST)
-// Garantiza que el bloqueo de sorteos sea igual para vendedores en cualquier país.
+// Helper: hora actual usando el offset sincronizado con el servidor.
+// Panama = UTC-5, sin DST. Inmune al reloj del celular (zona horaria manual o trucada).
 function getNowPanamaMinutes() {
-    const parts = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Panama',
-        hour: 'numeric', minute: 'numeric', hour12: false
-    }).formatToParts(new Date());
-    const h = parseInt(parts.find(p => p.type === 'hour').value);
-    const m = parseInt(parts.find(p => p.type === 'minute').value);
-    return h * 60 + m;
+    const serverMs = Date.now() + _serverTimeOffset;
+    const panamaDate = new Date(serverMs - 5 * 60 * 60 * 1000);
+    return panamaDate.getUTCHours() * 60 + panamaDate.getUTCMinutes();
 }
 
 function getDrawTimesForId(lotteryId) {
@@ -777,8 +777,26 @@ function saveSellerConfig() {
     showNotification(`Configuración actualizada:\nVendedor: ${sellerName}\nPorcentaje: ${sellerPercentage}%`);
 }
 
+// ==================== Server time sync ====================
+async function syncServerTime() {
+    try {
+        const t0 = Date.now();
+        const { data, error } = await db.rpc('get_server_time');
+        const t1 = Date.now();
+        if (!error && data != null) {
+            // Compensar latencia de red dividiendo el round-trip a la mitad
+            const networkDelay = Math.round((t1 - t0) / 2);
+            _serverTimeOffset = data - t1 + networkDelay;
+        }
+    } catch (e) {
+        console.warn('[syncServerTime] falló, usando reloj local:', e);
+        // _serverTimeOffset queda en 0 → comportamiento anterior sin server sync
+    }
+}
+
 // ==================== Init ====================
 async function initApp() {
+    await syncServerTime();
     updateDateTime();
     setInterval(updateDateTime, 1000);
 
@@ -815,6 +833,7 @@ async function initApp() {
         } catch (e) {
             console.warn('Lotteries refresh failed:', e);
         }
+        try { await syncServerTime(); } catch (e) {}
     }, 60 * 1000);
 
     initKeyboardEvents();
@@ -859,7 +878,10 @@ async function initApp() {
 
 function updateDateTime() {
     const el = document.getElementById('datetime');
-    if (el) el.textContent = new Date().toLocaleString('es-PA', { timeZone: 'America/Panama' });
+    if (el) {
+        const serverMs = Date.now() + _serverTimeOffset;
+        el.textContent = new Date(serverMs).toLocaleString('es-PA', { timeZone: 'America/Panama' });
+    }
 }
 
 // ==================== Offline Queue ====================

@@ -43,13 +43,9 @@ export function useLotteries() {
  * Garantiza que el bloqueo de sorteos sea igual para vendedores en cualquier país.
  */
 function getNowPanamaMinutes() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Panama',
-    hour: 'numeric', minute: 'numeric', hour12: false
-  }).formatToParts(new Date());
-  const h = parseInt(parts.find(p => p.type === 'hour').value);
-  const m = parseInt(parts.find(p => p.type === 'minute').value);
-  return h * 60 + m;
+  // Panama = UTC-5, sin DST
+  const panamaDate = new Date(Date.now() - 5 * 60 * 60 * 1000);
+  return panamaDate.getUTCHours() * 60 + panamaDate.getUTCMinutes();
 }
 
 /**
