@@ -30,9 +30,10 @@ let currentSales = { chances: {}, billetes: {} };
 let sellerPercentage = 13;
 let sellerName = 'XXXXX';
 
-// Offset entre hora real del servidor y Date.now() del cliente.
-// Se sincroniza al iniciar y cada 60s para ignorar el reloj del celular.
-let _serverTimeOffset = 0;
+// Hora del servidor (epoch ms) y performance.now() en el momento del último sync.
+// performance.now() es un reloj monotónico: NO cambia si el usuario mueve el reloj del celular.
+let _serverTimeMs = null;
+let _perfAtSync   = null;
 
 let activeTab = 'tiempos';
 let menuOpen = false;
@@ -245,11 +246,10 @@ function populateLotteryDropdowns() {
 
 // ==================== Draw times helpers ====================
 
-// Helper: hora actual usando el offset sincronizado con el servidor.
-// Panama = UTC-5, sin DST. Inmune al reloj del celular (zona horaria manual o trucada).
+// Helper: hora actual en zona Panamá (UTC-5, sin DST).
+// Usa getServerNowMs() con performance.now() → completamente inmune a cambios del reloj del celular.
 function getNowPanamaMinutes() {
-    const serverMs = Date.now() + _serverTimeOffset;
-    const panamaDate = new Date(serverMs - 5 * 60 * 60 * 1000);
+    const panamaDate = new Date(getServerNowMs() - 5 * 60 * 60 * 1000);
     return panamaDate.getUTCHours() * 60 + panamaDate.getUTCMinutes();
 }
 
@@ -778,19 +778,29 @@ function saveSellerConfig() {
 }
 
 // ==================== Server time sync ====================
+
+// Retorna los ms epoch actuales del servidor usando el reloj monotónico.
+// performance.now() avanza con tiempo real y NO cambia si se mueve el reloj del celular.
+function getServerNowMs() {
+    if (_serverTimeMs !== null && _perfAtSync !== null) {
+        return _serverTimeMs + (performance.now() - _perfAtSync);
+    }
+    return Date.now(); // fallback antes del primer sync
+}
+
 async function syncServerTime() {
     try {
-        const t0 = Date.now();
+        const p0 = performance.now();
         const { data, error } = await db.rpc('get_server_time');
-        const t1 = Date.now();
+        const p1 = performance.now();
         if (!error && data != null) {
-            // Compensar latencia de red dividiendo el round-trip a la mitad
-            const networkDelay = Math.round((t1 - t0) / 2);
-            _serverTimeOffset = data - t1 + networkDelay;
+            const networkDelay = (p1 - p0) / 2;
+            _perfAtSync   = p1;
+            _serverTimeMs = data + networkDelay; // época ms del servidor al momento de recibir
         }
     } catch (e) {
         console.warn('[syncServerTime] falló, usando reloj local:', e);
-        // _serverTimeOffset queda en 0 → comportamiento anterior sin server sync
+        // _serverTimeMs/_perfAtSync quedan null → getServerNowMs() usa Date.now()
     }
 }
 
@@ -879,8 +889,7 @@ async function initApp() {
 function updateDateTime() {
     const el = document.getElementById('datetime');
     if (el) {
-        const serverMs = Date.now() + _serverTimeOffset;
-        el.textContent = new Date(serverMs).toLocaleString('es-PA', { timeZone: 'America/Panama' });
+        el.textContent = new Date(getServerNowMs()).toLocaleString('es-PA', { timeZone: 'America/Panama' });
     }
 }
 
