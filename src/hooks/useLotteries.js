@@ -39,16 +39,28 @@ export function useLotteries() {
 }
 
 /**
+ * Helper: hora actual siempre en zona Panamá (UTC-5, sin DST).
+ * Garantiza que el bloqueo de sorteos sea igual para vendedores en cualquier país.
+ */
+function getNowPanamaMinutes() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Panama',
+    hour: 'numeric', minute: 'numeric', hour12: false
+  }).formatToParts(new Date());
+  const h = parseInt(parts.find(p => p.type === 'hour').value);
+  const m = parseInt(parts.find(p => p.type === 'minute').value);
+  return h * 60 + m;
+}
+
+/**
  * Retorna true si la hora del sorteo ya pasó (se oculta del selector del vendedor).
  * Se oculta exactamente a la hora del sorteo y reaparece al día siguiente.
  */
 export function isDrawTimePast(drawTime) {
   if (!drawTime?.time_value) return false;
-  const now = new Date();
   const [h, m] = drawTime.time_value.split(':').map(Number);
   const drawMinutes = h * 60 + m;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  return nowMinutes >= drawMinutes;
+  return getNowPanamaMinutes() >= drawMinutes;
 }
 
 /**
@@ -58,10 +70,9 @@ export function isDrawTimePast(drawTime) {
 export function isDrawTimeBlocked(drawTime) {
   if (!drawTime?.time_value) return { blocked: false };
 
-  const now = new Date();
   const [h, m] = drawTime.time_value.split(':').map(Number);
   const drawMinutes = h * 60 + m;
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowMinutes = getNowPanamaMinutes();
   const diff = drawMinutes - nowMinutes; // positivo = faltan X min, negativo = pasó hace X min
 
   const cutoff = drawTime.cutoff_minutes_before ?? null;

@@ -240,6 +240,19 @@ function populateLotteryDropdowns() {
 }
 
 // ==================== Draw times helpers ====================
+
+// Helper: hora actual siempre en zona Panamá (UTC-5, sin DST)
+// Garantiza que el bloqueo de sorteos sea igual para vendedores en cualquier país.
+function getNowPanamaMinutes() {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Panama',
+        hour: 'numeric', minute: 'numeric', hour12: false
+    }).formatToParts(new Date());
+    const h = parseInt(parts.find(p => p.type === 'hour').value);
+    const m = parseInt(parts.find(p => p.type === 'minute').value);
+    return h * 60 + m;
+}
+
 function getDrawTimesForId(lotteryId) {
     return drawTimesMap[lotteryId] || [];
 }
@@ -251,17 +264,15 @@ function getDrawTimesForCode(code) {
 
 function isDrawTimePast(dt) {
     if (!dt?.time_value) return false;
-    const now = new Date();
     const [h, m] = dt.time_value.split(':').map(Number);
-    return (now.getHours() * 60 + now.getMinutes()) >= (h * 60 + m);
+    return getNowPanamaMinutes() >= (h * 60 + m);
 }
 
 function isDrawTimeBlocked(dt) {
     if (!dt?.time_value) return { blocked: false };
-    const now = new Date();
     const [h, m] = dt.time_value.split(':').map(Number);
     const drawMinutes = h * 60 + m;
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const nowMinutes = getNowPanamaMinutes();
     const diff = drawMinutes - nowMinutes;
     const cutoff = dt.cutoff_minutes_before ?? null;
     const blockAfter = dt.block_minutes_after ?? 20;
@@ -848,7 +859,7 @@ async function initApp() {
 
 function updateDateTime() {
     const el = document.getElementById('datetime');
-    if (el) el.textContent = new Date().toLocaleString();
+    if (el) el.textContent = new Date().toLocaleString('es-PA', { timeZone: 'America/Panama' });
 }
 
 // ==================== Offline Queue ====================
@@ -4651,10 +4662,9 @@ function validarHorarioVenta() {
     const cutoff = dt.cutoff_minutes_before ?? null;
     const blockAfter = dt.block_minutes_after ?? 20;
 
-    const ahora = new Date();
     const [hora, minutos] = dt.time_value.split(':').map(Number);
     const horaSorteoEnMinutos = hora * 60 + minutos;
-    const horaActualEnMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+    const horaActualEnMinutos = getNowPanamaMinutes();
     const diferencia = horaSorteoEnMinutos - horaActualEnMinutos;
 
     if (cutoff !== null && diferencia >= 0 && diferencia <= cutoff) return false;
@@ -4667,7 +4677,6 @@ function validarHorarioEliminacion(lotteryType = null, drawTime = null) {
     if (!drawTime) drawTime = getSelectedDrawTimeObj()?.time_label || '';
     if (!drawTime) return { allowed: true };
 
-    const ahora = new Date();
     let [tiempo, periodo] = drawTime.split(' ');
     let [hora, minutos] = tiempo.split(':').map(Number);
 
@@ -4675,7 +4684,7 @@ function validarHorarioEliminacion(lotteryType = null, drawTime = null) {
     else if (periodo === 'AM' && hora === 12) hora = 0;
 
     const horaSorteoEnMinutos = hora * 60 + minutos;
-    const horaActualEnMinutos = ahora.getHours() * 60 + ahora.getMinutes();
+    const horaActualEnMinutos = getNowPanamaMinutes();
     const diferencia = horaSorteoEnMinutos - horaActualEnMinutos;
 
     if (diferencia <= 1 && diferencia >= 0) {
