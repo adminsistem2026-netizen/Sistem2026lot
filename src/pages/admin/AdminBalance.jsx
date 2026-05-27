@@ -57,6 +57,7 @@ export default function AdminBalance() {
   const [showSettleModal, setShowSettleModal] = useState(false);
   const [settleAmount, setSettleAmount]       = useState('');
   const [settleNotes, setSettleNotes]         = useState('');
+  const [allowOverpay, setAllowOverpay]       = useState(false);
   const [settling, setSettling]               = useState(false);
   const [settleError, setSettleError]         = useState('');
 
@@ -173,13 +174,18 @@ export default function AdminBalance() {
     const rawAmount = parseFloat(settleAmount);
     const currentBalance = Number(balance?.balance || 0);
     const maxAmount = parseFloat(Math.abs(currentBalance).toFixed(2));
+    const canOverpay = currentBalance > 0;
 
     if (!Number.isFinite(rawAmount) || rawAmount <= 0) {
       setSettleError('Ingresa un monto valido mayor que 0');
       return;
     }
-    if (rawAmount > maxAmount) {
+    if (!allowOverpay && rawAmount > maxAmount) {
       setSettleError(`El monto no puede ser mayor que ${fmt(maxAmount, sym)}`);
+      return;
+    }
+    if (allowOverpay && !canOverpay) {
+      setSettleError('El saldo a favor adicional solo aplica cuando el vendedor te debe');
       return;
     }
 
@@ -196,11 +202,13 @@ export default function AdminBalance() {
         p_date_to:    dateTo || null,
         p_lottery_id: lotteryId || null,
         p_draw_time_id: drawTimeId || null,
+        p_allow_overpay: allowOverpay,
       });
       if (error) throw error;
       setShowSettleModal(false);
       setSettleAmount('');
       setSettleNotes('');
+      setAllowOverpay(false);
       await loadBalance();
     } catch (err) {
       setSettleError(err.message || 'Error al crear el corte');
@@ -266,6 +274,14 @@ export default function AdminBalance() {
     if (drawName) parts.push(`Sorteo: ${drawName}`);
     return parts.join(' | ');
   }
+
+  const currentBalance = Number(balance?.balance || 0);
+  const maxSettleAmount = Math.abs(currentBalance);
+  const enteredAmount = Number(settleAmount || 0);
+  const canOverpay = currentBalance > 0;
+  const projectedBalance = Number.isFinite(enteredAmount) && enteredAmount > 0
+    ? currentBalance - (currentBalance < 0 ? -enteredAmount : enteredAmount)
+    : currentBalance;
 
   const selectedSeller = sellers.find(s => s.id === selectedSellerId);
   const canSettle      = selectedSeller && !selectedSeller.sub_admin_id;
@@ -455,6 +471,7 @@ export default function AdminBalance() {
                     setSettleAmount(Math.abs(Number(balance?.balance || 0)).toFixed(2));
                     setSettleNotes('');
                     setSettleError('');
+                    setAllowOverpay(false);
                     setShowSettleModal(true);
                   }}
                   disabled={!canSettle || Number(balance?.balance || 0) === 0}
@@ -828,11 +845,31 @@ export default function AdminBalance() {
                 className="w-full bg-slate-900 border border-slate-600 text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <p className="text-xs text-slate-500 mt-1.5">
-                Maximo para este corte: {fmt(Math.abs(Number(balance.balance || 0)), sym)}
+                {allowOverpay && canOverpay
+                  ? `Monto base a liquidar: ${fmt(maxSettleAmount, sym)}`
+                  : `Maximo para este corte: ${fmt(maxSettleAmount, sym)}`}
               </p>
-              {settleAmount && Number(settleAmount) > 0 && Number(settleAmount) < Math.abs(Number(balance.balance || 0)) && (
-                <p className={`text-xs mt-1 ${balanceColor(Number(balance.balance || 0) - (Number(balance.balance || 0) < 0 ? -Number(settleAmount) : Number(settleAmount)))}`}>
-                  Quedara pendiente: {fmt(Number(balance.balance || 0) - (Number(balance.balance || 0) < 0 ? -Number(settleAmount) : Number(settleAmount)), sym)}
+              {canOverpay && (
+                <label className="mt-3 flex items-start gap-2 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={allowOverpay}
+                    onChange={(e) => setAllowOverpay(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-500 bg-slate-900 text-indigo-500 focus:ring-indigo-500"
+                  />
+                  <span>
+                    Agregar monto extra a favor del vendedor.
+                    <span className="block text-slate-500 mt-0.5">
+                      Si superas el balance actual, el vendedor quedara con saldo a favor.
+                    </span>
+                  </span>
+                </label>
+              )}
+              {settleAmount && Number(settleAmount) > 0 && projectedBalance !== 0 && (
+                <p className={`text-xs mt-2 ${balanceColor(projectedBalance)}`}>
+                  {projectedBalance > 0
+                    ? `Quedara pendiente: ${fmt(projectedBalance, sym)}`
+                    : `Saldo a favor resultante: ${fmt(Math.abs(projectedBalance), sym)}`}
                 </p>
               )}
             </div>
@@ -854,7 +891,12 @@ export default function AdminBalance() {
 
             <div className="flex gap-3 pt-1">
               <button
-                onClick={() => { setShowSettleModal(false); setSettleAmount(''); }}
+                onClick={() => {
+                  setShowSettleModal(false);
+                  setSettleAmount('');
+                  setSettleNotes('');
+                  setAllowOverpay(false);
+                }}
                 disabled={settling}
                 className="flex-1 border border-slate-600 text-slate-300 text-sm py-2.5 rounded-xl hover:bg-slate-700 transition disabled:opacity-50"
               >

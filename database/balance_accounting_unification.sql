@@ -427,7 +427,7 @@ $$;
 
 
 -- ============================================================
--- 4. create_settlement (8 args)
+-- 4. create_settlement (9 args, permite saldo a favor opcional)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.create_settlement(
   p_admin_id     UUID,
@@ -437,7 +437,8 @@ CREATE OR REPLACE FUNCTION public.create_settlement(
   p_date_from    DATE DEFAULT NULL,
   p_date_to      DATE DEFAULT NULL,
   p_lottery_id   UUID DEFAULT NULL,
-  p_draw_time_id UUID DEFAULT NULL
+  p_draw_time_id UUID DEFAULT NULL,
+  p_allow_overpay BOOLEAN DEFAULT FALSE
 )
 RETURNS TABLE (
   id                    UUID,
@@ -486,12 +487,22 @@ BEGIN
   v_period_to := v_balance_row.period_end;
   v_amount := ROUND(COALESCE(p_amount, v_balance_row.balance), 2);
 
-  IF v_balance_row.balance > 0 AND (v_amount < 0 OR v_amount > v_balance_row.balance) THEN
-    RAISE EXCEPTION 'El monto del corte debe estar entre 0 y %', ROUND(v_balance_row.balance, 2);
+  IF v_balance_row.balance > 0 THEN
+    IF v_amount < 0 THEN
+      RAISE EXCEPTION 'El monto del corte debe ser mayor o igual a 0';
+    END IF;
+
+    IF NOT p_allow_overpay AND v_amount > v_balance_row.balance THEN
+      RAISE EXCEPTION 'El monto del corte debe estar entre 0 y %', ROUND(v_balance_row.balance, 2);
+    END IF;
   END IF;
 
   IF v_balance_row.balance < 0 AND (v_amount > 0 OR v_amount < v_balance_row.balance) THEN
     RAISE EXCEPTION 'El monto del corte debe estar entre % y 0', ROUND(v_balance_row.balance, 2);
+  END IF;
+
+  IF p_allow_overpay AND v_balance_row.balance <= 0 THEN
+    RAISE EXCEPTION 'El saldo a favor adicional solo aplica cuando el vendedor tiene balance pendiente a cobrar';
   END IF;
 
   v_new_id := gen_random_uuid();
@@ -578,7 +589,8 @@ AS $$
     NULL::DATE,
     NULL::DATE,
     NULL::UUID,
-    NULL::UUID
+    NULL::UUID,
+    FALSE
   );
 $$;
 
@@ -611,7 +623,8 @@ AS $$
     NULL::DATE,
     NULL::DATE,
     NULL::UUID,
-    NULL::UUID
+    NULL::UUID,
+    FALSE
   );
 $$;
 
@@ -645,6 +658,8 @@ SET search_path = public
 AS $$
 DECLARE
   v_admin_id          UUID;
+  v_account_admin_id  UUID;
+  v_sub_admin_id      UUID;
   v_pct               NUMERIC := 0;
   v_period_from       DATE;
   v_period_to         DATE;
@@ -659,11 +674,12 @@ BEGIN
     RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
   END IF;
 
-  SELECT p.parent_admin_id, p.seller_percentage
-  INTO v_admin_id, v_pct
+  SELECT p.parent_admin_id, p.seller_percentage, p.sub_admin_id
+  INTO v_admin_id, v_pct, v_sub_admin_id
   FROM public.profiles p
   WHERE p.id = p_seller_id;
 
+  v_account_admin_id := COALESCE(v_sub_admin_id, v_admin_id);
   v_pct := COALESCE(v_pct, 0);
   v_period_to := COALESCE(p_date_to, CURRENT_DATE);
 
@@ -708,7 +724,7 @@ BEGIN
       SELECT MIN(s.period_start) AS activity_day
       FROM public.settlements s
       WHERE s.seller_id = p_seller_id
-        AND s.admin_id = v_admin_id
+        AND s.admin_id = v_account_admin_id
         AND (p_lottery_id IS NULL OR s.lottery_id = p_lottery_id)
         AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     ) seed
@@ -747,7 +763,7 @@ BEGIN
   INTO v_total_settlements
   FROM public.settlements s
   WHERE s.seller_id = p_seller_id
-    AND s.admin_id = v_admin_id
+    AND s.admin_id = v_account_admin_id
     AND (p_lottery_id IS NULL OR s.lottery_id = p_lottery_id)
     AND (p_draw_time_id IS NULL OR s.draw_time_id = p_draw_time_id)
     AND s.period_start <= v_period_to
@@ -842,6 +858,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_admin_id    UUID;
+  v_sub_admin_id UUID;
   v_pct         NUMERIC := 0;
   v_period_from DATE;
   v_period_to   DATE;
@@ -851,8 +868,8 @@ BEGIN
     RAISE EXCEPTION 'Solo puedes consultar tu propio balance';
   END IF;
 
-  SELECT p.parent_admin_id, p.seller_percentage
-  INTO v_admin_id, v_pct
+  SELECT p.parent_admin_id, p.seller_percentage, p.sub_admin_id
+  INTO v_admin_id, v_pct, v_sub_admin_id
   FROM public.profiles p
   WHERE p.id = p_seller_id;
 
@@ -1040,6 +1057,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_seller_balance(UUID,UUID,DATE,DATE,UUID,UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_seller_balance_detail(UUID,UUID,DATE,DATE,UUID,UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_all_sellers_balance(UUID,DATE,DATE,UUID,UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,NUMERIC,TEXT,DATE,DATE,UUID,UUID,BOOLEAN) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,NUMERIC,TEXT,DATE,DATE,UUID,UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,NUMERIC,TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_settlement(UUID,UUID,TEXT) TO authenticated;
