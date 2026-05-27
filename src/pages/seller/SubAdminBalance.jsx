@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { db } from '../../lib/insforge';
 import { useAuth } from '../../contexts/AuthContext';
+import { getPostSettlementCardSummary } from '../../lib/balanceCardSummary';
 
 const fmt = (n, sym = '$') =>
   `${sym}${Number(n || 0).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -193,10 +194,7 @@ export default function SubAdminBalance() {
   }
 
   const selectedSeller = sellers.find((s) => s.id === selectedSellerId);
-  const detailTotalSales = Number(balance?.total_sales || 0);
-  const detailTotalPrizes = Number(balance?.total_prizes_paid || 0);
-  const detailTotalCommission = Number(balance?.total_commission || 0);
-  const netPeriod = Number(balance?.admin_part || 0) - Number(balance?.total_prizes_paid || 0);
+  const cardSummary = getPostSettlementCardSummary(balance, detail, settlements);
   const settlementsTotal = settlements.reduce((sum, s) => sum + Number(s.amount || 0), 0);
   const hasFilters = dateFrom || dateTo || lotteryId || drawTimeId;
 
@@ -295,25 +293,25 @@ export default function SubAdminBalance() {
       {!loading && selectedSellerId && balance && (
         <>
           <p className="text-xs text-gray-400 text-center">
-            Periodo: {fmtDate(balance.period_start)} {'->'} {fmtDate(balance.period_end)}
+            Periodo: {fmtDate(cardSummary.periodStart || balance.period_start)} {'->'} {fmtDate(cardSummary.periodEnd || balance.period_end)}
           </p>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
               <p className="text-xs text-gray-500 mb-1">Total recaudado</p>
-              <p className="text-base font-bold text-gray-900">{fmt(detailTotalSales, sym)}</p>
+              <p className="text-base font-bold text-gray-900">{fmt(cardSummary.totalSales, sym)}</p>
             </div>
             <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
               <p className="text-xs text-gray-500 mb-1">Comision ({Number(balance.commission_pct || 0).toFixed(1)}%)</p>
-              <p className="text-base font-bold text-violet-600">{fmt(detailTotalCommission, sym)}</p>
+              <p className="text-base font-bold text-violet-600">{fmt(cardSummary.totalCommission, sym)}</p>
             </div>
             <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
               <p className="text-xs text-gray-500 mb-1">Premios generados</p>
-              <p className="text-base font-bold text-amber-600">{fmt(detailTotalPrizes, sym)}</p>
+              <p className="text-base font-bold text-amber-600">{fmt(cardSummary.totalPrizes, sym)}</p>
             </div>
             <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
               <p className="text-xs text-gray-500 mb-1">Neto del periodo</p>
-              <p className={`text-base font-bold ${balanceColor(netPeriod)}`}>{fmt(netPeriod, sym)}</p>
+              <p className={`text-base font-bold ${balanceColor(cardSummary.netPeriod)}`}>{fmt(cardSummary.netPeriod, sym)}</p>
             </div>
             {settlementsTotal !== 0 && (
               <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm col-span-2">

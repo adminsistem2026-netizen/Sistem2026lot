@@ -1672,6 +1672,52 @@ function onBalanceSAVendedorChange() {
     loadBalanceSA();
 }
 
+function toDateOnly(value) {
+    return value ? String(value).slice(0, 10) : null;
+}
+
+function addDaysToDateOnly(dateOnly, days) {
+    if (!dateOnly) return null;
+    const dt = new Date(`${dateOnly}T00:00:00`);
+    dt.setDate(dt.getDate() + days);
+    return dt.toISOString().slice(0, 10);
+}
+
+function getLatestSettlement(historyRows) {
+    if (!Array.isArray(historyRows) || historyRows.length === 0) return null;
+    return [...historyRows].sort((a, b) => {
+        const aCreated = new Date(a.created_at || 0).getTime();
+        const bCreated = new Date(b.created_at || 0).getTime();
+        if (bCreated !== aCreated) return bCreated - aCreated;
+        return String(b.period_end || '').localeCompare(String(a.period_end || ''));
+    })[0];
+}
+
+function buildPostSettlementSummary(balanceRow, detailRows, historyRows) {
+    const latestSettlement = getLatestSettlement(historyRows);
+    const latestEnd = toDateOnly(latestSettlement?.period_end);
+    const visibleRows = latestEnd
+        ? (detailRows || []).filter(row => toDateOnly(row.day) > latestEnd)
+        : (detailRows || []);
+
+    const totals = visibleRows.reduce((acc, row) => {
+        acc.sales += parseFloat(row.total_sales || 0);
+        acc.commission += parseFloat(row.total_commission || 0);
+        acc.prizes += parseFloat(row.prizes_paid || 0);
+        acc.net += parseFloat(row.balance_day || 0);
+        return acc;
+    }, { sales: 0, commission: 0, prizes: 0, net: 0 });
+
+    return {
+        sales: totals.sales,
+        commission: totals.commission,
+        prizes: totals.prizes,
+        net: totals.net,
+        periodStart: latestEnd ? addDaysToDateOnly(latestEnd, 1) : toDateOnly(balanceRow?.period_start),
+        periodEnd: toDateOnly(balanceRow?.period_end),
+    };
+}
+
 async function loadBalanceSA() {
     const sellerId = document.getElementById('balanceSAVendedor')?.value;
     if (!currentProfile?.id || !sellerId) return;
@@ -1724,22 +1770,16 @@ async function loadBalanceSA() {
         const corteBtn = document.getElementById('balanceSACorteBtn');
 
         if (bal) {
-            const adminPart   = parseFloat(bal.admin_part        || 0);
-            const prizes      = parseFloat(bal.total_prizes_paid || 0);
             const balance     = parseFloat(bal.balance           || 0);
             balanceSACurrentBalance = balance;
             const pct         = parseFloat(bal.commission_pct    || 0);
-            const netPeriod   = adminPart - prizes;
             const cutsTotal   = balanceSAHistoryData.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
+            const summary     = buildPostSettlementSummary(bal, balanceSADetailData, balanceSAHistoryData);
 
-            const detailTotalSales      = parseFloat(bal.total_sales       || 0);
-            const detailTotalCommission = parseFloat(bal.total_commission  || 0);
-            const detailTotalPrizes     = parseFloat(bal.total_prizes_paid || 0);
-
-            document.getElementById('balanceSATotalSales').textContent = `${sym}${detailTotalSales.toFixed(2)}`;
-            document.getElementById('balanceSAComision').textContent   = `${sym}${detailTotalCommission.toFixed(2)}`;
-            document.getElementById('balanceSAAdminPart').textContent  = `${sym}${netPeriod.toFixed(2)}`;
-            document.getElementById('balanceSAPremios').textContent    = `${sym}${detailTotalPrizes.toFixed(2)}`;
+            document.getElementById('balanceSATotalSales').textContent = `${sym}${summary.sales.toFixed(2)}`;
+            document.getElementById('balanceSAComision').textContent   = `${sym}${summary.commission.toFixed(2)}`;
+            document.getElementById('balanceSAAdminPart').textContent  = `${sym}${summary.net.toFixed(2)}`;
+            document.getElementById('balanceSAPremios').textContent    = `${sym}${summary.prizes.toFixed(2)}`;
             document.getElementById('balanceSAPct').textContent        = pct.toFixed(1);
 
             const prevCard = document.getElementById('balanceSAPrevPendingCard');
@@ -1771,9 +1811,14 @@ async function loadBalanceSA() {
             }
 
             const periodoEl = document.getElementById('balanceSAPeriodo');
-            if (periodoEl && bal.period_start && bal.period_end) {
+            if (periodoEl && !summary.periodStart && bal.period_start && bal.period_end) {
                 const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
                 periodoEl.textContent = `Período: ${fmtD(bal.period_start)} → ${fmtD(bal.period_end)}`;
+            }
+
+            if (periodoEl && summary.periodStart && summary.periodEnd) {
+                const fmtSummaryDate = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+                periodoEl.textContent = `Periodo: ${fmtSummaryDate(summary.periodStart)} -> ${fmtSummaryDate(summary.periodEnd)}`;
             }
 
             if (corteBtn) corteBtn.disabled = balance === 0;
@@ -2348,6 +2393,12 @@ async function loadBalancePage() {
             document.getElementById('balancePremios').textContent     = `${sym}${detailTotalPrizes.toFixed(2)}`;
             document.getElementById('balancePct').textContent         = pct.toFixed(1);
 
+            const summary = buildPostSettlementSummary(bal, balanceDetailData, balanceHistoryData);
+            document.getElementById('balanceTotalSales').textContent  = `${sym}${summary.sales.toFixed(2)}`;
+            document.getElementById('balanceComision').textContent    = `${sym}${summary.commission.toFixed(2)}`;
+            document.getElementById('balanceAdminPart').textContent   = `${sym}${summary.net.toFixed(2)}`;
+            document.getElementById('balancePremios').textContent     = `${sym}${summary.prizes.toFixed(2)}`;
+
             const prevCard = document.getElementById('balancePrevPendingCard');
             const prevEl   = document.getElementById('balancePrevPending');
             if (prevCard && prevEl) {
@@ -2377,7 +2428,11 @@ async function loadBalancePage() {
             }
 
             const periodoEl = document.getElementById('balancePeriodo');
-            if (periodoEl && bal.period_start && bal.period_end) {
+            if (periodoEl && summary.periodStart && summary.periodEnd) {
+                const fmtSummaryDate = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+                periodoEl.textContent = `Periodo: ${fmtSummaryDate(summary.periodStart)} -> ${fmtSummaryDate(summary.periodEnd)}`;
+            }
+            if (periodoEl && !summary.periodStart && bal.period_start && bal.period_end) {
                 const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
                 periodoEl.textContent = `Período: ${fmtD(bal.period_start)} → ${fmtD(bal.period_end)}`;
             }

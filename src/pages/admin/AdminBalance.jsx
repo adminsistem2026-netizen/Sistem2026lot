@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { db } from '../../lib/insforge';
 import { useAuth } from '../../contexts/AuthContext';
+import { getPostSettlementCardSummary } from '../../lib/balanceCardSummary';
 
 const fmt = (n, sym = '$') =>
   `${sym}${Number(n || 0).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -269,10 +270,7 @@ export default function AdminBalance() {
   const selectedSeller = sellers.find(s => s.id === selectedSellerId);
   const canSettle      = selectedSeller && !selectedSeller.sub_admin_id;
 
-  const detailTotalSales      = Number(balance?.total_sales || 0);
-  const detailTotalPrizes     = Number(balance?.total_prizes_paid || 0);
-  const detailTotalCommission = Number(balance?.total_commission || 0);
-  const netPeriod             = Number(balance?.admin_part || 0) - Number(balance?.total_prizes_paid || 0);
+  const cardSummary = getPostSettlementCardSummary(balance, detail, settlements);
   const settlementsTotal      = settlements.reduce((sum, s) => sum + Number(s.amount || 0), 0);
 
   // ── Totals for "Hoy" tab ─────────────────────────────────
@@ -407,19 +405,19 @@ export default function AdminBalance() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Total recaudado</p>
-                  <p className="text-lg font-bold text-white">{fmt(detailTotalSales, sym)}</p>
+                  <p className="text-lg font-bold text-white">{fmt(cardSummary.totalSales, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Comisión vendedor ({Number(balance.commission_pct || 0).toFixed(1)}%)</p>
-                  <p className="text-lg font-bold text-violet-400">{fmt(detailTotalCommission, sym)}</p>
+                  <p className="text-lg font-bold text-violet-400">{fmt(cardSummary.totalCommission, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Premios generados</p>
-                  <p className="text-lg font-bold text-amber-400">{fmt(detailTotalPrizes, sym)}</p>
+                  <p className="text-lg font-bold text-amber-400">{fmt(cardSummary.totalPrizes, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
                   <p className="text-xs text-slate-400 mb-1">Neto del período</p>
-                  <p className={`text-lg font-bold ${balanceColor(netPeriod)}`}>{fmt(netPeriod, sym)}</p>
+                  <p className={`text-lg font-bold ${balanceColor(cardSummary.netPeriod)}`}>{fmt(cardSummary.netPeriod, sym)}</p>
                 </div>
                 {settlementsTotal !== 0 && (
                   <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 col-span-2">
