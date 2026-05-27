@@ -10,6 +10,20 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Normaliza símbolos de moneda legacy al símbolo oficial correcto
+  function normalizeCurrencySymbol(profileData) {
+    const SYMBOL_BY_CODE = { CRC: '₡' };
+    const LEGACY_SYMBOLS  = { '$Col': '₡', 'Col': '₡', '¢': '₡' };
+    const code = profileData?.currency_code;
+    const sym  = profileData?.currency_symbol;
+    const fixed =
+      (code && SYMBOL_BY_CODE[code]) ||
+      (sym  && LEGACY_SYMBOLS[sym])  ||
+      sym;
+    if (fixed && fixed !== sym) return { ...profileData, currency_symbol: fixed };
+    return profileData;
+  }
+
   async function loadProfile(userId) {
     const { data, error } = await db
       .from('profiles')
@@ -24,19 +38,17 @@ export function AuthProvider({ children }) {
     try {
       const { data: codes } = await db.rpc('get_profile_codes', { p_user_id: userId });
       if (codes?.[0]) {
-        return {
-          ...data,
-          seller_code: codes[0].seller_code,
-        };
+        return normalizeCurrencySymbol({ ...data, seller_code: codes[0].seller_code });
       }
     } catch (_) { /* no crítico */ }
-    return data;
+    return normalizeCurrencySymbol(data);
   }
 
   function redirectByRole(role) {
     if (role === 'super_admin') navigate('/superadmin');
     else if (role === 'admin') navigate('/admin');
     else if (role === 'operator') navigate('/operator');
+    else if (role === 'sub_admin') navigate('/seller/balance');
     else navigate('/seller');
   }
 

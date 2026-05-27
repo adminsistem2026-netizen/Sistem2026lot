@@ -266,18 +266,14 @@ export default function AdminBalance() {
     return parts.join(' | ');
   }
 
-  // Derivado del balance RPC para mantenerse sincronizado
-  // aunque settlements esté vacío (filtro de fecha sin corte exacto previo)
-  const previousPending = balance
-    ? Number(balance.balance || 0) - Number(balance.admin_part || 0) + Number(balance.total_prizes_paid || 0)
-    : 0;
-
   const selectedSeller = sellers.find(s => s.id === selectedSellerId);
   const canSettle      = selectedSeller && !selectedSeller.sub_admin_id;
 
-  const detailTotalSales      = detail.reduce((s, r) => r.is_settled ? s : s + Number(r.total_sales      || 0), 0);
-  const detailTotalPrizes     = detail.reduce((s, r) => r.is_settled ? s : s + Number(r.prizes_paid      || 0), 0);
-  const detailTotalCommission = detail.reduce((s, r) => r.is_settled ? s : s + Number(r.total_commission || 0), 0);
+  const detailTotalSales      = Number(balance?.total_sales || 0);
+  const detailTotalPrizes     = Number(balance?.total_prizes_paid || 0);
+  const detailTotalCommission = Number(balance?.total_commission || 0);
+  const netPeriod             = Number(balance?.admin_part || 0) - Number(balance?.total_prizes_paid || 0);
+  const settlementsTotal      = settlements.reduce((sum, s) => sum + Number(s.amount || 0), 0);
 
   // ── Totals for "Hoy" tab ─────────────────────────────────
   const totals = allSellers.reduce(
@@ -418,17 +414,17 @@ export default function AdminBalance() {
                   <p className="text-lg font-bold text-violet-400">{fmt(detailTotalCommission, sym)}</p>
                 </div>
                 <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-                  <p className="text-xs text-slate-400 mb-1">Parte del admin</p>
-                  <p className="text-lg font-bold text-blue-400">{fmt(balance.balance, sym)}</p>
-                </div>
-                <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
-                  <p className="text-xs text-slate-400 mb-1">Premios a pagar</p>
+                  <p className="text-xs text-slate-400 mb-1">Premios generados</p>
                   <p className="text-lg font-bold text-amber-400">{fmt(detailTotalPrizes, sym)}</p>
                 </div>
-                {previousPending !== 0 && (
+                <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4">
+                  <p className="text-xs text-slate-400 mb-1">Neto del período</p>
+                  <p className={`text-lg font-bold ${balanceColor(netPeriod)}`}>{fmt(netPeriod, sym)}</p>
+                </div>
+                {settlementsTotal !== 0 && (
                   <div className="bg-slate-800 border border-slate-700 rounded-2xl p-4 col-span-2">
-                    <p className="text-xs text-slate-400 mb-1">Saldo pendiente anterior</p>
-                    <p className={`text-lg font-bold ${balanceColor(previousPending)}`}>{fmt(previousPending, sym)}</p>
+                    <p className="text-xs text-slate-400 mb-1">Cortes registrados en este alcance</p>
+                    <p className={`text-lg font-bold ${balanceColor(settlementsTotal)}`}>{fmt(settlementsTotal, sym)}</p>
                   </div>
                 )}
               </div>
@@ -516,7 +512,7 @@ export default function AdminBalance() {
                               </span>
                               {row.is_settled && (
                                 <span className="ml-1.5 text-[10px] bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded-full font-medium">
-                                  {Number(row.balance_day) > 0 ? 'Abono' : 'Saldado'}
+                                  Movimiento
                                 </span>
                               )}
                             </td>
@@ -576,7 +572,7 @@ export default function AdminBalance() {
                             <div className="flex gap-3 mt-1.5 text-xs text-slate-500">
                               <span>Liquidado: <span className={Number(s.amount || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}>{fmt(s.amount, sym)}</span></span>
                               <span>Ventas: <span className="text-slate-300">{fmt(s.total_sales, sym)}</span></span>
-                              <span>Premios a pagar: <span className="text-amber-400">{fmt(s.total_prizes_paid, sym)}</span></span>
+                              <span>Premios generados: <span className="text-amber-400">{fmt(s.total_prizes_paid, sym)}</span></span>
                             </div>
                             {Number(s.balance_at_settlement || 0) !== Number(s.amount || 0) && (
                               <p className={`text-xs mt-1 ${balanceColor(Number(s.balance_at_settlement || 0) - Number(s.amount || 0))}`}>
@@ -798,7 +794,7 @@ export default function AdminBalance() {
                 <span className="text-violet-400">{fmt(balance.total_commission, sym)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">Premios a pagar</span>
+                <span className="text-slate-400">Premios generados</span>
                 <span className="text-amber-400">{fmt(balance.total_prizes_paid, sym)}</span>
               </div>
               <div className="border-t border-slate-700 pt-2 flex justify-between">
@@ -807,10 +803,10 @@ export default function AdminBalance() {
                   {fmt(balance.balance, sym)}
                 </span>
               </div>
-              {previousPending !== 0 && (
+              {settlementsTotal !== 0 && (
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Pendiente anterior</span>
-                  <span className={balanceColor(previousPending)}>{fmt(previousPending, sym)}</span>
+                  <span className="text-slate-400">Cortes registrados</span>
+                  <span className={balanceColor(settlementsTotal)}>{fmt(settlementsTotal, sym)}</span>
                 </div>
               )}
               {Number(balance.balance) < 0 && (

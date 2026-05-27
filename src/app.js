@@ -1712,6 +1712,10 @@ async function loadBalanceSA() {
             const { data: histData } = await db.rpc('get_settlements_history_for_subadmin', {
                 p_sub_admin_id: currentProfile.id,
                 p_seller_id:    sellerId,
+                p_date_from:    from,
+                p_date_to:      to,
+                p_lottery_id:   lotteryId,
+                p_draw_time_id: drawTimeId,
             });
             balanceSAHistoryData = histData || [];
         } catch (_) { balanceSAHistoryData = []; }
@@ -1725,7 +1729,8 @@ async function loadBalanceSA() {
             const balance     = parseFloat(bal.balance           || 0);
             balanceSACurrentBalance = balance;
             const pct         = parseFloat(bal.commission_pct    || 0);
-            const prevPending = balance - adminPart + prizes;
+            const netPeriod   = adminPart - prizes;
+            const cutsTotal   = balanceSAHistoryData.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
 
             const detailTotalSales      = parseFloat(bal.total_sales       || 0);
             const detailTotalCommission = parseFloat(bal.total_commission  || 0);
@@ -1733,17 +1738,17 @@ async function loadBalanceSA() {
 
             document.getElementById('balanceSATotalSales').textContent = `${sym}${detailTotalSales.toFixed(2)}`;
             document.getElementById('balanceSAComision').textContent   = `${sym}${detailTotalCommission.toFixed(2)}`;
-            document.getElementById('balanceSAAdminPart').textContent  = `${sym}${Math.abs(balance).toFixed(2)}`;
+            document.getElementById('balanceSAAdminPart').textContent  = `${sym}${netPeriod.toFixed(2)}`;
             document.getElementById('balanceSAPremios').textContent    = `${sym}${detailTotalPrizes.toFixed(2)}`;
             document.getElementById('balanceSAPct').textContent        = pct.toFixed(1);
 
             const prevCard = document.getElementById('balanceSAPrevPendingCard');
             const prevEl   = document.getElementById('balanceSAPrevPending');
             if (prevCard && prevEl) {
-                if (prevPending !== 0) {
+                if (cutsTotal !== 0) {
                     prevCard.style.display = 'block';
-                    prevEl.textContent = `${sym}${Math.abs(prevPending).toFixed(2)}`;
-                    prevEl.style.color = prevPending > 0 ? '#16a34a' : '#e11d48';
+                    prevEl.textContent = `${sym}${Math.abs(cutsTotal).toFixed(2)}`;
+                    prevEl.style.color = cutsTotal > 0 ? '#16a34a' : '#e11d48';
                 } else {
                     prevCard.style.display = 'none';
                 }
@@ -2290,15 +2295,21 @@ async function loadBalancePage() {
             p_draw_time_id:  drawTimeId,
             p_include_group: isSubAdmin() && balanceGroupMode,
         };
+        const accountParams = {
+            ...params,
+            p_include_group: isSubAdmin() ? true : params.p_include_group,
+        };
 
         // Balance y detalle: críticos — si fallan mostramos error
-        const [{ data: balData, error: balErr }, { data: detData }] = await Promise.all([
+        const [{ data: balData, error: balErr }, { data: detData }, { data: accountBalData, error: accountBalErr }] = await Promise.all([
             db.rpc('get_seller_balance_for_seller',        params),
             db.rpc('get_seller_balance_detail_for_seller', params),
+            db.rpc('get_seller_balance_for_seller',        accountParams),
         ]);
-        if (balErr) throw balErr;
+        if (balErr || accountBalErr) throw (balErr || accountBalErr);
 
         balanceDetailData = detData || [];
+        balanceHistoryData = [];
 
         // Historial: separado para que un fallo no bloquee el balance
         if (currentProfile.parent_admin_id) {
@@ -2306,6 +2317,8 @@ async function loadBalancePage() {
                 const { data: histData } = await db.rpc('get_settlements_history', {
                     p_admin_id:     currentProfile.parent_admin_id,
                     p_seller_id:    currentProfile.id,
+                    p_date_from:    from,
+                    p_date_to:      to,
                     p_lottery_id:   lotteryId   || null,
                     p_draw_time_id: drawTimeId  || null,
                 });
@@ -2314,13 +2327,15 @@ async function loadBalancePage() {
         }
 
         const bal = balData?.[0];
+        const accountBal = accountBalData?.[0] || bal;
 
-        if (bal) {
+        if (bal && accountBal) {
             const adminPart    = parseFloat(bal.admin_part        || 0);
             const prizes       = parseFloat(bal.total_prizes_paid || 0);
-            const balance      = parseFloat(bal.balance           || 0);
+            const balance      = parseFloat(accountBal.balance    || 0);
             const pct          = parseFloat(bal.commission_pct    || 0);
-            const prevPending  = balance - adminPart + prizes;
+            const netPeriod    = adminPart - prizes;
+            const cutsTotal    = balanceHistoryData.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
 
             // Totales del período activo — directo del RPC (excluye días liquidados)
             const detailTotalSales      = parseFloat(bal.total_sales       || 0);
@@ -2329,18 +2344,17 @@ async function loadBalancePage() {
 
             document.getElementById('balanceTotalSales').textContent  = `${sym}${detailTotalSales.toFixed(2)}`;
             document.getElementById('balanceComision').textContent    = `${sym}${detailTotalCommission.toFixed(2)}`;
-            document.getElementById('balanceAdminPart').textContent   = `${sym}${balance.toFixed(2)}`;
+            document.getElementById('balanceAdminPart').textContent   = `${sym}${netPeriod.toFixed(2)}`;
             document.getElementById('balancePremios').textContent     = `${sym}${detailTotalPrizes.toFixed(2)}`;
             document.getElementById('balancePct').textContent         = pct.toFixed(1);
 
-            // Saldo pendiente anterior
             const prevCard = document.getElementById('balancePrevPendingCard');
             const prevEl   = document.getElementById('balancePrevPending');
             if (prevCard && prevEl) {
-                if (prevPending !== 0) {
+                if (cutsTotal !== 0) {
                     prevCard.style.display = 'block';
-                    prevEl.textContent = `${sym}${Math.abs(prevPending).toFixed(2)}`;
-                    prevEl.style.color = prevPending > 0 ? '#16a34a' : '#e11d48';
+                    prevEl.textContent = `${sym}${Math.abs(cutsTotal).toFixed(2)}`;
+                    prevEl.style.color = cutsTotal > 0 ? '#16a34a' : '#e11d48';
                 } else {
                     prevCard.style.display = 'none';
                 }
@@ -4119,30 +4133,17 @@ async function loadSellerWinningTickets() {
     const filterDate   = document.getElementById('premiosFilterDate')?.value   || getTodayStr();
     const filterLotId  = document.getElementById('premiosFilterLottery')?.value || null;
     const filterDtId   = document.getElementById('premiosFilterDrawTime')?.value || null;
-    const isSubAdminView = currentProfile.role === 'sub_admin';
-
     sectionEl.innerHTML = `<div style="text-align:center;padding:16px;color:#888;font-size:13px;">Cargando premios...</div>`;
 
     try {
-        let data, error;
-        if (isSubAdminView) {
-            ({ data, error } = await db.rpc('get_subadmin_winning_tickets', {
-                p_sub_admin_id: currentProfile.id,
-                p_date_from:    filterDate,
-                p_date_to:      filterDate,
-                p_lottery_id:   filterLotId  || null,
-                p_status:       null,
-            }));
-        } else {
-            ({ data, error } = await db.rpc('get_seller_winning_tickets', {
-                p_seller_id:    currentProfile.id,
-                p_date_from:    filterDate,
-                p_date_to:      filterDate,
-                p_lottery_id:   filterLotId  || null,
-                p_draw_time_id: filterDtId   || null,
-                p_status:       null,
-            }));
-        }
+        const { data, error } = await db.rpc('get_seller_winning_tickets', {
+            p_seller_id:    currentProfile.id,
+            p_date_from:    filterDate,
+            p_date_to:      filterDate,
+            p_lottery_id:   filterLotId  || null,
+            p_draw_time_id: filterDtId   || null,
+            p_status:       null,
+        });
         if (error) throw error;
 
         _premiosAllRows = data || [];

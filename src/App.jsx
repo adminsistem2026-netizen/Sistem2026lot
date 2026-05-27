@@ -32,12 +32,19 @@ import SuperDashboard from './pages/superadmin/SuperDashboard';
 import ManageAdmins from './pages/superadmin/ManageAdmins';
 import GlobalConfig from './pages/superadmin/GlobalConfig';
 import CleanupData from './pages/superadmin/CleanupData';
+import { useAuth } from './contexts/AuthContext';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 1000 * 60, retry: 1 },
   },
 });
+
+function SellerHome() {
+  const { profile } = useAuth();
+  if (profile?.role === 'sub_admin') return <Navigate to="/seller/balance" replace />;
+  return <SellerDashboard />;
+}
 
 export default function App() {
   return (
@@ -51,11 +58,11 @@ export default function App() {
 
               {/* Seller */}
               <Route path="/seller" element={
-                <ProtectedRoute allowedRoles={['seller']}>
+                <ProtectedRoute allowedRoles={['seller', 'sub_admin']}>
                   <SellerLayout />
                 </ProtectedRoute>
               }>
-                <Route index element={<SellerDashboard />} />
+                <Route index element={<SellerHome />} />
                 <Route path="ventas" element={<SellerSales />} />
                 <Route path="numeros" element={<SellerNumbers />} />
                 <Route path="ganadores" element={<SellerVerifyWinners />} />
