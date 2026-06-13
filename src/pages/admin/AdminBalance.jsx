@@ -719,7 +719,7 @@ export default function AdminBalance() {
       {/* ── Delete Settlement Modal ── */}
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto p-5 space-y-4">
             <h2 className="text-base font-bold text-white">Eliminar corte</h2>
             <p className="text-sm text-slate-300">
               Esta accion no se puede deshacer. El balance del vendedor se recalculara sin este corte.
@@ -747,8 +747,8 @@ export default function AdminBalance() {
 
       {/* ── Settlement Modal ── */}
       {showSettleModal && balance && (
-        <div className="fixed inset-0 bg-black/75 flex items-end justify-center z-50 p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-5 space-y-4">
+        <div className="fixed inset-0 bg-black/75 flex items-end sm:items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md max-h-[92vh] overflow-y-auto p-5 space-y-4">
             <h2 className="text-base font-bold text-white">Confirmar corte</h2>
 
             <div className="bg-slate-900 rounded-xl p-4 space-y-2 text-sm">

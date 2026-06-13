@@ -62,9 +62,9 @@ function TicketModal({ ticket, sellerName, lotteryName, drawTimeName, sym, onClo
   if (!ticket) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-2 sm:p-4" onClick={onClose}>
       <div
-        className="bg-slate-900 border border-slate-700 rounded-t-2xl w-full max-w-lg p-5 pb-8 space-y-4"
+        className="bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto p-5 pb-8 space-y-4"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
