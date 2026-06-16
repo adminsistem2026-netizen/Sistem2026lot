@@ -184,7 +184,7 @@ async function loadLotteries() {
             ...(mMap[lot.id] || {}),
             code: lot.id,
             name: lot.display_name,
-            draw_times: (dtData || []).filter(dt => dt.lottery_id === lot.id),
+            draw_times: (dtData || []).filter(dt => dt.lottery_id === lot.id && dt.is_active !== false),
         }));
 
         drawTimesMap = {};
